@@ -9,7 +9,10 @@ themselves.
 import http.client
 import json
 import os
+import re
+import shutil
 import socket
+import subprocess
 import tempfile
 import threading
 import time
@@ -917,6 +920,61 @@ class StationsEndpointTests(RestTestCase):
         self.assertIn("aprsIcon", html)
         # Pinned commit, not an unpinned branch/tag -- see module comment.
         self.assertIn("f2286a9cd43eb6ba4501250b4c39fff111e3796c", html)
+
+    def test_map_page_javascript_is_syntactically_valid(self):
+        # Real regression, not a hypothetical: MAP_HTML is a Python
+        # string literal, and the APRS icon feature's symbol lookup
+        # table used JS escapes (\" and \\) that looked correct in the
+        # source but were being silently *unescaped* by Python's own
+        # (non-raw) triple-quoted string processing before the page
+        # ever reached a browser -- turning a working-looking JS array
+        # into invalid JavaScript. Because a syntax error anywhere in
+        # a <script> block prevents the whole block from running (not
+        # just the broken statement), this broke everything the
+        # script did: the map never initialized (black screen) and
+        # the terminal/pbbs/winlink header links never got their href
+        # set (clicking did nothing). Fixed by making MAP_HTML a raw
+        # string (r\"\"\"...\"\"\"). Grepping for substrings (the test
+        # above) can't catch this class of bug -- it needs a real JS
+        # parser on the actual served bytes. Skipped if node isn't on
+        # PATH, since this project has no other Node/JS-tooling
+        # dependency.
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("node not available")
+
+        _, port = self.start_stack(ScriptedSerial({}))
+
+        conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+        self.addCleanup(conn.close)
+
+        conn.request("GET", "/map?token=test-token")
+        response = conn.getresponse()
+        html = response.read().decode("utf-8")
+
+        scripts = re.findall(r"<script>(.*?)</script>", html, re.DOTALL)
+        inline_scripts = [s for s in scripts if s.strip()]
+        self.assertEqual(
+            len(inline_scripts), 1, "expected exactly one inline <script> body"
+        )
+
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".js", delete=False
+        ) as handle:
+            handle.write(inline_scripts[0])
+            script_path = handle.name
+        self.addCleanup(os.remove, script_path)
+
+        result = subprocess.run(
+            [node, "--check", script_path], capture_output=True, text=True
+        )
+
+        self.assertEqual(
+            result.returncode,
+            0,
+            "MAP_HTML's inline <script> is not valid JavaScript:\n"
+            + result.stderr,
+        )
 
     def test_map_page_requires_auth_when_enabled(self):
         _, port = self.start_stack(ScriptedSerial({}))

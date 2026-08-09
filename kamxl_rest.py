@@ -958,7 +958,7 @@ WINLINK_HTML = """<!doctype html>
 # gap (see the aprsSymbolPosition() comment below), not a guess.
 # symbol_table/symbol_code are still also shown as text in each
 # marker's popup, as supplementary/debugging info.
-MAP_HTML = """<!doctype html>
+MAP_HTML = r"""<!doctype html>
 <html>
 <head>
 <meta charset="utf-8">
