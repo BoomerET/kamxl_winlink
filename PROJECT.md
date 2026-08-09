@@ -1086,6 +1086,66 @@ foundation -- Milestone 1 here. Direction as of now:
    flag what's still unconfirmed" posture as every other real-hardware
    script in this project.
 
+   ### Update: real APRS symbol icons on the map (milestone 7 extension)
+
+   Dave asked whether the map could show correct APRS icons instead of
+   Leaflet's plain default marker. `aprs.py`/`stations.py` had already
+   captured `symbol_table`/`symbol_code` since milestone 7, but
+   `kamxl_rest.py`'s `MAP_HTML` only ever displayed them as popup text
+   -- rendering the full symbol set was explicitly scoped out of that
+   MVP. Presented three options (hand-built SVG for common symbols
+   only, the full ~190-symbol set from an external icon pack, or
+   color-coded dots with no real icons); Dave chose the full external
+   icon pack, explicitly accepting a new dependency beyond this
+   project's cdnjs-only rule for browser assets, since no APRS icon
+   set exists on cdnjs.
+
+   Two real, separately licensed sources, each pinned rather than
+   tracking an unpinned branch/tag:
+
+   - **hessu/aprs-symbols** (`github.com/hessu/aprs-symbols`) supplies
+     the actual sprite PNGs -- the well-known APRS icon set maintained
+     by Heikki Hannikainen/OH7LZB, who also runs aprs.fi. Licensing is
+     mixed per-symbol (mostly CC-BY-SA 2.0 original work, some
+     public-domain-sourced elements; see that repo's `COPYRIGHT.md`).
+     Pinned to commit `f2286a9cd43eb6ba4501250b4c39fff111e3796c`
+     (2024-10-10) and loaded by the browser via jsdelivr's GitHub-raw
+     CDN -- not vendored into this repo as binary assets.
+   - **OK-DMR/aprs-symbols** (`github.com/OK-DMR/aprs-symbols`, MIT
+     License, Copyright (c) 2019 Marek Sebera) supplies the lookup
+     logic: a small translation table mapping the 94 printable-ASCII
+     APRS symbol codes to sprite-sheet row/column, plus the
+     `background-position` grid formula. Fetched and read in full
+     (`aprs-symbols.js`, `aprs-symbols.css`) rather than assumed; the
+     ~15-line result is ported directly into `MAP_HTML`'s own inline
+     `<script>` with an attribution comment, not loaded from a CDN.
+
+   New `aprsSymbolPosition()`/`aprsIcon()` functions in `MAP_HTML`
+   build a Leaflet `L.divIcon` per station from its `symbol_table`/
+   `symbol_code`, replacing the old plain `L.marker(latLng)` call in
+   `refresh()`. Two real nuances handled deliberately rather than
+   glossed over:
+
+   - APRS symbol tables are literally `/` (primary, sprite table 0) or
+     `\` (alternate, sprite table 1) -- any other `symbol_table`
+     character means an *alternate table with overlay* (a digit/letter
+     meant to be drawn over the base icon). `aprsSymbolPosition()`
+     falls back to the alternate table's base icon for that case,
+     matching the real APRS convention, but doesn't attempt to draw
+     the overlay glyph itself -- a documented gap, not a guess.
+   - A symbol code that isn't in the 94-character chart at all
+     (malformed/missing data) falls back to Leaflet's plain default
+     marker rather than rendering nothing -- same "skip, don't guess"
+     posture as `aprs.py`'s own parser.
+
+   The module comment above `MAP_HTML` documents both sources, their
+   licenses, and the pinned commit; `docs/rest_api.md`'s "Stations /
+   map" section updated to match.
+
+   319/319 tests passing (1 new: `tests/test_rest.py`'s
+   `test_map_page_renders_real_aprs_icons`, asserting the pinned
+   commit hash and lookup-function names appear in the served page).
+
 ---
 
 

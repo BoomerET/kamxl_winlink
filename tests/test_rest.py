@@ -897,6 +897,27 @@ class StationsEndpointTests(RestTestCase):
         self.assertIn("/stations", html)
         self.assertIn("leaflet", html.lower())
 
+    def test_map_page_renders_real_aprs_icons(self):
+        # Milestone 7 extension: markers use real APRS symbol-table
+        # icons (hessu/aprs-symbols sprites + OK-DMR/aprs-symbols'
+        # lookup logic ported inline), not Leaflet's plain default
+        # marker -- see kamxl_rest.py's module comment above MAP_HTML.
+        _, port = self.start_stack(ScriptedSerial({}))
+
+        conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+        self.addCleanup(conn.close)
+
+        conn.request("GET", "/map?token=test-token")
+        response = conn.getresponse()
+        html = response.read().decode("utf-8")
+
+        self.assertEqual(response.status, 200)
+        self.assertIn("aprs-symbols", html)
+        self.assertIn("aprsSymbolPosition", html)
+        self.assertIn("aprsIcon", html)
+        # Pinned commit, not an unpinned branch/tag -- see module comment.
+        self.assertIn("f2286a9cd43eb6ba4501250b4c39fff111e3796c", html)
+
     def test_map_page_requires_auth_when_enabled(self):
         _, port = self.start_stack(ScriptedSerial({}))
 

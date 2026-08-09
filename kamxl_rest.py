@@ -926,11 +926,38 @@ WINLINK_HTML = """<!doctype html>
 # browser-side JS, per its own conventions) -- the only external
 # network dependency in this whole project, and only for the browser
 # viewing this page, not for kamxl_rest.py itself (which never talks
-# to the internet). Markers use Leaflet's plain default icon rather
-# than real APRS symbol-table/symbol-code icons -- rendering the full
-# APRS symbol set was scoped out of the MVP (see PROJECT.md), so
-# symbol_table/symbol_code are only shown as text in each marker's
-# popup for now.
+# to the internet).
+#
+# Markers use real APRS symbol-table/symbol-code icons (Dave's explicit
+# choice: the full ~190-symbol set from an external icon pack, not a
+# hand-built SVG subset or plain color-coded dots -- see PROJECT.md).
+# This is a deliberate, one-off exception to the cdnjs-only rule above,
+# since no APRS icon set is available there. Two real, separately
+# licensed third-party sources are used, both pinned to a specific
+# commit rather than an unpinned "latest" branch or tag:
+#
+#   - Sprite PNGs: hessu/aprs-symbols (github.com/hessu/aprs-symbols),
+#     the APRS icon set maintained by Heikki Hannikainen/OH7LZB
+#     (operator of aprs.fi). Licensing is mixed per-symbol (mostly
+#     CC-BY-SA 2.0 original work, some public-domain-sourced elements)
+#     -- see that repo's COPYRIGHT.md. Pinned to commit
+#     f2286a9cd43eb6ba4501250b4c39fff111e3796c (2024-10-10) and served
+#     via jsdelivr's GitHub-raw CDN.
+#   - Symbol lookup table and sprite-grid math: ported inline (below,
+#     in the page's own <script>) from OK-DMR/aprs-symbols'
+#     aprs-symbols.js/aprs-symbols.css (github.com/OK-DMR/aprs-symbols,
+#     MIT License, Copyright (c) 2019 Marek Sebera) -- only the ~15
+#     lines of translation-table/grid-position logic are reused, not
+#     loaded from a CDN.
+#
+# Real APRS symbol tables are literally "/" (primary) or "\" (alternate)
+# -- any other symbol_table character means an *alternate table with
+# overlay* (a digit/letter drawn over the base icon, e.g. a numbered
+# object). This page renders the alternate table's base icon for that
+# case but does not draw the overlay glyph itself -- a real, documented
+# gap (see the aprsSymbolPosition() comment below), not a guess.
+# symbol_table/symbol_code are still also shown as text in each
+# marker's popup, as supplementary/debugging info.
 MAP_HTML = """<!doctype html>
 <html>
 <head>
@@ -983,6 +1010,9 @@ MAP_HTML = """<!doctype html>
     z-index: 500;
   }
   .leaflet-popup-content { font-family: "Courier New", Courier, monospace; font-size: 12px; }
+  /* Leaflet's L.divIcon normally draws a white box + border -- our
+     APRS icons supply their own sprite background, so strip both. */
+  .aprsIcon { background: transparent; border: none; }
 </style>
 </head>
 <body>
@@ -1032,6 +1062,77 @@ MAP_HTML = """<!doctype html>
     return Math.floor(deltaSeconds / 86400) + "d ago";
   }
 
+  // APRS symbol-table icon rendering. Translation table and sprite-grid
+  // math ported from OK-DMR/aprs-symbols' aprs-symbols.js/.css (MIT
+  // License, Copyright (c) 2019 Marek Sebera --
+  // github.com/OK-DMR/aprs-symbols); the sprite images are
+  // hessu/aprs-symbols (github.com/hessu/aprs-symbols), pinned to a
+  // specific commit and loaded via jsdelivr's GitHub-raw CDN. See this
+  // file's module-level comment above MAP_HTML for the full licensing
+  // and scope notes -- this is a deliberate, one-off exception to this
+  // project's normal cdnjs-only rule for browser assets.
+  var APRS_ICON_SIZE = 32;
+  var APRS_SPRITE_BASE =
+    "https://cdn.jsdelivr.net/gh/hessu/aprs-symbols@" +
+    "f2286a9cd43eb6ba4501250b4c39fff111e3796c/png/";
+
+  // Each string is one row of the APRS symbol chart -- 94 printable
+  // ASCII characters (0x21 "!" through 0x7E "~"), 16 per row except
+  // the final partial row. Row/column index here is exactly the
+  // sprite sheet's row/column (each cell APRS_ICON_SIZE px square).
+  var APRS_SYMBOL_ROWS = [
+    "!\"#$%&'()*+,-./0",
+    "123456789:;<=>?@",
+    "ABCDEFGHIJKLMNOP",
+    "QRSTUVWXYZ[\\]^_`",
+    "abcdefghijklmnop",
+    "qrstuvwxyz{|}~"
+  ];
+
+  function aprsSymbolPosition(symbolTable, symbolCode) {
+    // Real APRS symbol tables are literally "/" (primary, sprite
+    // table 0) or "\" (alternate, sprite table 1) -- any other
+    // character in this position means an *alternate table with
+    // overlay* (a digit/letter meant to be drawn over the base icon,
+    // e.g. a numbered object). This function returns the alternate
+    // table's base icon position for that case; it does not compute
+    // an overlay glyph position -- overlay rendering isn't
+    // implemented (a real, documented gap, not a guess).
+    var table = symbolTable === "/" ? 0 : 1;
+
+    for (var row = 0; row < APRS_SYMBOL_ROWS.length; row++) {
+      var col = APRS_SYMBOL_ROWS[row].indexOf(symbolCode);
+      if (col !== -1) return { table: table, row: row, col: col };
+    }
+
+    return null;
+  }
+
+  function aprsIcon(symbolTable, symbolCode) {
+    var pos = aprsSymbolPosition(symbolTable, symbolCode);
+
+    if (!pos) return null;
+
+    var spriteUrl =
+      APRS_SPRITE_BASE + "aprs-symbols-" + APRS_ICON_SIZE + "-" + pos.table + ".png";
+    var bgX = -(pos.col * APRS_ICON_SIZE);
+    var bgY = -(pos.row * APRS_ICON_SIZE);
+
+    var html =
+      '<div style="width:' + APRS_ICON_SIZE + "px;height:" + APRS_ICON_SIZE + "px;" +
+      "background-image:url(&quot;" + spriteUrl + "&quot;);" +
+      "background-position:" + bgX + "px " + bgY + "px;" +
+      'background-repeat:no-repeat;"></div>';
+
+    return L.divIcon({
+      className: "aprsIcon",
+      html: html,
+      iconSize: [APRS_ICON_SIZE, APRS_ICON_SIZE],
+      iconAnchor: [APRS_ICON_SIZE / 2, APRS_ICON_SIZE / 2],
+      popupAnchor: [0, -(APRS_ICON_SIZE / 2)]
+    });
+  }
+
   function popupHtml(station) {
     var html = "<b>" + station.callsign + "</b><br>";
     html += station.latitude.toFixed(5) + ", " + station.longitude.toFixed(5) + "<br>";
@@ -1062,14 +1163,22 @@ MAP_HTML = """<!doctype html>
         seen[station.callsign] = true;
 
         var latLng = [station.latitude, station.longitude];
+        var icon = aprsIcon(station.symbol_table, station.symbol_code);
 
         if (markers[station.callsign]) {
           markers[station.callsign].setLatLng(latLng);
           markers[station.callsign].setPopupContent(popupHtml(station));
+          // Symbol can change between reports (rare, but not
+          // impossible) -- always re-apply rather than assuming the
+          // first-seen icon stays correct forever.
+          if (icon) markers[station.callsign].setIcon(icon);
         } else {
-          markers[station.callsign] = L.marker(latLng)
-            .addTo(map)
-            .bindPopup(popupHtml(station));
+          // Fall back to Leaflet's plain default marker if the symbol
+          // code isn't in the chart (malformed/missing data) rather
+          // than drawing nothing -- same "skip, don't guess" pattern
+          // as aprs.py's own parser.
+          var marker = icon ? L.marker(latLng, { icon: icon }) : L.marker(latLng);
+          markers[station.callsign] = marker.addTo(map).bindPopup(popupHtml(station));
         }
       });
 

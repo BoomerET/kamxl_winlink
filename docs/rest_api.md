@@ -278,10 +278,39 @@ it took slightly longer than the old 5s window to fully arrive.
 Milestone 7 (APRS mapping). `GET /map` serves a third self-contained
 page: a live map, built with [Leaflet](https://leafletjs.com/) and
 OpenStreetMap tiles (both loaded from `cdnjs.cloudflare.com` by the
-*browser* viewing the page -- this is the one external network
-dependency anywhere in this project, and it's entirely client-side;
-`kamxl_rest.py` itself never talks to the internet). Linked from the
-web terminal's and PBBS page's headers, and back again.
+*browser* viewing the page -- `kamxl_rest.py` itself never talks to the
+internet). Linked from the web terminal's and PBBS page's headers, and
+back again.
+
+Markers use real APRS symbol-table icons, not Leaflet's plain default
+marker. This is a deliberate, one-off exception to the cdnjs-only rule
+above, since no APRS icon set is available there -- two real,
+separately licensed third-party sources are used instead, both pinned
+to a specific commit:
+
+- **Sprite images:** [hessu/aprs-symbols](https://github.com/hessu/aprs-symbols),
+  the icon set maintained by Heikki Hannikainen/OH7LZB (operator of
+  aprs.fi). Licensing is mixed per-symbol (mostly CC-BY-SA 2.0
+  original work, some public-domain-sourced elements -- see that
+  repo's `COPYRIGHT.md`). Pinned to commit
+  `f2286a9cd43eb6ba4501250b4c39fff111e3796c` (2024-10-10) and loaded
+  by the browser via jsdelivr's GitHub-raw CDN, not vendored into this
+  repo.
+- **Symbol lookup logic:** the ~15-line translation-table and
+  sprite-grid-position math is ported inline into `MAP_HTML`'s own
+  `<script>` from [OK-DMR/aprs-symbols](https://github.com/OK-DMR/aprs-symbols)'
+  `aprs-symbols.js`/`aprs-symbols.css` (MIT License, Copyright (c)
+  2019 Marek Sebera) -- not loaded from a CDN, just the logic reused
+  with attribution.
+
+Real APRS symbol tables are literally `/` (primary) or `\` (alternate)
+-- any other `symbol_table` character means an *alternate table with
+overlay* (a digit/letter meant to be drawn over the base icon, e.g. a
+numbered object). The map renders the alternate table's base icon for
+that case but doesn't draw the overlay glyph itself -- a real,
+documented gap, not a guess. A symbol code outside the chart entirely
+(malformed/missing data) falls back to Leaflet's plain default marker
+rather than drawing nothing.
 
 Unlike PBBS, `GET /stations` and `GET /stations/<CALLSIGN>` never
 drive an AX.25 connect/command/disconnect cycle -- they just read
@@ -302,13 +331,13 @@ yet" reasoning as `/pbbs/messages/<N>`.
 
 Each `Station` in the response: `callsign`, `latitude`, `longitude`,
 `symbol_table`, `symbol_code`, `comment`, `last_heard` (epoch
-seconds), `packet_count`. The map page renders each as a plain
-Leaflet marker (not a real APRS symbol icon -- rendering the full
-APRS symbol-table/symbol-code icon set was scoped out of the MVP) with
-a popup showing position, comment, and how long ago it was last heard;
-it polls `/stations` every 15 seconds and only actually pans/zooms to
-fit all stations once, the first time any appear, so it doesn't yank
-the view out from under someone who's since panned around manually.
+seconds), `packet_count`. The map page renders each with its real APRS
+symbol icon (see above) and a popup showing position, comment,
+`symbol_table`/`symbol_code` as text, and how long ago it was last
+heard; it polls `/stations` every 15 seconds and only actually
+pans/zooms to fit all stations once, the first time any appear, so it
+doesn't yank the view out from under someone who's since panned around
+manually.
 
 **Unverified against a real captured APRS session.** `aprs.py`'s
 position-report parsing is built from the public APRS Protocol
