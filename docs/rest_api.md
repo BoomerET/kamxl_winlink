@@ -344,10 +344,12 @@ Real APRS symbol tables are literally `/` (primary) or `\` (alternate)
 -- any other `symbol_table` character means an *alternate table with
 overlay* (a digit/letter meant to be drawn over the base icon, e.g. a
 numbered object). The map renders the alternate table's base icon for
-that case but doesn't draw the overlay glyph itself -- a real,
-documented gap, not a guess. A symbol code outside the chart entirely
-(malformed/missing data) falls back to Leaflet's plain default marker
-rather than drawing nothing.
+that case, with the overlay character itself drawn as a small text
+badge in the icon's corner -- not sprite art, since
+`hessu/aprs-symbols` has none (its own README says outright it
+"does not contain additional symbols for overlays yet"). A symbol code
+outside the chart entirely (malformed/missing data) falls back to
+Leaflet's plain default marker rather than drawing nothing.
 
 Unlike PBBS, `GET /stations` and `GET /stations/<CALLSIGN>` never
 drive an AX.25 connect/command/disconnect cycle -- they just read
@@ -383,9 +385,10 @@ open protocol layered on top of ordinary AX.25 UI frames), and the
 station database is straightforward once a position decodes -- but
 neither has been checked yet against real APRS traffic the way
 `packet.py`'s `HEADER_RE` and `pbbs.py`'s parsing eventually were.
-Treat it as a first draft; see `aprs.py`'s module docstring for two
-specific known simplifications (compressed positions unsupported,
-position ambiguity not fully modeled).
+Treat it as a first draft; see `aprs.py`'s module docstring for the
+one remaining known simplification (position ambiguity not fully
+modeled -- both uncompressed and compressed positions themselves are
+now decoded, as of the "fill in the two APRS gaps" milestone).
 
 ## Winlink
 

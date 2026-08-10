@@ -1064,6 +1064,27 @@ class StationsEndpointTests(RestTestCase):
         # Pinned commit, not an unpinned branch/tag -- see module comment.
         self.assertIn("f2286a9cd43eb6ba4501250b4c39fff111e3796c", html)
 
+    def test_map_page_renders_overlay_characters_as_text_badge(self):
+        # A station using an "alternate table with overlay" symbol
+        # (a digit/letter instead of plain "/" or "\") gets that
+        # character drawn as a small text badge -- hessu/aprs-symbols
+        # has no real overlay sprite art (its own README says so; see
+        # the module comment above MAP_HTML), so this checks for the
+        # CSS class + escapeHtml() call rather than any sprite/image
+        # reference for the overlay itself.
+        _, port = self.start_stack(ScriptedSerial({}))
+
+        conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+        self.addCleanup(conn.close)
+
+        conn.request("GET", "/map?token=test-token")
+        response = conn.getresponse()
+        html = response.read().decode("utf-8")
+
+        self.assertIn("aprsOverlay", html)
+        self.assertIn("pos.overlay", html)
+        self.assertIn("escapeHtml(pos.overlay)", html)
+
     def test_map_page_javascript_is_syntactically_valid(self):
         # Real regression, not a hypothetical: MAP_HTML is a Python
         # string literal, and the APRS icon feature's symbol lookup

@@ -1304,6 +1304,113 @@ foundation -- Milestone 1 here. Direction as of now:
 
    332/332 tests passing (6 new).
 
+   ### Update: the two documented APRS gaps -- compressed positions, overlay icons
+
+   Second half of "where else can we take this webapp" -- Dave's own
+   pick, queued up right after the dashboard. Both gaps were already
+   explicitly flagged in `aprs.py`'s and `kamxl_rest.py`'s own module
+   docstrings from milestone 7, not newly discovered.
+
+   **Compressed position parsing.** APRS has two position encodings:
+   human-readable "uncompressed" (`aprs.py`'s original, only
+   supported format) and a denser base-91 "compressed" form real
+   trackers commonly default to. Rather than trust memory for the
+   byte layout and decode math, fetched the actual APRS Protocol
+   Reference 1.0.1 PDF (chapter 9) and read it directly -- confirmed
+   the fixed 13-byte field layout (symbol table + 4-byte lat + 4-byte
+   lon + symbol code + 2-byte course/speed/altitude + 1 compression-
+   type byte) and the exact decode formula. Independently
+   cross-checked against `aprslib` (github.com/rossengeorgiev/
+   aprs-python, a real, widely-used open-source APRS parser) to
+   confirm the "leading non-digit means compressed" detection rule
+   and that a literal space in the course/speed byte really does mean
+   "no data" (the PDF's own text extraction rendered this
+   confusingly, as "c = V (space)" -- aprslib's actual code
+   (`ord(x)-33 == -1`) confirmed it's a space, not a literal "V").
+
+   Verified the decode math against the spec's own two worked
+   examples before writing a single test: the sample compressed field
+   `5L!!<*e7` hand-computed by the spec itself as 49°30'00"N/
+   72°45'00"W, reproduced exactly by `_base91_decode()` +
+   `_decode_compressed_position()`. (Compressed encoding is
+   intentionally lossy -- the spec's own encoding example truncates
+   `190463*(180-72.75)=20427156.75` to the integer `20427156` before
+   base-91 encoding, so decoding it back lands about 1.6 feet off from
+   exactly -72.75 -- expected quantization, not a bug, and tests use a
+   1e-4-degree tolerance to reflect that rather than the uncompressed
+   tests' tight 1e-6.)
+
+   New `_base91_decode()`, `_decode_compressed_position()`,
+   `_COMPRESSED_POSITION_RE`/`_COMPRESSED_POSITION_WITH_TIMESTAMP_RE`
+   in `aprs.py`; `parse_position()` now tries uncompressed first
+   (unchanged logic) and falls back to compressed. One real bug caught
+   during implementation, not shipped: the first version of
+   `_COMPRESSED_POSITION_RE` explicitly excluded digits from the
+   symbol-table character position (mirroring the spec's own "leading
+   digit means uncompressed" detection wording too literally) -- which
+   would have silently *failed* to parse the common case of a real
+   overlay digit in that exact position (e.g. a numbered station).
+   Caught by testing against a payload with a `1` overlay character
+   before considering the feature done, not after; fixed by relying on
+   try-uncompressed-first ordering for disambiguation instead of a
+   restrictive character class, matching why that ordering already
+   existed.
+
+   Course/speed, pre-calculated radio range, and altitude (the 3 bytes
+   after the symbol code) are deliberately not decoded -- `AprsPosition`
+   has no field for any of them, matching the uncompressed format's own
+   existing scope (its comment-embedded course/speed/PHG extensions
+   aren't decoded either). A real, stated boundary, not an oversight.
+
+   **APRS overlay icon rendering.** The map already fell back to the
+   alternate table's base icon for a station with an overlay character
+   in `symbol_table`, but didn't draw the overlay glyph itself.
+   Checked whether `hessu/aprs-symbols` (the sprite source already
+   pinned for the base icons) has real overlay artwork before writing
+   any code -- fetched its actual README, which says outright: "The
+   aprs.fi symbol graphics set does not contain additional symbols for
+   overlays yet ... Maybe later!" So loading a nonexistent/placeholder
+   `aprs-symbols-SIZE-2.png` was never on the table. Instead, the
+   overlay character itself (whatever real byte `symbol_table` holds)
+   is drawn as a small text badge in the icon's corner -- new `.aprsOverlay`
+   CSS class, `aprsSymbolPosition()` now also returns the overlay
+   character, `aprsIcon()` layers the badge `<div>` over the base
+   sprite `<div>` when present.
+
+   Since the badge shows a real, over-the-air byte verbatim (not
+   necessarily a well-formed digit/letter -- `aprs.py`'s parser
+   doesn't validate that, by design), added a proper `escapeHtml()`
+   helper to `MAP_HTML` (it didn't have one before, unlike the other
+   three pages) and used it for the overlay badge -- verified against
+   a deliberately malicious overlay character (`<`) in a Node.js
+   runtime shim, confirming it renders as the escaped `&lt;` rather
+   than breaking the marker's HTML. Also used the same new helper to
+   fix `popupHtml()`'s pre-existing lack of escaping for
+   `station.callsign`/`comment`/`symbol_table`/`symbol_code` while
+   touching this file anyway -- those come from over-the-air text too
+   and had never been escaped, a real gap noticed in passing rather
+   than something Dave asked to fix, low-risk enough to just close it.
+
+   Both `aprs.py` and `kamxl_rest.py` continued the same immediate-
+   verification discipline the black-screen bug forced into practice:
+   syntax- and runtime-checked (`node --check` plus a Node shim
+   actually calling `aprsIcon()`/`aprsSymbolPosition()` against real
+   and malicious inputs) right after writing the JS, before moving on
+   to tests and docs.
+
+   `docs/rest_api.md`'s "Stations / map" section updated (both the
+   overlay-badge behavior and the "compressed positions unsupported"
+   line, now removed since it's no longer true). New tests:
+   `tests/test_aprs.py`'s `Base91DecodeTests` (2) and
+   `ParsePositionCompressedTests` (9, covering both data-type-ID
+   pairs, the timestamp variant, the no-course/speed space sentinel,
+   the overlay-digit case, and two malformed-lat/lon-returns-None
+   cases) replace the old, now-obsolete
+   `test_compressed_position_not_supported_yet`;
+   `tests/test_rest.py`'s `test_map_page_renders_overlay_characters_as_text_badge`.
+
+   343/343 tests passing (11 net new).
+
 ---
 
 

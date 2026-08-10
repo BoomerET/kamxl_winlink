@@ -18,16 +18,32 @@ everything else returns None from parse_position(), same as a line
 pbbs.py's parser doesn't recognize -- a deliberate "skip, don't guess"
 choice.
 
-COMPRESSED POSITIONS NOT SUPPORTED YET: APRS has two position
-encodings -- human-readable "uncompressed" (degrees-minutes text, e.g.
-"4903.50N") and a denser base-91 "compressed" form. Only uncompressed
-is implemented here. A compressed position (recognizable by its symbol
-table character appearing immediately after the data type identifier,
-followed by 4 base-91 characters rather than digits) is intentionally
-left unparsed for now -- parse_position() returns None for it rather
-than guessing. Real-world impact: some trackers/apps default to
-compressed, so not every position-report packet on the air will
-decode yet.
+COMPRESSED POSITIONS: APRS has two position encodings --
+human-readable "uncompressed" (degrees-minutes text, e.g. "4903.50N")
+and a denser base-91 "compressed" form (recognizable by a non-digit
+symbol table character appearing immediately after the data type
+identifier -- an uncompressed position always starts with a decimal
+digit there -- followed by 4 base-91 latitude characters, 4 base-91
+longitude characters, a symbol code, then 3 more bytes this module
+doesn't decode -- see "NOT DECODED" below). Both are handled by
+parse_position(), verified against the APRS Protocol Reference 1.0.1
+(chapter 9)'s own worked examples: the spec's sample compressed field
+"5L!!<*e7" decodes to exactly 49°30'00"N / 72°45'00"W, matching the
+spec's own hand-computed result to the last digit, and independently
+cross-checked against aprslib (a real, widely-used open-source APRS
+parser: github.com/rossengeorgiev/aprs-python) to confirm the
+"leading non-digit means compressed" detection rule and the specific
+base-91 decode formula (``value = value * 91 + (ord(char) - 33)``,
+big-endian/most-significant-digit-first).
+
+NOT DECODED: the compressed format's course/speed, pre-calculated
+radio range, and altitude (all packed into the 2 "cs" bytes
+immediately after the symbol code, disambiguated by the following
+Compression Type "T" byte) aren't extracted -- AprsPosition has no
+field for any of them, matching this module's existing scope (the
+uncompressed format's own optional course/speed/PHG comment
+extensions aren't decoded either). A real, deliberate scope boundary,
+not an oversight.
 
 POSITION AMBIGUITY NOT FULLY MODELED: APRS allows trailing digits of
 the minutes fields to be replaced with spaces to indicate reduced
@@ -100,6 +116,128 @@ def _decode_longitude(digits: str, direction: str) -> float:
     return -decimal if direction == "W" else decimal
 
 
+# Base-91 printable-ASCII range used by the compressed position
+# format -- '!' (33) through '{' (123), 91 characters total. Per the
+# spec's "Base-91 Notation": each character's numeric value is its
+# ASCII code minus 33.
+_BASE91_MIN = 0x21  # "!"
+_BASE91_MAX = 0x7B  # "{"
+
+
+def _base91_decode(chars: str) -> int:
+    """
+    Decode a base-91 printable-ASCII string into its numeric value.
+
+    Big-endian (most significant digit first), same as ordinary
+    decimal-string-to-int conversion but base 91 instead of base 10 --
+    verified against the spec's own worked example (chars "<*e7"
+    decodes to 20427156, matching its hand-computed longitude math
+    exactly) and cross-checked against aprslib's ``base91.to_decimal``
+    (same algorithm, different implementation). Assumes every
+    character is already known to be in the valid ['!'..'{'] range --
+    callers validate that first (see ``_decode_compressed_position``)
+    so a stray out-of-range byte degrades to "not a position" rather
+    than a wrong number here.
+    """
+    value = 0
+
+    for char in chars:
+        value = value * 91 + (ord(char) - _BASE91_MIN)
+
+    return value
+
+
+def _decode_compressed_position(
+    symbol_table: str,
+    fields: str,
+    comment: str,
+    timestamp: Optional[str],
+    raw: str,
+) -> Optional[AprsPosition]:
+    """
+    Decode the 12 bytes following the compressed format's leading
+    symbol table character: 4 latitude + 4 longitude + 1 symbol code
+    + 2 "cs" + 1 compression-type byte (the last 3 aren't decoded --
+    see module docstring's "NOT DECODED" note).
+
+    Only the latitude/longitude characters are validated against the
+    strict base-91 range -- the trailing cs/compression-type bytes
+    are allowed to be anything (including a literal space, the
+    spec's own "no course/speed/range data" sentinel for the first cs
+    byte) since this module never inspects their value. Returns None
+    if the latitude or longitude characters fall outside ['!'..'{'],
+    same "skip, don't guess" degradation as a ValueError elsewhere in
+    this module -- a malformed real-world packet shouldn't produce a
+    wrong position.
+    """
+    lat_chars = fields[0:4]
+    lon_chars = fields[4:8]
+    symbol_code = fields[8]
+
+    for chars in (lat_chars, lon_chars):
+        for char in chars:
+            if not (_BASE91_MIN <= ord(char) <= _BASE91_MAX):
+                return None
+
+    latitude = 90.0 - (_base91_decode(lat_chars) / 380926.0)
+    longitude = -180.0 + (_base91_decode(lon_chars) / 190463.0)
+
+    return AprsPosition(
+        latitude=latitude,
+        longitude=longitude,
+        symbol_table=symbol_table,
+        symbol_code=symbol_code,
+        comment=comment,
+        timestamp=timestamp,
+        raw=raw,
+    )
+
+
+# Compressed position, no timestamp: data type '!' or '='.
+#
+#   =/5L!!<*e7>7P[with course/speed
+#
+# Symbol table character (usually "/" or "\", but real APRS traffic
+# also uses a digit or uppercase letter here for "alternate table with
+# overlay" -- same as the uncompressed format's own sym_table group
+# above, so matched just as permissively: any single character), then
+# the fixed 12-byte field (lat + lon + symbol code + cs + compression
+# type -- see _decode_compressed_position), then a free-text comment.
+#
+# parse_position() only reaches this regex after _POSITION_RE/
+# _POSITION_WITH_TIMESTAMP_RE have already failed to match -- that
+# ordering, not a restrictive character class here, is what
+# disambiguates compressed from uncompressed (an uncompressed position
+# always starts with a rigid "DDMM.mm" digit run that a real
+# compressed payload's base-91 bytes essentially never happen to
+# form). The 12-byte field's own character range is intentionally
+# broad (space through "~") rather than strictly base-91 --
+# _decode_compressed_position does the precise validation where it
+# matters (lat/lon only), since the trailing cs bytes are allowed to
+# include a literal space (the spec's "no course/speed/range data"
+# sentinel).
+_COMPRESSED_POSITION_RE = re.compile(
+    r"^[!=]"
+    r"(?P<sym_table>.)"
+    r"(?P<fields>[ -~]{12})"
+    r"(?P<comment>.*)$"
+)
+
+# Compressed position, with timestamp: data type '/' or '@'.
+#
+#   @092345z/5L!!<*e7>{?!with radio range
+#
+# Same shape as above, preceded by the same 7-character APRS
+# timestamp the uncompressed-with-timestamp format uses.
+_COMPRESSED_POSITION_WITH_TIMESTAMP_RE = re.compile(
+    r"^[/@]"
+    r"(?P<timestamp>\d{6}[zh/])"
+    r"(?P<sym_table>.)"
+    r"(?P<fields>[ -~]{12})"
+    r"(?P<comment>.*)$"
+)
+
+
 # Uncompressed position, no timestamp: data type '!' or '='.
 #
 #   !4903.50N/07201.75W-Test comment
@@ -136,13 +274,12 @@ _POSITION_WITH_TIMESTAMP_RE = re.compile(
 
 def parse_position(payload: str) -> Optional[AprsPosition]:
     """
-    Parse an AX.25 UI-frame payload as an APRS uncompressed position
-    report.
+    Parse an AX.25 UI-frame payload as an APRS position report, either
+    uncompressed or compressed (see module docstring for both).
 
     Returns None if the payload isn't a position report at all (any
-    other APRS data type, or non-APRS traffic entirely), or is a
-    position report in the compressed format this module doesn't
-    support yet -- see the module docstring. Deliberately permissive
+    other APRS data type, or non-APRS traffic entirely) or doesn't
+    match either encoding's expected shape. Deliberately permissive
     like pbbs.py's parsers: a format surprise means "no position",
     not an exception.
     """
@@ -158,29 +295,48 @@ def parse_position(payload: str) -> Optional[AprsPosition]:
         if match is not None:
             timestamp = match.group("timestamp")
 
+    if match is not None:
+        try:
+            latitude = _decode_latitude(
+                match.group("lat"), match.group("lat_dir")
+            )
+            longitude = _decode_longitude(
+                match.group("lon"), match.group("lon_dir")
+            )
+        except ValueError:
+            # Shouldn't happen given the regex's own digit/space
+            # constraints, but a malformed real-world packet degrading
+            # to "no position" beats an unhandled exception taking
+            # down the station tracker.
+            return None
+
+        return AprsPosition(
+            latitude=latitude,
+            longitude=longitude,
+            symbol_table=match.group("sym_table"),
+            symbol_code=match.group("sym_code"),
+            comment=match.group("comment"),
+            timestamp=timestamp,
+            raw=payload,
+        )
+
+    # Not uncompressed -- try the compressed format before giving up.
+    match = _COMPRESSED_POSITION_RE.match(payload)
+    timestamp = None
+
+    if match is None:
+        match = _COMPRESSED_POSITION_WITH_TIMESTAMP_RE.match(payload)
+
+        if match is not None:
+            timestamp = match.group("timestamp")
+
     if match is None:
         return None
 
-    try:
-        latitude = _decode_latitude(
-            match.group("lat"), match.group("lat_dir")
-        )
-        longitude = _decode_longitude(
-            match.group("lon"), match.group("lon_dir")
-        )
-    except ValueError:
-        # Shouldn't happen given the regex's own digit/space
-        # constraints, but a malformed real-world packet degrading to
-        # "no position" beats an unhandled exception taking down the
-        # station tracker.
-        return None
-
-    return AprsPosition(
-        latitude=latitude,
-        longitude=longitude,
-        symbol_table=match.group("sym_table"),
-        symbol_code=match.group("sym_code"),
-        comment=match.group("comment"),
-        timestamp=timestamp,
-        raw=payload,
+    return _decode_compressed_position(
+        match.group("sym_table"),
+        match.group("fields"),
+        match.group("comment"),
+        timestamp,
+        payload,
     )

@@ -1243,10 +1243,17 @@ WINLINK_HTML = """<!doctype html>
 #
 # Real APRS symbol tables are literally "/" (primary) or "\" (alternate)
 # -- any other symbol_table character means an *alternate table with
-# overlay* (a digit/letter drawn over the base icon, e.g. a numbered
-# object). This page renders the alternate table's base icon for that
-# case but does not draw the overlay glyph itself -- a real, documented
-# gap (see the aprsSymbolPosition() comment below), not a guess.
+# overlay* (a digit/letter meant to be drawn over the base icon, e.g. a
+# numbered object). This page renders the alternate table's base icon
+# for that case, with the overlay character drawn as a small text
+# badge in the icon's corner -- not as sprite art, because
+# hessu/aprs-symbols has none: its own README says outright "does not
+# contain additional symbols for overlays yet ... Maybe later!" (the
+# aprs-symbols-SIZE-2.png filename is reserved for it but has no real
+# artwork behind it as of the pinned commit above). Drawing a text
+# badge instead of guessing at or fabricating overlay art keeps this
+# consistent with the project's "never fabricate third-party art"
+# rule while still surfacing the real information.
 # symbol_table/symbol_code are still also shown as text in each
 # marker's popup, as supplementary/debugging info.
 MAP_HTML = r"""<!doctype html>
@@ -1304,6 +1311,24 @@ MAP_HTML = r"""<!doctype html>
   /* Leaflet's L.divIcon normally draws a white box + border -- our
      APRS icons supply their own sprite background, so strip both. */
   .aprsIcon { background: transparent; border: none; }
+  /* Small text badge for an APRS overlay character (a digit/letter
+     drawn over the base icon) -- see the module comment above
+     MAP_HTML for why this is text rather than sprite art. */
+  .aprsOverlay {
+    position: absolute;
+    right: -2px;
+    bottom: -2px;
+    min-width: 14px;
+    height: 14px;
+    line-height: 14px;
+    text-align: center;
+    font: bold 11px sans-serif;
+    color: #000;
+    background: #fc3;
+    border-radius: 3px;
+    padding: 0 2px;
+    box-shadow: 0 0 0 1px #000;
+  }
 </style>
 </head>
 <body>
@@ -1345,6 +1370,12 @@ MAP_HTML = r"""<!doctype html>
 
   var markers = {};
   var fitDone = false;
+
+  function escapeHtml(text) {
+    var div = document.createElement("div");
+    div.textContent = text == null ? "" : String(text);
+    return div.innerHTML;
+  }
 
   function relativeTime(epochSeconds) {
     var deltaSeconds = Math.max(0, (Date.now() / 1000) - epochSeconds);
@@ -1388,14 +1419,15 @@ MAP_HTML = r"""<!doctype html>
     // character in this position means an *alternate table with
     // overlay* (a digit/letter meant to be drawn over the base icon,
     // e.g. a numbered object). This function returns the alternate
-    // table's base icon position for that case; it does not compute
-    // an overlay glyph position -- overlay rendering isn't
-    // implemented (a real, documented gap, not a guess).
+    // table's base icon position for that case, plus the overlay
+    // character itself (aprsIcon() draws it as a text badge -- see
+    // the module comment above MAP_HTML for why not sprite art).
     var table = symbolTable === "/" ? 0 : 1;
+    var overlay = (symbolTable !== "/" && symbolTable !== "\\") ? symbolTable : null;
 
     for (var row = 0; row < APRS_SYMBOL_ROWS.length; row++) {
       var col = APRS_SYMBOL_ROWS[row].indexOf(symbolCode);
-      if (col !== -1) return { table: table, row: row, col: col };
+      if (col !== -1) return { table: table, row: row, col: col, overlay: overlay };
     }
 
     return null;
@@ -1412,10 +1444,16 @@ MAP_HTML = r"""<!doctype html>
     var bgY = -(pos.row * APRS_ICON_SIZE);
 
     var html =
-      '<div style="width:' + APRS_ICON_SIZE + "px;height:" + APRS_ICON_SIZE + "px;" +
+      '<div style="width:' + APRS_ICON_SIZE + "px;height:" + APRS_ICON_SIZE + "px;position:relative;" +
       "background-image:url(&quot;" + spriteUrl + "&quot;);" +
       "background-position:" + bgX + "px " + bgY + "px;" +
-      'background-repeat:no-repeat;"></div>';
+      'background-repeat:no-repeat;">';
+
+    if (pos.overlay) {
+      html += '<div class="aprsOverlay">' + escapeHtml(pos.overlay) + "</div>";
+    }
+
+    html += "</div>";
 
     return L.divIcon({
       className: "aprsIcon",
@@ -1427,10 +1465,14 @@ MAP_HTML = r"""<!doctype html>
   }
 
   function popupHtml(station) {
-    var html = "<b>" + station.callsign + "</b><br>";
+    // escapeHtml() added alongside the overlay-badge work above --
+    // used here too now that it exists, since this popup content
+    // (particularly station.comment) is over-the-air text, not
+    // trusted markup.
+    var html = "<b>" + escapeHtml(station.callsign) + "</b><br>";
     html += station.latitude.toFixed(5) + ", " + station.longitude.toFixed(5) + "<br>";
-    if (station.comment) html += station.comment + "<br>";
-    html += "symbol: " + station.symbol_table + station.symbol_code + "<br>";
+    if (station.comment) html += escapeHtml(station.comment) + "<br>";
+    html += "symbol: " + escapeHtml(station.symbol_table) + escapeHtml(station.symbol_code) + "<br>";
     html += "heard " + relativeTime(station.last_heard) +
       " (" + station.packet_count + " report" +
       (station.packet_count === 1 ? "" : "s") + ")";
