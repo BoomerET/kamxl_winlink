@@ -87,7 +87,8 @@ call actually does.
 | GET | `/connected/read?timeout=5` | | Read while connected |
 | GET | `/monitor/stream` | | Server-Sent Events, see below |
 | POST | `/terminal/exec` | `{"command", "timeout"?}` | Raw command passthrough, see [Web terminal](#web-terminal) |
-| GET | `/` | | Serves the web terminal page |
+| GET | `/terminal` | | Serves the web terminal page |
+| GET | `/` | | Serves the dashboard page, see [Dashboard](#dashboard) |
 | GET | `/pbbs/messages` | | List PBBS messages, see [PBBS](#pbbs) |
 | GET | `/pbbs/messages/<N>` | | Read PBBS message `N`; `result` is `null` if not found |
 | GET | `/pbbs` | | Serves the PBBS web page |
@@ -201,9 +202,11 @@ curl -N -H "Authorization: Bearer $TOKEN" http://kam-host:8080/monitor/stream
 
 ## Web terminal
 
-`GET /` serves a single self-contained HTML page (no build step, no
-external dependency) with two panes: a live packet monitor on top, a
-terminal-like command box below.
+`GET /terminal` serves a single self-contained HTML page (no build
+step, no external dependency) with two panes: a live packet monitor
+on top, a terminal-like command box below. (Moved here from `GET /`
+when the [dashboard](#dashboard) became the landing page -- see that
+section.)
 
 The terminal pane: type any raw Terminal Mode command (`VERSION`,
 `DISPLAY`, `BEACON`, `MHEARD`, ...) and see the KAM-XL's raw
@@ -233,11 +236,45 @@ curl -H "Authorization: Bearer $TOKEN" \
      http://kam-host:8080/terminal/exec
 ```
 
-Open it in a browser at `http://kam-host:8080/?token=<token>` -- the
-page reads `token` from its own URL and carries it forward on every
-request it makes (see the query-string auth fallback above). Without
-a valid token, `GET /` itself returns `401` just like any other
-endpoint when authentication is enabled.
+Open it in a browser at `http://kam-host:8080/terminal?token=<token>`
+-- the page reads `token` from its own URL and carries it forward on
+every request it makes (see the query-string auth fallback above).
+Without a valid token, `GET /terminal` itself returns `401` just like
+any other endpoint when authentication is enabled.
+
+## Dashboard
+
+`GET /` serves the landing page: a single self-contained HTML page
+with four cards linking out to the terminal, PBBS, map, and Winlink
+pages, plus a live summary of what's cheap to check automatically.
+
+- **KAM-XL Link**: `GET /status`'s `connected`/`port`/
+  `monitor_subscribers`, refreshed every 15 seconds. `connected` here
+  means the daemon's serial connection to the KAM-XL is open -- not
+  "currently AX.25-connected to a station" (that's a separate,
+  transient state this page doesn't track).
+- **APRS Stations**: `GET /stations`'s count and most-recently-heard
+  callsign, refreshed every 15 seconds -- same cheap, passive,
+  already-in-memory read the map page itself uses (see
+  [Stations / map](#stations--map)).
+- **PBBS**: shows "Not checked this session" until you click
+  **Check PBBS**, which calls `GET /pbbs/messages` and shows a short
+  preview (number/from/subject, first 5) inline. Deliberately *not*
+  auto-fetched on page load -- unlike the two cards above, listing
+  PBBS messages drives a real AX.25 connect/command/disconnect cycle
+  against actual radio hardware, and doing that just because someone
+  opened the dashboard would be surprising on-air activity and a slow
+  page load.
+- **Winlink**: a static shortcut to the Winlink page only, no data
+  pulled automatically at all. Checking/sending mail needs your
+  account password, which has no business being entered anywhere but
+  that page's own form -- and per the Winlink Development Team's own
+  instructions, the web-service endpoints (`/winlink/account/...`,
+  `/winlink/gateways...`) should be "queried sparingly," so this page
+  doesn't call those either just to populate a dashboard card.
+
+Open it in a browser at `http://kam-host:8080/?token=<token>`, same
+query-string auth pattern as every other page here.
 
 ## PBBS
 

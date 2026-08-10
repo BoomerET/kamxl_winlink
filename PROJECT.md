@@ -1236,6 +1236,74 @@ foundation -- Milestone 1 here. Direction as of now:
 
    326/326 tests passing (6 new: `tests/test_serial_errors.py`).
 
+   ### Update: dashboard as the new landing page (`GET /`)
+
+   Dave asked where else the webapp could go next; a real home/
+   dashboard page was the first pick, with the two documented APRS
+   gaps (compressed positions, overlay characters) queued up after it.
+
+   Design question up front, since it affects existing bookmarks:
+   should the dashboard *replace* `/` (moving the terminal to
+   `/terminal`), or live at a new path with the terminal staying put?
+   Asked Dave directly rather than guessing -- he chose replacing `/`,
+   accepting that his root bookmark now shows the dashboard and the
+   terminal needs its own `/terminal?token=...` bookmark.
+
+   `GET /` now serves `DASHBOARD_HTML`, a new self-contained page
+   (same dark/monospace styling as the other four) with four cards:
+
+   - **KAM-XL Link**: `GET /status`'s `connected`/`port`/
+     `monitor_subscribers`, refreshed every 15s.
+   - **APRS Stations**: `GET /stations`'s count and most-recently-
+     heard callsign, refreshed every 15s.
+   - **PBBS**: a manual **Check PBBS** button (not auto-fetched) that
+     calls `GET /pbbs/messages` and shows a short inline preview.
+   - **Winlink**: a static shortcut only, no auto data pull at all.
+
+   The PBBS/Winlink restraint wasn't arbitrary: `/pbbs/messages` and
+   Winlink mail checking both drive a real AX.25 connect/command/
+   disconnect cycle against actual radio hardware (unlike `/status`
+   and `/stations`, cheap passive reads of data the daemon already
+   holds in memory) -- auto-triggering either just from loading a
+   dashboard would mean surprising on-air activity and a slow page
+   load every time someone opens the page. Winlink additionally needs
+   a password, which has no business being entered anywhere but its
+   own dedicated form, and the Winlink Development Team's own
+   instructions ask that the web-service endpoints be "queried
+   sparingly" -- another reason not to auto-poll `/winlink/account/...`
+   or `/winlink/gateways...` just to populate a card.
+
+   `GET /terminal` now serves what used to live at `GET /` (moved, not
+   duplicated -- `TERMINAL_HTML`'s own module comment and `docs/
+   rest_api.md` updated to match). All four other pages (terminal,
+   PBBS, map, Winlink) gained a `home` nav link back to `/`, and their
+   existing `terminal` nav links were repointed from `/` to
+   `/terminal`.
+
+   Given the exact class of bug the previous session hit (Python's
+   triple-quoted string literal processing silently corrupting
+   embedded JS escapes), `DASHBOARD_HTML` was syntax- and runtime-
+   checked immediately after writing it, before moving on to the nav
+   updates: `node --check` against the actual served `<script>` body,
+   plus a small `node -e` shim faking `document`/`fetch`/`L` to
+   confirm the status/station-count logic actually runs and populates
+   correctly against canned responses. All five pages (dashboard +
+   the four existing ones) re-verified the same way after the nav
+   changes.
+
+   New `DashboardTests` in `tests/test_rest.py`: page served at `/`,
+   links to all four other pages present, a source-level check that
+   PBBS/Winlink aren't auto-fetched (only `refreshStatus()`/
+   `refreshStations()` run unconditionally; `/pbbs/messages` only
+   appears inside the button's click handler; `/winlink/check` doesn't
+   appear at all), auth-required check, and the same real
+   `node --check`-on-served-content regression test `MAP_HTML` got
+   after its own black-screen bug. `TerminalTests` updated: the old
+   `test_page_served_at_root` split into `test_page_served_at_terminal`
+   (now checks `/terminal`) and `test_root_no_longer_serves_terminal_page`.
+
+   332/332 tests passing (6 new).
+
 ---
 
 

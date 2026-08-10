@@ -380,13 +380,15 @@ class TerminalTests(RestTestCase):
         self.assertEqual(status, 400)
         self.assertEqual(payload["error"]["type"], "MissingParam")
 
-    def test_page_served_at_root(self):
+    def test_page_served_at_terminal(self):
+        # Moved from GET / to GET /terminal when the dashboard became
+        # the new landing page -- see DashboardTests below.
         _, port = self.start_stack(ScriptedSerial({}))
 
         conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
         self.addCleanup(conn.close)
 
-        conn.request("GET", "/?token=test-token")
+        conn.request("GET", "/terminal?token=test-token")
         response = conn.getresponse()
         html = response.read().decode("utf-8")
 
@@ -401,6 +403,102 @@ class TerminalTests(RestTestCase):
         self.assertIn("/monitor/stream", html)
         self.assertIn("monitorFeed", html)
 
+    def test_root_no_longer_serves_terminal_page(self):
+        _, port = self.start_stack(ScriptedSerial({}))
+
+        conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+        self.addCleanup(conn.close)
+
+        conn.request("GET", "/?token=test-token")
+        response = conn.getresponse()
+        html = response.read().decode("utf-8")
+
+        self.assertEqual(response.status, 200)
+        self.assertNotIn("kamxl web terminal", html)
+
+    def test_page_requires_auth_when_enabled(self):
+        _, port = self.start_stack(ScriptedSerial({}))
+
+        conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+        self.addCleanup(conn.close)
+
+        conn.request("GET", "/terminal")
+        response = conn.getresponse()
+        response.read()
+
+        self.assertEqual(response.status, 401)
+
+
+class DashboardTests(RestTestCase):
+    """
+    The dashboard (GET /) landing page: replaces the terminal as the
+    page served at "/" -- see PROJECT.md's "real home/dashboard page"
+    milestone. Summarizes KAM-XL link status and APRS station count
+    (both cheap, passive reads) plus a manual PBBS check; deliberately
+    does not auto-check PBBS or Winlink mail (both drive a real AX.25
+    connect cycle -- see the module comment above DASHBOARD_HTML).
+    """
+
+    def test_page_served_at_root(self):
+        _, port = self.start_stack(ScriptedSerial({}))
+
+        conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+        self.addCleanup(conn.close)
+
+        conn.request("GET", "/?token=test-token")
+        response = conn.getresponse()
+        html = response.read().decode("utf-8")
+
+        self.assertEqual(response.status, 200)
+        self.assertEqual(
+            response.getheader("Content-Type"), "text/html; charset=utf-8"
+        )
+        self.assertIn("kamxl dashboard", html)
+
+    def test_page_links_to_all_other_pages(self):
+        _, port = self.start_stack(ScriptedSerial({}))
+
+        conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+        self.addCleanup(conn.close)
+
+        conn.request("GET", "/?token=test-token")
+        response = conn.getresponse()
+        html = response.read().decode("utf-8")
+
+        self.assertIn("/terminal", html)
+        self.assertIn("/pbbs", html)
+        self.assertIn("/map", html)
+        self.assertIn("/winlink", html)
+
+    def test_page_does_not_auto_fetch_pbbs_or_winlink(self):
+        # Both PBBS message listing and Winlink mail checking drive a
+        # real AX.25 connect/command/disconnect cycle against actual
+        # hardware -- the dashboard must not trigger either just from
+        # being loaded. Checked at the source level: the only two
+        # calls made unconditionally at the bottom of the script are
+        # refreshStatus()/refreshStations() (cheap, passive reads);
+        # "/pbbs/messages" only appears inside the "Check PBBS"
+        # button's click handler (never called on its own), and
+        # "/winlink/check" doesn't appear anywhere at all -- the
+        # Winlink card is just a link to the real Winlink page, which
+        # has its own password-gated form.
+        _, port = self.start_stack(ScriptedSerial({}))
+
+        conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+        self.addCleanup(conn.close)
+
+        conn.request("GET", "/?token=test-token")
+        response = conn.getresponse()
+        html = response.read().decode("utf-8")
+
+        self.assertIn("refreshStatus();", html)
+        self.assertIn("refreshStations();", html)
+
+        unconditional_tail = html[html.rindex("refreshStations();"):]
+        self.assertNotIn("/pbbs/messages", unconditional_tail)
+        self.assertIn("pbbsCheckBtn.addEventListener", html)
+        self.assertNotIn("/winlink/check", html)
+
     def test_page_requires_auth_when_enabled(self):
         _, port = self.start_stack(ScriptedSerial({}))
 
@@ -412,6 +510,51 @@ class TerminalTests(RestTestCase):
         response.read()
 
         self.assertEqual(response.status, 401)
+
+    def test_page_javascript_is_syntactically_valid(self):
+        # Same real regression class as MAP_HTML's own version of this
+        # test (see that test's comment) -- DASHBOARD_HTML is a Python
+        # string literal too, so it's just as exposed to Python's own
+        # triple-quoted-string escape processing silently corrupting
+        # embedded JS. Fetches the real served page and runs the
+        # actual inline <script> body through `node --check`. Skipped
+        # if node isn't on PATH.
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("node not available")
+
+        _, port = self.start_stack(ScriptedSerial({}))
+
+        conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+        self.addCleanup(conn.close)
+
+        conn.request("GET", "/?token=test-token")
+        response = conn.getresponse()
+        html = response.read().decode("utf-8")
+
+        scripts = re.findall(r"<script>(.*?)</script>", html, re.DOTALL)
+        inline_scripts = [s for s in scripts if s.strip()]
+        self.assertEqual(
+            len(inline_scripts), 1, "expected exactly one inline <script> body"
+        )
+
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".js", delete=False
+        ) as handle:
+            handle.write(inline_scripts[0])
+            script_path = handle.name
+        self.addCleanup(os.remove, script_path)
+
+        result = subprocess.run(
+            [node, "--check", script_path], capture_output=True, text=True
+        )
+
+        self.assertEqual(
+            result.returncode,
+            0,
+            "DASHBOARD_HTML's inline <script> is not valid JavaScript:\n"
+            + result.stderr,
+        )
 
 
 class PBBSEndpointTests(RestTestCase):

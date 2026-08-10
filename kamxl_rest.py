@@ -49,13 +49,298 @@ DEFAULT_PORT = 8080
 # a malformed request, which is a client-side (4xx) problem.
 _DAEMON_ERROR_STATUS = 502
 
+# Dashboard: the landing page at GET / (moved there from the terminal
+# page below, which now lives at GET /terminal -- see PROJECT.md for
+# the reasoning). A self-contained page summarizing the other four:
+# KAM-XL serial link health (GET /status), APRS station count/most-
+# recently-heard (GET /stations), and a manual "Check PBBS" button
+# (GET /pbbs/messages). Deliberately does NOT auto-check Winlink mail
+# or auto-check PBBS on load -- unlike /status and /stations (cheap,
+# passive reads of data the daemon already has in memory), both PBBS
+# and Winlink mail checks drive a real AX.25 connect/command/
+# disconnect cycle against actual radio hardware (see the comments
+# above the PBBS and Winlink route handlers below); auto-triggering
+# that just from loading a dashboard would be surprising on-air
+# activity and a slow page load, not a good default. The Winlink card
+# is a static shortcut only (no auto data pull at all) -- checking
+# mail needs a password, which has no business being entered anywhere
+# but the dedicated Winlink page's own form.
+DASHBOARD_HTML = """<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>kamxl dashboard</title>
+<style>
+  html, body {
+    margin: 0;
+    min-height: 100%;
+    background: #0b0f10;
+    color: #d4f7d4;
+    font-family: "Courier New", Courier, monospace;
+  }
+  .paneHeader {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 4px 10px;
+    background: #101617;
+    border-bottom: 1px solid #234;
+    font-size: 12px;
+    letter-spacing: 0.05em;
+    color: #888;
+    box-sizing: border-box;
+  }
+  .paneHeader a, .paneHeader button {
+    background: none;
+    border: 1px solid #345;
+    color: #9c9;
+    font: inherit;
+    font-size: 11px;
+    padding: 2px 8px;
+    cursor: pointer;
+    text-decoration: none;
+  }
+  .paneHeader a:hover, .paneHeader button:hover { border-color: #5a8; color: #cfc; }
+  #cards {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    padding: 16px;
+    box-sizing: border-box;
+  }
+  .card {
+    background: #101617;
+    border: 1px solid #234;
+    border-radius: 4px;
+    padding: 14px 16px;
+    min-width: 240px;
+    flex: 1 1 260px;
+    box-sizing: border-box;
+  }
+  .card h2 {
+    margin: 0 0 10px;
+    font-size: 12px;
+    letter-spacing: 0.05em;
+    color: #789;
+    font-weight: normal;
+    text-transform: uppercase;
+  }
+  .card .big { font-size: 20px; color: #cfc; }
+  .card .sub { color: #9ab; font-size: 12px; margin-top: 4px; }
+  .card a.action, .card button.action {
+    display: inline-block;
+    margin: 10px 8px 0 0;
+    background: none;
+    border: 1px solid #345;
+    color: #9c9;
+    font: inherit;
+    font-size: 12px;
+    padding: 4px 10px;
+    cursor: pointer;
+    text-decoration: none;
+  }
+  .card a.action:hover, .card button.action:hover { border-color: #5a8; color: #cfc; }
+  .card button.action:disabled { opacity: 0.5; cursor: default; }
+  #statusDot.live::before { content: "\\25CF "; color: #6f6; }
+  #statusDot.down::before { content: "\\2715 "; color: #f66; }
+  #statusDot.checking::before { content: "\\25CB "; color: #cc6; }
+  .err { color: #f77; }
+  table { border-collapse: collapse; width: 100%; font-size: 12px; margin-top: 8px; }
+  th, td {
+    text-align: left;
+    padding: 3px 8px 3px 0;
+    border-bottom: 1px solid #1c2526;
+    white-space: nowrap;
+  }
+  td.subject { white-space: normal; }
+</style>
+</head>
+<body>
+<div class="paneHeader">
+  <span>DASHBOARD</span>
+  <span>
+    <a href="#" id="terminalLink">terminal</a>
+    <a href="#" id="pbbsLink">pbbs</a>
+    <a href="#" id="mapLink">map</a>
+    <a href="#" id="winlinkLink">winlink</a>
+  </span>
+</div>
+<div id="cards">
+  <div class="card" id="statusCard">
+    <h2>KAM-XL Link</h2>
+    <div class="big"><span id="statusDot" class="checking">checking...</span></div>
+    <div class="sub" id="statusDetail"></div>
+  </div>
+
+  <div class="card" id="stationsCard">
+    <h2>APRS Stations</h2>
+    <div class="big" id="stationCount">-</div>
+    <div class="sub" id="stationDetail">Loading...</div>
+    <a class="action" href="#" id="mapAction">View map &rarr;</a>
+  </div>
+
+  <div class="card" id="pbbsCard">
+    <h2>PBBS</h2>
+    <div class="sub" id="pbbsSummary">Not checked this session.</div>
+    <button class="action" id="pbbsCheckBtn" type="button">Check PBBS</button>
+    <a class="action" href="#" id="pbbsAction">Open PBBS &rarr;</a>
+    <div id="pbbsPreview"></div>
+  </div>
+
+  <div class="card" id="winlinkCard">
+    <h2>Winlink</h2>
+    <div class="sub">Check or send mail from the Winlink page (needs your account password -- entered there only).</div>
+    <a class="action" href="#" id="winlinkAction">Open Winlink &rarr;</a>
+  </div>
+</div>
+<script>
+(function () {
+  var params = new URLSearchParams(location.search);
+  var token = params.get("token") || "";
+
+  function authedUrl(path) {
+    if (!token) return path;
+    var sep = path.indexOf("?") === -1 ? "?" : "&";
+    return path + sep + "token=" + encodeURIComponent(token);
+  }
+
+  document.getElementById("terminalLink").href = authedUrl("/terminal");
+  document.getElementById("pbbsLink").href = authedUrl("/pbbs");
+  document.getElementById("mapLink").href = authedUrl("/map");
+  document.getElementById("winlinkLink").href = authedUrl("/winlink");
+  document.getElementById("mapAction").href = authedUrl("/map");
+  document.getElementById("pbbsAction").href = authedUrl("/pbbs");
+  document.getElementById("winlinkAction").href = authedUrl("/winlink");
+
+  function escapeHtml(text) {
+    var div = document.createElement("div");
+    div.textContent = text == null ? "" : String(text);
+    return div.innerHTML;
+  }
+
+  async function apiGet(path) {
+    var res = await fetch(authedUrl(path));
+    var payload = await res.json();
+
+    if (!payload.ok) {
+      throw new Error(
+        (payload.error && payload.error.message) || "Request failed"
+      );
+    }
+
+    return payload.result;
+  }
+
+  function relativeTime(epochSeconds) {
+    var deltaSeconds = Math.max(0, (Date.now() / 1000) - epochSeconds);
+
+    if (deltaSeconds < 60) return Math.floor(deltaSeconds) + "s ago";
+    if (deltaSeconds < 3600) return Math.floor(deltaSeconds / 60) + "m ago";
+    if (deltaSeconds < 86400) return Math.floor(deltaSeconds / 3600) + "h ago";
+    return Math.floor(deltaSeconds / 86400) + "d ago";
+  }
+
+  var statusDot = document.getElementById("statusDot");
+  var statusDetail = document.getElementById("statusDetail");
+
+  async function refreshStatus() {
+    try {
+      var status = await apiGet("/status");
+
+      statusDot.className = status.connected ? "live" : "down";
+      statusDot.textContent = status.connected ? "connected" : "disconnected";
+      statusDetail.textContent =
+        status.port + " -- " + status.monitor_subscribers +
+        " monitor subscriber" + (status.monitor_subscribers === 1 ? "" : "s");
+    } catch (err) {
+      statusDot.className = "down";
+      statusDot.textContent = "unreachable";
+      statusDetail.textContent = err.message || String(err);
+    }
+  }
+
+  var stationCount = document.getElementById("stationCount");
+  var stationDetail = document.getElementById("stationDetail");
+
+  async function refreshStations() {
+    try {
+      var stations = await apiGet("/stations");
+
+      stationCount.textContent = stations.length;
+
+      if (!stations.length) {
+        stationDetail.textContent = "None heard yet.";
+        return;
+      }
+
+      var mostRecent = stations.reduce(function (a, b) {
+        return a.last_heard > b.last_heard ? a : b;
+      });
+
+      stationDetail.textContent =
+        "Last heard: " + mostRecent.callsign + " (" +
+        relativeTime(mostRecent.last_heard) + ")";
+    } catch (err) {
+      stationDetail.textContent = err.message || String(err);
+    }
+  }
+
+  var pbbsSummary = document.getElementById("pbbsSummary");
+  var pbbsPreview = document.getElementById("pbbsPreview");
+  var pbbsCheckBtn = document.getElementById("pbbsCheckBtn");
+
+  pbbsCheckBtn.addEventListener("click", async function () {
+    pbbsCheckBtn.disabled = true;
+    pbbsSummary.textContent = "Connecting to PBBS...";
+    pbbsPreview.innerHTML = "";
+
+    try {
+      var messages = await apiGet("/pbbs/messages");
+
+      pbbsSummary.textContent =
+        messages.length + " message" + (messages.length === 1 ? "" : "s") +
+        " -- checked just now.";
+
+      var rows = messages.slice(0, 5).map(function (m) {
+        return (
+          "<tr><td>" + escapeHtml(m.number) + "</td>" +
+          "<td>" + escapeHtml(m.from_call) + "</td>" +
+          '<td class="subject">' + escapeHtml(m.subject) + "</td></tr>"
+        );
+      }).join("");
+
+      pbbsPreview.innerHTML = rows
+        ? "<table><thead><tr><th>#</th><th>From</th><th>Subject</th></tr></thead><tbody>" +
+          rows + "</tbody></table>" +
+          (messages.length > 5
+            ? '<div class="sub">+ ' + (messages.length - 5) + " more -- see full inbox.</div>"
+            : "")
+        : "";
+    } catch (err) {
+      pbbsSummary.textContent = "Check failed: " + (err.message || String(err));
+      pbbsPreview.innerHTML = "";
+    } finally {
+      pbbsCheckBtn.disabled = false;
+    }
+  });
+
+  refreshStatus();
+  refreshStations();
+  setInterval(refreshStatus, 15000);
+  setInterval(refreshStations, 15000);
+})();
+</script>
+</body>
+</html>
+"""
+
 # Milestone 4 (terminal) + milestone 5 (live monitor): a single
 # self-contained page (no build step, no CDN dependency) served
-# directly by this process at GET / -- a live packet feed on top
-# (EventSource against /monitor/stream), a raw Terminal Mode command
-# box below it (same as milestone 4). Reads ?token=... from its own
-# URL and carries it forward on every request it makes, since that's
-# the auth mechanism this REST layer accepts specifically so a
+# directly by this process at GET /terminal -- a live packet feed on
+# top (EventSource against /monitor/stream), a raw Terminal Mode
+# command box below it (same as milestone 4). Reads ?token=... from
+# its own URL and carries it forward on every request it makes, since
+# that's the auth mechanism this REST layer accepts specifically so a
 # browser context (which can't always set a custom header) can use.
 TERMINAL_HTML = """<!doctype html>
 <html>
@@ -170,6 +455,7 @@ TERMINAL_HTML = """<!doctype html>
   <div class="paneHeader">
     <span>TERMINAL</span>
     <span>
+      <a href="#" id="homeLink" style="background:none;border:1px solid #345;color:#9c9;font:inherit;font-size:11px;padding:2px 8px;text-decoration:none;">home</a>
       <a href="#" id="pbbsLink" style="background:none;border:1px solid #345;color:#9c9;font:inherit;font-size:11px;padding:2px 8px;text-decoration:none;">pbbs</a>
       <a href="#" id="mapLink" style="background:none;border:1px solid #345;color:#9c9;font:inherit;font-size:11px;padding:2px 8px;text-decoration:none;">map</a>
       <a href="#" id="winlinkLink" style="background:none;border:1px solid #345;color:#9c9;font:inherit;font-size:11px;padding:2px 8px;text-decoration:none;">winlink</a>
@@ -247,6 +533,7 @@ TERMINAL_HTML = """<!doctype html>
   log("kamxl web terminal -- type a command (e.g. VERSION, DISPLAY, MYCALL) and press Enter.");
   input.focus();
 
+  document.getElementById("homeLink").href = authedUrl("/");
   document.getElementById("pbbsLink").href = authedUrl("/pbbs");
   document.getElementById("mapLink").href = authedUrl("/map");
   document.getElementById("winlinkLink").href = authedUrl("/winlink");
@@ -402,6 +689,7 @@ PBBS_HTML = """<!doctype html>
 <div class="paneHeader">
   <span>PBBS</span>
   <span>
+    <a href="#" id="homeLink">home</a>
     <a href="#" id="terminalLink">terminal</a>
     <a href="#" id="mapLink">map</a>
     <a href="#" id="winlinkLink">winlink</a>
@@ -422,7 +710,8 @@ PBBS_HTML = """<!doctype html>
     return path + sep + "token=" + encodeURIComponent(token);
   }
 
-  document.getElementById("terminalLink").href = authedUrl("/");
+  document.getElementById("homeLink").href = authedUrl("/");
+  document.getElementById("terminalLink").href = authedUrl("/terminal");
   document.getElementById("mapLink").href = authedUrl("/map");
   document.getElementById("winlinkLink").href = authedUrl("/winlink");
 
@@ -642,6 +931,7 @@ WINLINK_HTML = """<!doctype html>
 <div class="paneHeader">
   <span>WINLINK</span>
   <span>
+    <a href="#" id="homeLink">home</a>
     <a href="#" id="terminalLink">terminal</a>
     <a href="#" id="pbbsLink">pbbs</a>
     <a href="#" id="mapLink">map</a>
@@ -750,7 +1040,8 @@ WINLINK_HTML = """<!doctype html>
     return path + sep + "token=" + encodeURIComponent(token);
   }
 
-  document.getElementById("terminalLink").href = authedUrl("/");
+  document.getElementById("homeLink").href = authedUrl("/");
+  document.getElementById("terminalLink").href = authedUrl("/terminal");
   document.getElementById("pbbsLink").href = authedUrl("/pbbs");
   document.getElementById("mapLink").href = authedUrl("/map");
 
@@ -1019,6 +1310,7 @@ MAP_HTML = r"""<!doctype html>
 <div class="paneHeader">
   <span>STATION MAP <span id="stationCount"></span></span>
   <span>
+    <a href="#" id="homeLink">home</a>
     <a href="#" id="terminalLink">terminal</a>
     <a href="#" id="pbbsLink">pbbs</a>
     <a href="#" id="winlinkLink">winlink</a>
@@ -1040,7 +1332,8 @@ MAP_HTML = r"""<!doctype html>
     return path + sep + "token=" + encodeURIComponent(token);
   }
 
-  document.getElementById("terminalLink").href = authedUrl("/");
+  document.getElementById("homeLink").href = authedUrl("/");
+  document.getElementById("terminalLink").href = authedUrl("/terminal");
   document.getElementById("pbbsLink").href = authedUrl("/pbbs");
   document.getElementById("winlinkLink").href = authedUrl("/winlink");
 
@@ -1394,7 +1687,8 @@ ROUTES: Tuple[Tuple[str, "re.Pattern", str], ...] = (
     ("POST", re.compile(r"^/connected/send$"), "_h_send_connected"),
     ("GET", re.compile(r"^/connected/read$"), "_h_read_connected"),
     ("GET", re.compile(r"^/monitor/stream$"), "_h_monitor_stream"),
-    ("GET", re.compile(r"^/$"), "_h_terminal_page"),
+    ("GET", re.compile(r"^/$"), "_h_dashboard_page"),
+    ("GET", re.compile(r"^/terminal$"), "_h_terminal_page"),
     ("POST", re.compile(r"^/terminal/exec$"), "_h_terminal_exec"),
     ("GET", re.compile(r"^/pbbs$"), "_h_pbbs_page"),
     ("GET", re.compile(r"^/pbbs/messages$"), "_h_pbbs_list_messages"),
@@ -1713,6 +2007,15 @@ class RESTRequestHandler(BaseHTTPRequestHandler):
             timeout=timeout,
             _socket_timeout=timeout + 5,
         )
+
+    def _h_dashboard_page(self, params: Dict[str, str], query: Dict[str, Any]) -> None:
+        body = DASHBOARD_HTML.encode("utf-8")
+
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
 
     def _h_terminal_page(self, params: Dict[str, str], query: Dict[str, Any]) -> None:
         body = TERMINAL_HTML.encode("utf-8")
