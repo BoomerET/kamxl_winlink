@@ -59,6 +59,7 @@ py-modules = [
     "stations",
     "winlink",
     "winlink_api",
+    "serial_errors",
     "lzhuf",
     "kamxl_daemon",
     "kamxl_rest",

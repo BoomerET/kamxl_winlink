@@ -43,6 +43,12 @@ this session, then send INTFACE TERMINAL and RESET (or power-cycle
 again) to make that change stick -- exactly the same follow-up
 exitKissMode.py itself already prints.
 
+If opening the port fails with "Inappropriate ioctl for device", an
+AX.25 KISS daemon (e.g. kissattach, often run as a systemd service)
+is likely already attached to it -- stop that first. See
+serial_errors.py for the detail; this script surfaces that guidance
+automatically rather than showing a raw traceback.
+
 Usage:
     python3 enterKissMode.py /dev/ttyUSB1
 """
@@ -51,6 +57,7 @@ import sys
 import time
 
 from kamxl import KAMXL, KAMError
+from serial_errors import describe_serial_open_failure
 
 PORT = sys.argv[1] if len(sys.argv) > 1 else "/dev/ttyUSB0"
 BAUDRATE = 19200
@@ -63,7 +70,8 @@ def main():
     try:
         kam.connect()
     except Exception as exc:
-        print(f"Could not open {PORT}: {exc}")
+        print(f"\nCould not open {PORT}:\n")
+        print(describe_serial_open_failure(exc))
         sys.exit(1)
 
     try:

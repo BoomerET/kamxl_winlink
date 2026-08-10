@@ -16,6 +16,12 @@ to KISS, the unit will go straight back into KISS mode on its next
 power-cycle/reset unless INTFACE is explicitly set back to TERMINAL
 (see the follow-up instructions this script prints if it works).
 
+If opening the port fails with "Inappropriate ioctl for device", an
+AX.25 KISS daemon (e.g. kissattach, often run as a systemd service)
+is likely already attached to it -- stop that first. See
+serial_errors.py for the detail; this script surfaces that guidance
+automatically rather than showing a raw traceback.
+
 Usage:
     python3 exitKissMode.py /dev/ttyUSB1
 """
@@ -24,6 +30,8 @@ import sys
 import time
 
 import serial
+
+from serial_errors import describe_serial_open_failure
 
 PORT = sys.argv[1] if len(sys.argv) > 1 else "/dev/kamxl"
 BAUDRATE = 19200
@@ -34,14 +42,19 @@ KISS_EXIT = bytes([0xC0, 0xFF, 0xC0])
 def main():
     print(f"Opening {PORT} at {BAUDRATE} baud...")
 
-    ser = serial.Serial(
-        port=PORT,
-        baudrate=BAUDRATE,
-        bytesize=8,
-        parity="N",
-        stopbits=1,
-        timeout=3,
-    )
+    try:
+        ser = serial.Serial(
+            port=PORT,
+            baudrate=BAUDRATE,
+            bytesize=8,
+            parity="N",
+            stopbits=1,
+            timeout=3,
+        )
+    except Exception as exc:
+        print(f"\nCould not open {PORT}:\n")
+        print(describe_serial_open_failure(exc))
+        sys.exit(1)
 
     time.sleep(0.1)
 

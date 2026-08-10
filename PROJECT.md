@@ -1146,6 +1146,96 @@ foundation -- Milestone 1 here. Direction as of now:
    `test_map_page_renders_real_aprs_icons`, asserting the pinned
    commit hash and lookup-function names appear in the served page).
 
+   ### Update: fixed /map black-screen regression (Python-string escaping)
+
+   Dave reported `/map` loading to a black screen right after the
+   icon commit above, with the terminal link no longer navigating
+   back either. Root cause: `MAP_HTML` is a Python triple-quoted
+   string, and the icon feature's JS embedded string escapes (`\"`
+   for a literal quote, `\\` for a literal backslash) inside it.
+   Since that string wasn't declared raw (`r"""..."""`), Python's own
+   string-literal parser silently *collapsed* those escapes at import
+   time -- before the page was ever served, `\"` had already become a
+   bare `"` and `\\` a bare `\` -- turning the symbol lookup table
+   into invalid JavaScript. A syntax error anywhere in a `<script>`
+   block prevents the *entire* block from running, not just the
+   broken statement, which is why it took down everything else the
+   script did: `L.map()`/`tileLayer()` never ran (black screen), and
+   the header links' `href`s -- also set by that same script -- never
+   got assigned.
+
+   This slipped through the previous commit's own verification
+   because that check extracted the `<script>` body via regex against
+   the raw `.py` *source text* and ran `node --check` on that --
+   which validates what was typed, not what Python's own string-
+   literal processing actually produces at import time. Confirmed the
+   discrepancy directly: `python3 -c "import kamxl_rest; print(kamxl_rest.MAP_HTML)"`
+   showed the corrupted array before the fix, correct after.
+
+   Fix: `MAP_HTML = r"""..."""` instead of `"""..."""` -- the only
+   backslash usage anywhere in `MAP_HTML` is the APRS lookup table, so
+   this has no effect on anything else in the page.
+
+   New regression test, `tests/test_rest.py`'s
+   `test_map_page_javascript_is_syntactically_valid`: fetches the
+   real *served* `/map` page (not the `.py` source text) and runs the
+   actual inline `<script>` body through `node --check`, so it
+   validates what a browser would actually receive. Skipped if `node`
+   isn't on `PATH` (this project has no other Node/JS-tooling
+   dependency); ran for real in this sandbox and passed.
+
+   320/320 tests passing (1 new).
+
+   ### Update: friendly error when an AX.25 KISS daemon holds the port
+
+   Dave uses `exitKissMode.py`/`enterKissMode.py` regularly, and hit a
+   real, reproducible failure: if his `kamxl-kiss` systemd service
+   (running `kissattach` against the same port) is active, opening
+   the port from either script raised a raw, unhelpful Python
+   traceback ending in `termios.error: (25, 'Inappropriate ioctl for
+   device')`.
+
+   Root cause, not just a guess: once `kissattach` attaches the Linux
+   kernel's `N_AX25` line discipline to a tty, a *second* process's
+   `tcgetattr()` call on that same device fails with `ENOTTY`
+   ("Inappropriate ioctl for device") -- a different failure mode
+   from an ordinary "port busy" error (which would show up as
+   `EBUSY`), and one pyserial's own exception message gives no hint
+   about. Stopping the daemon (which detaches the line discipline
+   when it exits) is what actually fixes it; retrying does not.
+
+   New `serial_errors.py` module, shared by both scripts (deliberately
+   *not* folded into `kamxl.py`, since `exitKissMode.py` stays
+   pyserial-only by design -- see its own module docstring): walks a
+   raised exception's chained cause/context (pyserial's
+   `SerialException` wraps the real OSError/`termios.error` via
+   implicit chaining -- a bare `raise` inside an `except` block, not
+   `raise ... from` -- so it shows up as `__context__`, not
+   `__cause__`; both are checked) looking for `errno.ENOTTY`, either
+   as a real `.errno` attribute or as `args[0]` (how `termios.error`
+   itself carries it). When found, returns specific guidance naming
+   `kissattach` and the `kamxl-kiss` systemd service Dave described,
+   with the exact `sudo systemctl stop kamxl-kiss` command; otherwise
+   falls back to the exception's own message unchanged, rather than
+   guessing at a cause that isn't actually confirmed.
+
+   Both scripts now wrap their port-opening call (`serial.Serial(...)`
+   in `exitKissMode.py`, `kam.connect()` in `enterKissMode.py`) in
+   `try`/`except`, print `describe_serial_open_failure(exc)`, and
+   exit(1) instead of letting the traceback propagate. Verified
+   end-to-end (not just the isolated helper) by monkeypatching
+   `serial.Serial` to raise the exact real exception shape and running
+   `exitKissMode.py` through `runpy` -- confirmed the AX.25/kissattach
+   guidance prints and the script exits cleanly; also confirmed an
+   unrelated error (nonexistent port) still falls back to its own
+   plain message rather than being misdiagnosed as the KISS scenario.
+
+   `serial_errors` added to `pyproject.toml`'s `py-modules`, same
+   packaging-gap lesson as `aprs.py`/`stations.py`/`winlink.py`/
+   `winlink_api.py` before it.
+
+   326/326 tests passing (6 new: `tests/test_serial_errors.py`).
+
 ---
 
 
