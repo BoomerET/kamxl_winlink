@@ -50,7 +50,7 @@ serial_errors.py for the detail; this script surfaces that guidance
 automatically rather than showing a raw traceback.
 
 Usage:
-    python3 enterKissMode.py /dev/ttyUSB1
+    python3 enterKissMode.py /dev/kamxl
 """
 
 import sys
@@ -59,7 +59,7 @@ import time
 from kamxl import KAMXL, KAMError
 from serial_errors import describe_serial_open_failure
 
-PORT = sys.argv[1] if len(sys.argv) > 1 else "/dev/ttyUSB0"
+PORT = sys.argv[1] if len(sys.argv) > 1 else "/dev/kamxl"
 BAUDRATE = 19200
 
 
