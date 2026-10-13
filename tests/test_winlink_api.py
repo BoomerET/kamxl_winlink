@@ -34,7 +34,7 @@ class AccountExistsTests(unittest.TestCase):
             "ResponseStatus": {},
         }).encode("utf-8"))
 
-        result = api.account_exists("AI6K", "KEY123", transport=transport)
+        result = api.account_exists("N5BA", "KEY123", transport=transport)
 
         self.assertTrue(result)
         self.assertEqual(len(calls), 1)
@@ -43,7 +43,7 @@ class AccountExistsTests(unittest.TestCase):
         parsed = urllib.parse.urlparse(calls[0]["url"])
         self.assertEqual(parsed.path, "/account/exists")
         query = urllib.parse.parse_qs(parsed.query)
-        self.assertEqual(query["callsign"], ["AI6K"])
+        self.assertEqual(query["callsign"], ["N5BA"])
         self.assertEqual(query["key"], ["KEY123"])
 
     def test_false_when_account_does_not_exist(self):
@@ -66,19 +66,19 @@ class AccountExistsTests(unittest.TestCase):
         }).encode("utf-8"))
 
         with self.assertRaises(api.WinlinkAPIError):
-            api.account_exists("AI6K", "BADKEY", transport=transport)
+            api.account_exists("N5BA", "BADKEY", transport=transport)
 
     def test_non_2xx_status_raises(self):
         transport, _ = _fake_transport(403, b'{"error": "forbidden"}')
 
         with self.assertRaises(api.WinlinkAPIError):
-            api.account_exists("AI6K", "KEY123", transport=transport)
+            api.account_exists("N5BA", "KEY123", transport=transport)
 
     def test_malformed_json_raises(self):
         transport, _ = _fake_transport(200, b"not json")
 
         with self.assertRaises(api.WinlinkAPIError):
-            api.account_exists("AI6K", "KEY123", transport=transport)
+            api.account_exists("N5BA", "KEY123", transport=transport)
 
 
 class GetGatewayStatusTests(unittest.TestCase):

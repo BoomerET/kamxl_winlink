@@ -244,7 +244,7 @@ class EndpointTests(RestTestCase):
 
     def test_get_configuration(self):
         _, port = self.start_stack(ScriptedSerial({
-            "DISPLAY": "MYCALL   AI6K-10/AI6K-10\r\nHBAUD    0/1200",
+            "DISPLAY": "MYCALL   N5BA-10/N5BA-10\r\nHBAUD    0/1200",
         }))
 
         status, payload = self.request(port, "GET", "/configuration")
@@ -252,21 +252,21 @@ class EndpointTests(RestTestCase):
         self.assertEqual(status, 200)
         self.assertEqual(
             payload["result"],
-            {"MYCALL": "AI6K-10/AI6K-10", "HBAUD": "0/1200"}
+            {"MYCALL": "N5BA-10/N5BA-10", "HBAUD": "0/1200"}
         )
 
     def test_get_and_set_raw(self):
         _, port = self.start_stack(ScriptedSerial({
-            "MYCALL": "MYCALL   AI6K-10/AI6K-10",
+            "MYCALL": "MYCALL   N5BA-10/N5BA-10",
         }))
 
         status, payload = self.request(port, "GET", "/params/MYCALL/raw")
         self.assertEqual(status, 200)
-        self.assertEqual(payload["result"], "AI6K-10/AI6K-10")
+        self.assertEqual(payload["result"], "N5BA-10/N5BA-10")
 
         status, payload = self.request(
             port, "PUT", "/params/MYCALL/raw",
-            body={"value": "AI6K-11/AI6K-11"}
+            body={"value": "N5BA-11/N5BA-11"}
         )
         self.assertEqual(status, 200)
 
@@ -649,9 +649,9 @@ class WinlinkEndpointTests(RestTestCase):
         daemon, port = self.start_stack(ScriptedSerial({}))
 
         proposal = Proposal(
-            msg_type="P", sender="N0CALL", via="AI6K-10",
-            recipient="AI6K-10", mid="12345_N0CALL", size=42,
-            raw="FB P N0CALL AI6K-10 AI6K-10 12345_N0CALL 42",
+            msg_type="P", sender="N0CALL", via="N5BA-10",
+            recipient="N5BA-10", mid="12345_N0CALL", size=42,
+            raw="FB P N0CALL N5BA-10 N5BA-10 12345_N0CALL 42",
         )
 
         daemon.kam.check_winlink_mail = lambda **kwargs: [
@@ -663,7 +663,7 @@ class WinlinkEndpointTests(RestTestCase):
 
         status, payload = self.request(
             port, "POST", "/winlink/check",
-            body={"gateway": "AI6K-10", "password": "FOOBAR"}
+            body={"gateway": "N5BA-10", "password": "FOOBAR"}
         )
 
         self.assertEqual(status, 200)
@@ -686,7 +686,7 @@ class WinlinkEndpointTests(RestTestCase):
 
         status, payload = self.request(
             port, "POST", "/winlink/check",
-            body={"gateway": "AI6K-10"}
+            body={"gateway": "N5BA-10"}
         )
 
         self.assertEqual(status, 400)
@@ -697,7 +697,7 @@ class WinlinkEndpointTests(RestTestCase):
 
         status, payload = self.request(
             port, "POST", "/winlink/check",
-            body={"gateway": "AI6K-10", "password": "FOOBAR"},
+            body={"gateway": "N5BA-10", "password": "FOOBAR"},
             token=None
         )
 
@@ -706,12 +706,12 @@ class WinlinkEndpointTests(RestTestCase):
     def test_send_message(self):
         daemon, port = self.start_stack(ScriptedSerial({}))
 
-        daemon.kam.send_winlink_message = lambda **kwargs: ["12345_AI6K"]
+        daemon.kam.send_winlink_message = lambda **kwargs: ["12345_N5BA"]
 
         status, payload = self.request(
             port, "POST", "/winlink/send",
             body={
-                "gateway": "AI6K-10",
+                "gateway": "N5BA-10",
                 "password": "FOOBAR",
                 "messages": [
                     {"to": ["N0CALL"], "subject": "Hi", "body": "Hello"}
@@ -720,7 +720,7 @@ class WinlinkEndpointTests(RestTestCase):
         )
 
         self.assertEqual(status, 200)
-        self.assertEqual(payload["result"], ["12345_AI6K"])
+        self.assertEqual(payload["result"], ["12345_N5BA"])
 
     def test_send_message_missing_gateway_is_400(self):
         _, port = self.start_stack(ScriptedSerial({}))
@@ -744,7 +744,7 @@ class WinlinkEndpointTests(RestTestCase):
         status, payload = self.request(
             port, "POST", "/winlink/send",
             body={
-                "gateway": "AI6K-10",
+                "gateway": "N5BA-10",
                 "messages": [
                     {"to": ["N0CALL"], "subject": "Hi", "body": "Hello"}
                 ],
@@ -759,7 +759,7 @@ class WinlinkEndpointTests(RestTestCase):
 
         status, payload = self.request(
             port, "POST", "/winlink/send",
-            body={"gateway": "AI6K-10", "password": "FOOBAR"}
+            body={"gateway": "N5BA-10", "password": "FOOBAR"}
         )
 
         self.assertEqual(status, 400)
@@ -770,7 +770,7 @@ class WinlinkEndpointTests(RestTestCase):
 
         status, payload = self.request(
             port, "POST", "/winlink/send",
-            body={"gateway": "AI6K-10", "password": "FOOBAR", "messages": []}
+            body={"gateway": "N5BA-10", "password": "FOOBAR", "messages": []}
         )
 
         self.assertEqual(status, 400)
@@ -782,7 +782,7 @@ class WinlinkEndpointTests(RestTestCase):
         status, payload = self.request(
             port, "POST", "/winlink/send",
             body={
-                "gateway": "AI6K-10",
+                "gateway": "N5BA-10",
                 "password": "FOOBAR",
                 # No "body" field on the one message.
                 "messages": [{"to": ["N0CALL"], "subject": "Hi"}],
@@ -798,7 +798,7 @@ class WinlinkEndpointTests(RestTestCase):
         status, payload = self.request(
             port, "POST", "/winlink/send",
             body={
-                "gateway": "AI6K-10",
+                "gateway": "N5BA-10",
                 "password": "FOOBAR",
                 "messages": [
                     {"to": ["N0CALL"], "subject": "Hi", "body": "Hello"}
@@ -872,7 +872,7 @@ class WinlinkApiEndpointTests(RestTestCase):
 
         _, port = self.start_stack(ScriptedSerial({}))
 
-        status, payload = self.request(port, "GET", "/winlink/account/AI6K")
+        status, payload = self.request(port, "GET", "/winlink/account/N5BA")
 
         self.assertEqual(status, 200)
         self.assertTrue(payload["result"])
@@ -883,7 +883,7 @@ class WinlinkApiEndpointTests(RestTestCase):
         _, port = self.start_stack(ScriptedSerial({}))
 
         status, _ = self.request(
-            port, "GET", "/winlink/account/AI6K", token=None
+            port, "GET", "/winlink/account/N5BA", token=None
         )
 
         self.assertEqual(status, 401)
@@ -893,7 +893,7 @@ class WinlinkApiEndpointTests(RestTestCase):
 
         _, port = self.start_stack(ScriptedSerial({}))
 
-        status, payload = self.request(port, "GET", "/winlink/account/AI6K")
+        status, payload = self.request(port, "GET", "/winlink/account/N5BA")
 
         self.assertNotEqual(status, 200)
         self.assertEqual(payload["error"]["type"], "KAMError")
@@ -977,7 +977,7 @@ class StationsEndpointTests(RestTestCase):
     REST layer's own routing and response shape.
     """
 
-    def _seed_station(self, daemon, callsign="AI6K-9"):
+    def _seed_station(self, daemon, callsign="N5BA-9"):
         packet = Packet(
             source=callsign,
             destination="APRS",
@@ -997,7 +997,7 @@ class StationsEndpointTests(RestTestCase):
 
         self.assertEqual(status, 200)
         self.assertEqual(len(payload["result"]), 1)
-        self.assertEqual(payload["result"][0]["callsign"], "AI6K-9")
+        self.assertEqual(payload["result"][0]["callsign"], "N5BA-9")
         self.assertEqual(payload["result"][0]["comment"], "Test comment")
 
     def test_stations_list_empty_by_default(self):
@@ -1012,10 +1012,10 @@ class StationsEndpointTests(RestTestCase):
         daemon, port = self.start_stack(ScriptedSerial({}))
         self._seed_station(daemon)
 
-        status, payload = self.request(port, "GET", "/stations/AI6K-9")
+        status, payload = self.request(port, "GET", "/stations/N5BA-9")
 
         self.assertEqual(status, 200)
-        self.assertEqual(payload["result"]["callsign"], "AI6K-9")
+        self.assertEqual(payload["result"]["callsign"], "N5BA-9")
 
     def test_stations_get_unknown_callsign_returns_none(self):
         _, port = self.start_stack(ScriptedSerial({}))
@@ -1176,7 +1176,7 @@ class MonitorStreamTests(RestTestCase):
         _, port = self.start_stack(ChunkSerial([
             "KD5EOC-10>BEACON/2:\r\n",
             "Winlink 2000 RMS Packet Server\r\n",
-            "AI6K-4>BEACON/2:\r\n",
+            "N5BA-4>BEACON/2:\r\n",
         ]))
 
         conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
@@ -1365,7 +1365,7 @@ class StreamEventsKeepaliveTests(unittest.TestCase):
                         conn.sendall(
                             (json.dumps({
                                 "event": "packet",
-                                "data": {"source": "AI6K-4"},
+                                "data": {"source": "N5BA-4"},
                             }) + "\n").encode("ascii")
                         )
 
@@ -1412,7 +1412,7 @@ class StreamEventsKeepaliveTests(unittest.TestCase):
                 break
 
         self.assertIsNotNone(seen_event, "Never received the event")
-        self.assertEqual(seen_event["data"]["source"], "AI6K-4")
+        self.assertEqual(seen_event["data"]["source"], "N5BA-4")
 
 
 if __name__ == "__main__":

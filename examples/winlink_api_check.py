@@ -21,7 +21,7 @@ Usage:
 
     python3 examples/winlink_api_check.py [CALLSIGN]
 
-CALLSIGN defaults to "AI6K" if not given.
+CALLSIGN defaults to "N5BA" if not given.
 """
 
 import os
@@ -56,7 +56,7 @@ def main():
         )
         sys.exit(1)
 
-    callsign = sys.argv[1] if len(sys.argv) > 1 else "AI6K"
+    callsign = sys.argv[1] if len(sys.argv) > 1 else "N5BA"
 
     print(f"Checking account_exists({callsign!r})...")
 

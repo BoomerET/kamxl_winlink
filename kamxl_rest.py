@@ -953,7 +953,7 @@ WINLINK_HTML = """<!doctype html>
     </div>
     <div>
       <label for="mycall">My callsign (optional -- defaults to the KAM-XL's MYCALL)</label>
-      <input id="mycall" placeholder="e.g. AI6K-10" />
+      <input id="mycall" placeholder="e.g. N5BA-10" />
     </div>
     <button id="submitBtn" type="submit">Check mail</button>
   </form>
@@ -968,7 +968,7 @@ WINLINK_HTML = """<!doctype html>
     </div>
     <div>
       <label for="sendMycall">My callsign (optional -- defaults to the KAM-XL's MYCALL)</label>
-      <input id="sendMycall" placeholder="e.g. AI6K-10" />
+      <input id="sendMycall" placeholder="e.g. N5BA-10" />
     </div>
     <div>
       <label for="sendTo">To (comma-separated)</label>

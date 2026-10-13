@@ -1663,7 +1663,7 @@ class KAMXL:
         this deliberately doesn't guess which applies.
         """
         if mycall is None:
-            # MYCALL can be a multi-port value like "AI6K-10/AI6K-10"
+            # MYCALL can be a multi-port value like "N5BA-10/N5BA-10"
             # -- Winlink account identity isn't tied to a specific
             # radio port, so only the first one is used.
             mycall = self.get("MYCALL").split("/")[0].strip()
@@ -1898,7 +1898,7 @@ class KAMXL:
             )
 
         if mycall is None:
-            # MYCALL can be a multi-port value like "AI6K-10/AI6K-10"
+            # MYCALL can be a multi-port value like "N5BA-10/N5BA-10"
             # -- Winlink account identity isn't tied to a specific
             # radio port, so only the first one is used.
             mycall = self.get("MYCALL").split("/")[0].strip()

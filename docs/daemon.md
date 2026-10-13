@@ -121,7 +121,7 @@ Newline-delimited JSON over a Unix domain socket, in both directions.
 **Response** (daemon -> client, matches the request's `id`):
 
 ```json
-{"id": "1", "ok": true, "result": ["AI6K-10", "AI6K-10"]}
+{"id": "1", "ok": true, "result": ["N5BA-10", "N5BA-10"]}
 ```
 
 or, on failure:

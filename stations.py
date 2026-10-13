@@ -30,7 +30,7 @@ class Station:
     The latest known state of one station.
 
     ``callsign`` includes the SSID if the packet's source had one
-    (e.g. "AI6K-9") -- different SSIDs are treated as distinct
+    (e.g. "N5BA-9") -- different SSIDs are treated as distinct
     stations, per normal APRS convention (a callsign's SSID
     conventionally identifies a specific device/use, e.g. -9 for a
     mobile tracker vs the base -1). ``last_heard`` is a time.time()

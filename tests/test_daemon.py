@@ -198,7 +198,7 @@ class TypedCommandTests(DaemonTestCase):
 
     def test_get_configuration(self):
         _, socket_path = self.start_daemon(ScriptedSerial({
-            "DISPLAY": "MYCALL   AI6K-10/AI6K-10\r\nHBAUD    0/1200",
+            "DISPLAY": "MYCALL   N5BA-10/N5BA-10\r\nHBAUD    0/1200",
         }))
         client = self.connect(socket_path)
 
@@ -207,7 +207,7 @@ class TypedCommandTests(DaemonTestCase):
         self.assertTrue(response["ok"])
         self.assertEqual(
             response["result"],
-            {"MYCALL": "AI6K-10/AI6K-10", "HBAUD": "0/1200"}
+            {"MYCALL": "N5BA-10/N5BA-10", "HBAUD": "0/1200"}
         )
 
 
@@ -388,12 +388,12 @@ class PBBSTests(DaemonTestCase):
         client = self.connect(socket_path)
         client.call(
             "pbbs.list_messages",
-            mypbbs="AI6K-2",
+            mypbbs="N5BA-2",
             connect_timeout=10,
             read_timeout=3
         )
 
-        self.assertEqual(captured["mypbbs"], "AI6K-2")
+        self.assertEqual(captured["mypbbs"], "N5BA-2")
         self.assertEqual(captured["connect_timeout"], 10)
         self.assertEqual(captured["read_timeout"], 3)
 
@@ -448,9 +448,9 @@ class WinlinkTests(DaemonTestCase):
         daemon, socket_path = self.start_daemon(ScriptedSerial({}))
 
         proposal = Proposal(
-            msg_type="P", sender="N0CALL", via="AI6K-10",
-            recipient="AI6K-10", mid="12345_N0CALL", size=42,
-            raw="FB P N0CALL AI6K-10 AI6K-10 12345_N0CALL 42",
+            msg_type="P", sender="N0CALL", via="N5BA-10",
+            recipient="N5BA-10", mid="12345_N0CALL", size=42,
+            raw="FB P N0CALL N5BA-10 N5BA-10 12345_N0CALL 42",
         )
 
         daemon.kam.check_winlink_mail = lambda **kwargs: [
@@ -462,7 +462,7 @@ class WinlinkTests(DaemonTestCase):
 
         client = self.connect(socket_path)
         response = client.call(
-            "winlink.check_mail", gateway="AI6K-10", password="FOOBAR"
+            "winlink.check_mail", gateway="N5BA-10", password="FOOBAR"
         )
 
         self.assertTrue(response["ok"])
@@ -486,16 +486,16 @@ class WinlinkTests(DaemonTestCase):
         client = self.connect(socket_path)
         client.call(
             "winlink.check_mail",
-            gateway="AI6K-10",
+            gateway="N5BA-10",
             password="FOOBAR",
-            mycall="AI6K-2",
+            mycall="N5BA-2",
             connect_timeout=90,
             read_timeout=15,
         )
 
-        self.assertEqual(captured["gateway"], "AI6K-10")
+        self.assertEqual(captured["gateway"], "N5BA-10")
         self.assertEqual(captured["password"], "FOOBAR")
-        self.assertEqual(captured["mycall"], "AI6K-2")
+        self.assertEqual(captured["mycall"], "N5BA-2")
         self.assertEqual(captured["connect_timeout"], 90)
         self.assertEqual(captured["read_timeout"], 15)
 
@@ -512,7 +512,7 @@ class WinlinkTests(DaemonTestCase):
         _, socket_path = self.start_daemon(ScriptedSerial({}))
         client = self.connect(socket_path)
 
-        response = client.call("winlink.check_mail", gateway="AI6K-10")
+        response = client.call("winlink.check_mail", gateway="N5BA-10")
 
         self.assertFalse(response["ok"])
         self.assertEqual(response["error"]["type"], "MissingParam")
@@ -532,18 +532,18 @@ class WinlinkSendMessageTests(DaemonTestCase):
     def test_send_message_returns_accepted_mids(self):
         daemon, socket_path = self.start_daemon(ScriptedSerial({}))
 
-        daemon.kam.send_winlink_message = lambda **kwargs: ["12345_AI6K"]
+        daemon.kam.send_winlink_message = lambda **kwargs: ["12345_N5BA"]
 
         client = self.connect(socket_path)
         response = client.call(
             "winlink.send_message",
-            gateway="AI6K-10",
+            gateway="N5BA-10",
             password="FOOBAR",
             messages=[{"to": ["N0CALL"], "subject": "Hi", "body": "Hello"}],
         )
 
         self.assertTrue(response["ok"])
-        self.assertEqual(response["result"], ["12345_AI6K"])
+        self.assertEqual(response["result"], ["12345_N5BA"])
 
     def test_send_message_converts_dicts_to_outgoing_messages(self):
         daemon, socket_path = self.start_daemon(ScriptedSerial({}))
@@ -559,9 +559,9 @@ class WinlinkSendMessageTests(DaemonTestCase):
         client = self.connect(socket_path)
         client.call(
             "winlink.send_message",
-            gateway="AI6K-10",
+            gateway="N5BA-10",
             password="FOOBAR",
-            mycall="AI6K-2",
+            mycall="N5BA-2",
             connect_timeout=90,
             read_timeout=15,
             messages=[
@@ -572,9 +572,9 @@ class WinlinkSendMessageTests(DaemonTestCase):
             ],
         )
 
-        self.assertEqual(captured["gateway"], "AI6K-10")
+        self.assertEqual(captured["gateway"], "N5BA-10")
         self.assertEqual(captured["password"], "FOOBAR")
-        self.assertEqual(captured["mycall"], "AI6K-2")
+        self.assertEqual(captured["mycall"], "N5BA-2")
         self.assertEqual(captured["connect_timeout"], 90)
         self.assertEqual(captured["read_timeout"], 15)
 
@@ -604,7 +604,7 @@ class WinlinkSendMessageTests(DaemonTestCase):
         client = self.connect(socket_path)
 
         response = client.call(
-            "winlink.send_message", gateway="AI6K-10", password="FOOBAR"
+            "winlink.send_message", gateway="N5BA-10", password="FOOBAR"
         )
 
         self.assertFalse(response["ok"])
@@ -655,11 +655,11 @@ class WinlinkApiTests(DaemonTestCase):
         _, socket_path = self.start_daemon(ScriptedSerial({}))
         client = self.connect(socket_path)
 
-        response = client.call("winlink.account_exists", callsign="AI6K")
+        response = client.call("winlink.account_exists", callsign="N5BA")
 
         self.assertTrue(response["ok"])
         self.assertTrue(response["result"])
-        self.assertEqual(calls, [("AI6K", "TEST_KEY")])
+        self.assertEqual(calls, [("N5BA", "TEST_KEY")])
 
     def test_account_exists_missing_callsign_is_missing_param(self):
         _, socket_path = self.start_daemon(ScriptedSerial({}))
@@ -676,7 +676,7 @@ class WinlinkApiTests(DaemonTestCase):
         _, socket_path = self.start_daemon(ScriptedSerial({}))
         client = self.connect(socket_path)
 
-        response = client.call("winlink.account_exists", callsign="AI6K")
+        response = client.call("winlink.account_exists", callsign="N5BA")
 
         self.assertFalse(response["ok"])
         self.assertEqual(response["error"]["type"], "KAMError")
@@ -826,8 +826,8 @@ class MonitorSubscribeTests(DaemonTestCase):
     CHUNKS = [
         "KD5EOC-10>BEACON/2:\r\n",
         "Winlink 2000 RMS Packet Server\r\n",
-        "AI6K-4>BEACON/2:\r\n",
-        "AI6K-4 Linux Node http://digipi.org/\r\n",
+        "N5BA-4>BEACON/2:\r\n",
+        "N5BA-4 Linux Node http://digipi.org/\r\n",
         "N0CALL>BEACON/2:\r\n",
     ]
 
@@ -845,10 +845,10 @@ class MonitorSubscribeTests(DaemonTestCase):
         self.assertEqual(first["data"]["port"], 2)
 
         second = client.read_event(timeout=3)
-        self.assertEqual(second["data"]["source"], "AI6K-4")
+        self.assertEqual(second["data"]["source"], "N5BA-4")
         self.assertEqual(
             second["data"]["payload"],
-            "AI6K-4 Linux Node http://digipi.org/"
+            "N5BA-4 Linux Node http://digipi.org/"
         )
 
     def test_status_reflects_subscriber_count(self):
@@ -965,16 +965,16 @@ class StationsTests(DaemonTestCase):
 
     def test_stations_list_reflects_decoded_position(self):
         _, socket_path = self.start_daemon(ChunkSerial([
-            "AI6K-9>APRS/1:\r\n",
+            "N5BA-9>APRS/1:\r\n",
             "!4903.50N/07201.75W-Test comment\r\n",
-            "N0CALL>BEACON/1:\r\n",  # completes the AI6K-9 packet
+            "N0CALL>BEACON/1:\r\n",  # completes the N5BA-9 packet
         ]))
         client = self.connect(socket_path)
 
         stations = self._wait_for_stations(client)
 
         self.assertEqual(len(stations), 1)
-        self.assertEqual(stations[0]["callsign"], "AI6K-9")
+        self.assertEqual(stations[0]["callsign"], "N5BA-9")
         self.assertAlmostEqual(
             stations[0]["latitude"], 49 + 3.50 / 60, places=6
         )
@@ -982,7 +982,7 @@ class StationsTests(DaemonTestCase):
 
     def test_stations_get_known_callsign(self):
         _, socket_path = self.start_daemon(ChunkSerial([
-            "AI6K-9>APRS/1:\r\n",
+            "N5BA-9>APRS/1:\r\n",
             "!4903.50N/07201.75W-Test comment\r\n",
             "N0CALL>BEACON/1:\r\n",
         ]))
@@ -990,10 +990,10 @@ class StationsTests(DaemonTestCase):
 
         self._wait_for_stations(client)
 
-        response = client.call("stations.get", callsign="AI6K-9")
+        response = client.call("stations.get", callsign="N5BA-9")
 
         self.assertTrue(response["ok"])
-        self.assertEqual(response["result"]["callsign"], "AI6K-9")
+        self.assertEqual(response["result"]["callsign"], "N5BA-9")
 
     def test_stations_get_unknown_callsign_returns_none(self):
         _, socket_path = self.start_daemon(ChunkSerial([]))

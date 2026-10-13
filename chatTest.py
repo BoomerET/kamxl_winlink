@@ -15,7 +15,7 @@ from kamxl import (
 # renamed to a tactical callsign (e.g. "COOL"). If this doesn't
 # connect, try running listenTest.py for a bit to catch its actual
 # node beacon and confirm the real callsign/SSID.
-TARGET = "AI6K-4"
+TARGET = "N5BA-4"
 
 QUIT_COMMAND = "/quit"
 

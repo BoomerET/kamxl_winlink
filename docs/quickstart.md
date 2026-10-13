@@ -45,8 +45,8 @@ the parameter's entry in `COMMANDS` (see
 [api_reference.md](api_reference.md#commands)).
 
 ```python
-kam.get("MYCALL")              # raw string, e.g. "AI6K-10/AI6K-10"
-kam.get_typed("MYCALL")        # ("AI6K-10", "AI6K-10")
+kam.get("MYCALL")              # raw string, e.g. "N5BA-10/N5BA-10"
+kam.get_typed("MYCALL")        # ("N5BA-10", "N5BA-10")
 
 kam.get_typed("HBAUD")         # (0, 1200) -- ints, one per port
 kam.get_typed("MONITOR")       # (True, False) -- bools, one per port
@@ -72,7 +72,7 @@ kam.set_multiport_choice("FULLDUP", 1, "LOOPBACK", choices=("ON", "OFF", "LOOPBA
 For a full snapshot of every one-line `DISPLAY` setting:
 
 ```python
-config = kam.get_configuration()   # dict, e.g. {"MYCALL": "AI6K-10/AI6K-10", ...}
+config = kam.get_configuration()   # dict, e.g. {"MYCALL": "N5BA-10/N5BA-10", ...}
 ```
 
 ## AX.25 connected mode

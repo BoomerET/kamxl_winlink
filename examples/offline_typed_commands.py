@@ -29,7 +29,7 @@ def main():
     # instance that would have to somehow track state across calls.
     kam = make_kam(ScriptedSerial({
         "VERSION": "KAM-XL VERSION 1.24160",
-        "MYCALL": "MYCALL   AI6K-10/AI6K-10",
+        "MYCALL": "MYCALL   N5BA-10/N5BA-10",
         "HBAUD": "HBAUD    0/1200",
         "MONITOR": "MONITOR  ON/OFF",
         "DIGIPEAT": "DIGIPEAT UIONLY",

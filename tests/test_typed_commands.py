@@ -261,12 +261,12 @@ class TypedMultiportStringTests(unittest.TestCase):
         # Matches what whoami.py actually returned from the real
         # KAM-XL: the same callsign on both ports, no SSID.
         kam = make_kam(
-            ScriptedSerial(script={"MYCALL": "MYCALL AI6K/AI6K"})
+            ScriptedSerial(script={"MYCALL": "MYCALL N5BA/N5BA"})
         )
 
         self.assertEqual(
             kam.get_typed("MYCALL"),
-            ("AI6K", "AI6K")
+            ("N5BA", "N5BA")
         )
 
 
@@ -347,7 +347,7 @@ class GetConfigurationTests(unittest.TestCase):
         kam = make_kam(
             ScriptedSerial(script={
                 "DISPLAY": (
-                    "MYCALL   AI6K/AI6K\r\n"
+                    "MYCALL   N5BA/N5BA\r\n"
                     "MONITOR  OFF/OFF\r\n"
                     "BLANKKEY"
                 )
@@ -356,7 +356,7 @@ class GetConfigurationTests(unittest.TestCase):
 
         config = kam.get_configuration()
 
-        self.assertEqual(config["MYCALL"], "AI6K/AI6K")
+        self.assertEqual(config["MYCALL"], "N5BA/N5BA")
         self.assertEqual(config["MONITOR"], "OFF/OFF")
         # A key with no trailing value at all (e.g. an unset MYCALL
         # on real hardware) should show up as an empty string, not

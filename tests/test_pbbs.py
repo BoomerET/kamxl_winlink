@@ -187,7 +187,7 @@ class KAMXLPbbsIntegrationTests(unittest.TestCase):
     single call regardless of which logical step they were meant for.
     """
 
-    def _kam_with_stubs(self, read_connected_result, mypbbs_lookup="AI6K-1"):
+    def _kam_with_stubs(self, read_connected_result, mypbbs_lookup="N5BA-1"):
         kam = make_kam(CannedSerial([]))
         calls = []
 
@@ -210,7 +210,7 @@ class KAMXLPbbsIntegrationTests(unittest.TestCase):
     def test_list_pbbs_messages_calls_in_order(self):
         kam, calls = self._kam_with_stubs(LIST_TEXT)
 
-        messages = kam.list_pbbs_messages(mypbbs="AI6K-1")
+        messages = kam.list_pbbs_messages(mypbbs="N5BA-1")
 
         self.assertEqual(
             [call[0] for call in calls],
@@ -221,14 +221,14 @@ class KAMXLPbbsIntegrationTests(unittest.TestCase):
                 "disconnect_station",
             ]
         )
-        self.assertEqual(calls[0], ("connect_station", "AI6K-1"))
+        self.assertEqual(calls[0], ("connect_station", "N5BA-1"))
         self.assertEqual(calls[1], ("send_connected", "L"))
         self.assertEqual(len(messages), 2)
 
     def test_read_pbbs_message_sends_correct_command(self):
         kam, calls = self._kam_with_stubs(READ_TEXT)
 
-        message = kam.read_pbbs_message(2, mypbbs="AI6K-1")
+        message = kam.read_pbbs_message(2, mypbbs="N5BA-1")
 
         self.assertEqual(calls[1], ("send_connected", "R 2"))
         self.assertIsNotNone(message)
@@ -238,20 +238,20 @@ class KAMXLPbbsIntegrationTests(unittest.TestCase):
         # No explicit mypbbs= -- should read MYPBBS off the KAM-XL
         # first, then connect to whatever that says, rather than
         # requiring every caller to already know/pass it.
-        kam, calls = self._kam_with_stubs(LIST_TEXT, mypbbs_lookup="AI6K-1")
+        kam, calls = self._kam_with_stubs(LIST_TEXT, mypbbs_lookup="N5BA-1")
 
         kam.list_pbbs_messages()
 
         self.assertEqual(calls[0], ("get", "MYPBBS"))
-        self.assertEqual(calls[1], ("connect_station", "AI6K-1"))
+        self.assertEqual(calls[1], ("connect_station", "N5BA-1"))
 
     def test_explicit_mypbbs_skips_lookup(self):
         kam, calls = self._kam_with_stubs(LIST_TEXT)
 
-        kam.list_pbbs_messages(mypbbs="AI6K-2")
+        kam.list_pbbs_messages(mypbbs="N5BA-2")
 
         self.assertNotIn("get", [call[0] for call in calls])
-        self.assertEqual(calls[0], ("connect_station", "AI6K-2"))
+        self.assertEqual(calls[0], ("connect_station", "N5BA-2"))
 
     def test_disconnect_always_runs_even_if_read_fails(self):
         kam, calls = self._kam_with_stubs(LIST_TEXT)
@@ -263,7 +263,7 @@ class KAMXLPbbsIntegrationTests(unittest.TestCase):
         kam.read_connected = failing_read
 
         with self.assertRaises(KAMTimeoutError):
-            kam.list_pbbs_messages(mypbbs="AI6K-1")
+            kam.list_pbbs_messages(mypbbs="N5BA-1")
 
         self.assertIn(("disconnect_station",), calls)
 
@@ -320,7 +320,7 @@ class CollectPbbsResponseTests(unittest.TestCase):
         ]
         kam = self._kam_with_chunked_read(chunks)
 
-        message = kam.read_pbbs_message(2, mypbbs="AI6K-1")
+        message = kam.read_pbbs_message(2, mypbbs="N5BA-1")
 
         self.assertIsNotNone(message)
         self.assertEqual(
@@ -340,7 +340,7 @@ class CollectPbbsResponseTests(unittest.TestCase):
         ]
         kam = self._kam_with_chunked_read(chunks)
 
-        messages = kam.list_pbbs_messages(mypbbs="AI6K-1")
+        messages = kam.list_pbbs_messages(mypbbs="N5BA-1")
 
         self.assertEqual(len(messages), 2)
         self.assertEqual(messages[1].subject, "Xerox 820")
@@ -363,7 +363,7 @@ class CollectPbbsResponseTests(unittest.TestCase):
         kam.send_connected = lambda text, **kwargs: None
         kam.disconnect_station = lambda **kwargs: None
 
-        kam.read_pbbs_message(2, mypbbs="AI6K-1")
+        kam.read_pbbs_message(2, mypbbs="N5BA-1")
 
         self.assertEqual(call_count, 1)
 

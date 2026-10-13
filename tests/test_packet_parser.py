@@ -81,8 +81,8 @@ class PacketParserTests(unittest.TestCase):
         packets = parser.feed(
             "KD5EOC-10>BEACON/2:\r\n"
             "Winlink 2000 RMS Packet Server\r\n"
-            "AI6K-4>BEACON/2:\r\n"
-            "AI6K-4 Linux Node http://digipi.org/\r\n"
+            "N5BA-4>BEACON/2:\r\n"
+            "N5BA-4 Linux Node http://digipi.org/\r\n"
         )
         packets += parser.flush()
 
@@ -92,10 +92,10 @@ class PacketParserTests(unittest.TestCase):
             packets[0].payload,
             "Winlink 2000 RMS Packet Server"
         )
-        self.assertEqual(packets[1].source, "AI6K-4")
+        self.assertEqual(packets[1].source, "N5BA-4")
         self.assertEqual(
             packets[1].payload,
-            "AI6K-4 Linux Node http://digipi.org/"
+            "N5BA-4 Linux Node http://digipi.org/"
         )
 
     def test_flush_catches_a_line_with_no_trailing_newline(self):
@@ -105,15 +105,15 @@ class PacketParserTests(unittest.TestCase):
         parser = PacketParser()
 
         packets = parser.feed(
-            "AI6K-4>BEACON/2:\r\n"
-            "AI6K-4 Linux Node http://digipi.org/"
+            "N5BA-4>BEACON/2:\r\n"
+            "N5BA-4 Linux Node http://digipi.org/"
         )
         packets += parser.flush()
 
         self.assertEqual(len(packets), 1)
         self.assertEqual(
             packets[0].payload,
-            "AI6K-4 Linux Node http://digipi.org/"
+            "N5BA-4 Linux Node http://digipi.org/"
         )
 
     def test_non_monitor_text_is_ignored_not_fabricated(self):

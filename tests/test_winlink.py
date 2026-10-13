@@ -30,7 +30,7 @@ def _build_encapsulated_message(
     date="2026/08/03 12:00",
     msg_type="Private",
     from_="N0CALL",
-    to=("AI6K",),
+    to=("N5BA",),
     cc=(),
     subject="Test B2 message",
     mbo="KD5EOC",
@@ -91,7 +91,7 @@ class ParseSecureChallengeTests(unittest.TestCase):
 
     def test_non_challenge_line_returns_none(self):
         self.assertIsNone(w.parse_secure_challenge("Welcome to WL2K"))
-        self.assertIsNone(w.parse_secure_challenge(";FW: AI6K-10"))
+        self.assertIsNone(w.parse_secure_challenge(";FW: N5BA-10"))
 
 
 class SIDTests(unittest.TestCase):
@@ -132,23 +132,23 @@ class BuildHandshakeResponseTests(unittest.TestCase):
         # Winlink CMS rejected "kamxl" as an unrecognized client type,
         # and "kamxl_winlink" is the name now being pursued for
         # registration.
-        response = w.build_handshake_response("AI6K-10")
+        response = w.build_handshake_response("N5BA-10")
 
-        self.assertEqual(response, ";FW: AI6K-10\r[kamxl_winlink-0.1-B2F$]")
+        self.assertEqual(response, ";FW: N5BA-10\r[kamxl_winlink-0.1-B2F$]")
 
     def test_with_challenge_includes_pr_line(self):
         response = w.build_handshake_response(
-            "AI6K-10", secure_challenge="23753528", password="FOOBAR"
+            "N5BA-10", secure_challenge="23753528", password="FOOBAR"
         )
 
         self.assertEqual(
             response,
-            ";FW: AI6K-10\r[kamxl_winlink-0.1-B2F$]\r;PR: 72768415"
+            ";FW: N5BA-10\r[kamxl_winlink-0.1-B2F$]\r;PR: 72768415"
         )
 
     def test_challenge_without_password_raises(self):
         with self.assertRaises(ValueError):
-            w.build_handshake_response("AI6K-10", secure_challenge="425")
+            w.build_handshake_response("N5BA-10", secure_challenge="425")
 
 
 class ProposalTests(unittest.TestCase):
@@ -244,9 +244,9 @@ class ProposalTests(unittest.TestCase):
         # test_gateway_disconnect_mid_session_raises_clear_error for
         # the full story.
         text = (
-            ";FW: AI6K\r\n[kamxl-0.1-F$]\r\n;PR: 84304290\r\nFF\r\n"
+            ";FW: N5BA\r\n[kamxl-0.1-F$]\r\n;PR: 84304290\r\nFF\r\n"
             "*** [3] Use B2 protocol - Disconnecting (47.190.139.106)\r\n"
-            "*** DISCONNECTED\r\ncmd:AI6K>KD5EOC-10/2: <<UA>>:\r\n"
+            "*** DISCONNECTED\r\ncmd:N5BA>KD5EOC-10/2: <<UA>>:\r\n"
         )
 
         reason = w.parse_disconnect_reason(text)
@@ -380,7 +380,7 @@ class B2BlockFramingTests(unittest.TestCase):
 class EncapsulatedMessageTests(unittest.TestCase):
     def test_parses_full_header_and_body(self):
         raw = _build_encapsulated_message(
-            to=("AI6K", "N0CALL"),
+            to=("N5BA", "N0CALL"),
             cc=("W1AW",),
             attachments=[("test.txt", b"HELLO")],
         )
@@ -391,7 +391,7 @@ class EncapsulatedMessageTests(unittest.TestCase):
         self.assertEqual(message.date, "2026/08/03 12:00")
         self.assertEqual(message.msg_type, "Private")
         self.assertEqual(message.from_, "N0CALL")
-        self.assertEqual(message.to, ["AI6K", "N0CALL"])
+        self.assertEqual(message.to, ["N5BA", "N0CALL"])
         self.assertEqual(message.cc, ["W1AW"])
         self.assertEqual(message.subject, "Test B2 message")
         self.assertEqual(message.mbo, "KD5EOC")
@@ -440,7 +440,7 @@ class EncapsulatedMessageTests(unittest.TestCase):
         self.assertEqual(message.title, "Test B2 message")
         self.assertEqual(message.subject, "Test B2 message")
         self.assertEqual(message.from_, "N0CALL")
-        self.assertEqual(message.to, ["AI6K"])
+        self.assertEqual(message.to, ["N5BA"])
         self.assertEqual(message.body, "Hello from B2!\r\n")
         self.assertIs(message.proposal, proposal)
 
@@ -456,12 +456,12 @@ class EncapsulatedMessageTests(unittest.TestCase):
 
 class GenerateMidTests(unittest.TestCase):
     def test_length_is_twelve(self):
-        mid = w.generate_mid("AI6K-10")
+        mid = w.generate_mid("N5BA-10")
 
         self.assertEqual(len(mid), 12)
 
     def test_alphanumeric_base32_charset(self):
-        mid = w.generate_mid("AI6K-10")
+        mid = w.generate_mid("N5BA-10")
 
         # base32's alphabet is A-Z and 2-7 -- no 0/1/8/9 (avoids
         # visual confusion with O/I/B/g), matching Python's own
@@ -469,8 +469,8 @@ class GenerateMidTests(unittest.TestCase):
         self.assertRegex(mid, r"^[A-Z2-7]{12}$")
 
     def test_consecutive_calls_differ(self):
-        mid1 = w.generate_mid("AI6K-10")
-        mid2 = w.generate_mid("AI6K-10")
+        mid1 = w.generate_mid("N5BA-10")
+        mid2 = w.generate_mid("N5BA-10")
 
         self.assertNotEqual(mid1, mid2)
 
@@ -484,16 +484,16 @@ class BuildEncapsulatedMessageTests(unittest.TestCase):
             body="Line one\nLine two\n",
         )
 
-        raw = w.build_encapsulated_message("12345_AI6K", msg, "AI6K-10")
+        raw = w.build_encapsulated_message("12345_N5BA", msg, "N5BA-10")
         parsed = w.parse_encapsulated_message(raw)
 
-        self.assertEqual(parsed.mid, "12345_AI6K")
+        self.assertEqual(parsed.mid, "12345_N5BA")
         self.assertEqual(parsed.msg_type, "Private")
-        self.assertEqual(parsed.from_, "AI6K-10")
+        self.assertEqual(parsed.from_, "N5BA-10")
         self.assertEqual(parsed.to, ["N0CALL"])
         self.assertEqual(parsed.cc, ["N1CALL"])
         self.assertEqual(parsed.subject, "Test outbound message")
-        self.assertEqual(parsed.mbo, "AI6K-10")
+        self.assertEqual(parsed.mbo, "N5BA-10")
         # Line endings normalized to CRLF -- see the function's
         # docstring for why (Body:'s byte count must match exactly).
         self.assertEqual(parsed.body, "Line one\r\nLine two\r\n")
@@ -504,15 +504,15 @@ class BuildEncapsulatedMessageTests(unittest.TestCase):
         # rather than the B2F spec's more ambiguous text.
         msg = w.OutgoingMessage(to=["N0CALL"], subject="Hi", body="Hello")
 
-        raw = w.build_encapsulated_message("MID1", msg, "AI6K-10")
+        raw = w.build_encapsulated_message("MID1", msg, "N5BA-10")
         parsed = w.parse_encapsulated_message(raw)
 
-        self.assertEqual(parsed.mbo, "AI6K-10")
+        self.assertEqual(parsed.mbo, "N5BA-10")
 
     def test_body_length_header_matches_actual_body(self):
         msg = w.OutgoingMessage(to=["N0CALL"], subject="Hi", body="Hi\nthere")
 
-        raw = w.build_encapsulated_message("MID1", msg, "AI6K-10")
+        raw = w.build_encapsulated_message("MID1", msg, "N5BA-10")
         text = raw.decode("latin-1")
         header_text, _, rest = text.partition("\r\n\r\n")
 
@@ -527,22 +527,22 @@ class BuildEncapsulatedMessageTests(unittest.TestCase):
 
 class BuildB2ProposalLineTests(unittest.TestCase):
     def test_format(self):
-        line = w.build_b2_proposal_line("12345_AI6K", 527, 123)
+        line = w.build_b2_proposal_line("12345_N5BA", 527, 123)
 
-        self.assertEqual(line, "FC EM 12345_AI6K 527 123 0")
+        self.assertEqual(line, "FC EM 12345_N5BA 527 123 0")
 
     def test_round_trips_through_parse(self):
-        line = w.build_b2_proposal_line("12345_AI6K", 527, 123)
+        line = w.build_b2_proposal_line("12345_N5BA", 527, 123)
         proposal = w.parse_b2_proposal(line)
 
-        self.assertEqual(proposal.mid, "12345_AI6K")
+        self.assertEqual(proposal.mid, "12345_N5BA")
         self.assertEqual(proposal.size, 527)
         self.assertEqual(proposal.compressed_size, 123)
 
 
 class BuildProposalBlockTests(unittest.TestCase):
     def test_ends_with_recognized_end_of_block_marker(self):
-        block = w.build_proposal_block(["FC EM 12345_AI6K 10 5 0"])
+        block = w.build_proposal_block(["FC EM 12345_N5BA 10 5 0"])
 
         self.assertTrue(w.has_end_of_block_marker(block))
 
@@ -683,7 +683,7 @@ class KAMXLWinlinkIntegrationTests(unittest.TestCase):
     def _kam_with_stubs(
         self,
         read_connected_chunks,
-        mycall_lookup="AI6K-10/AI6K-10",
+        mycall_lookup="N5BA-10/N5BA-10",
         read_connected_bytes_chunks=(),
     ):
         kam = make_kam(CannedSerial([]))
@@ -728,7 +728,7 @@ class KAMXLWinlinkIntegrationTests(unittest.TestCase):
             "FQ\r\n",
         ])
 
-        messages = kam.check_winlink_mail("AI6K-10", "FOOBAR")
+        messages = kam.check_winlink_mail("N5BA-10", "FOOBAR")
 
         self.assertEqual(messages, [])
         # get MYCALL, connect, read (handshake), send (login+FF),
@@ -741,7 +741,7 @@ class KAMXLWinlinkIntegrationTests(unittest.TestCase):
             ]
         )
         self.assertEqual(calls[0], ("get", "MYCALL"))
-        self.assertEqual(calls[1], ("connect_station", "AI6K-10"))
+        self.assertEqual(calls[1], ("connect_station", "N5BA-10"))
 
         # Login response computed from the real challenge + password.
         sent = calls[3]
@@ -757,7 +757,7 @@ class KAMXLWinlinkIntegrationTests(unittest.TestCase):
             "FQ\r\n",
         ])
 
-        kam.check_winlink_mail("AI6K-10", "FOOBAR")
+        kam.check_winlink_mail("N5BA-10", "FOOBAR")
 
         sent = calls[3]
         self.assertEqual(sent[0], "send_connected")
@@ -773,7 +773,7 @@ class KAMXLWinlinkIntegrationTests(unittest.TestCase):
             08:29:33 winlink handshake raw: 'Welcome to the Denton
                 County Texas EOC\\r\\n[WL2K-5.0-B2FWIHJM$]\\r\\n
                 ;PQ: 20914129\\r\\nCMS via KD5EOC >\\r\\n'
-            08:29:34 winlink proposals raw: ';FW: AI6K\\r\\n
+            08:29:34 winlink proposals raw: ';FW: N5BA\\r\\n
                 [kamxl-0.1-F$]\\r\\n;PR: 14482272\\r\\nFF\\r\\n'
             08:29:37 conn-6720: winlink.check_mail -> ok
 
@@ -799,14 +799,14 @@ class KAMXLWinlinkIntegrationTests(unittest.TestCase):
             "Welcome to the Denton County Texas EOC\r\n"
             "[WL2K-5.0-B2FWIHJM$]\r\n;PQ: 20914129\r\nCMS via KD5EOC >\r\n",
             # Our own echoed transmission -- NOT the gateway's reply.
-            ";FW: AI6K\r\n[kamxl-0.1-F$]\r\n;PR: 14482272\r\nFF\r\n",
+            ";FW: N5BA\r\n[kamxl-0.1-F$]\r\n;PR: 14482272\r\nFF\r\n",
             # The gateway's real, delayed reply.
-            "FB P N0CALL AI6K AI6K 12345_N0CALL 42\r\nF>\r\n",
+            "FB P N0CALL N5BA N5BA 12345_N0CALL 42\r\nF>\r\n",
             "Test Subject\r\nHello there.\r\n\x1a",
         ])
 
         messages = kam.check_winlink_mail(
-            "KD5EOC-10", "REALPASSWORD", mycall="AI6K"
+            "KD5EOC-10", "REALPASSWORD", mycall="N5BA"
         )
 
         self.assertEqual(len(messages), 1)
@@ -823,11 +823,11 @@ class KAMXLWinlinkIntegrationTests(unittest.TestCase):
             08:47:50 winlink handshake raw: 'Welcome to the Denton
                 County Texas EOC\\r\\n[WL2K-5.0-B2FWIHJM$]\\r\\n
                 ;PQ: 97759037\\r\\nCMS via KD5EOC >\\r\\n'
-            08:48:21 winlink proposals raw: ';FW: AI6K\\r\\n
+            08:48:21 winlink proposals raw: ';FW: N5BA\\r\\n
                 [kamxl-0.1-F$]\\r\\n;PR: 84304290\\r\\nFF\\r\\n***
                 [3] Use B2 protocol - Disconnecting
                 (47.190.139.106)\\r\\n*** DISCONNECTED\\r\\n
-                cmd:AI6K>KD5EOC-10/2: <<UA>>:\\r\\n'
+                cmd:N5BA>KD5EOC-10/2: <<UA>>:\\r\\n'
             08:48:26 conn-4464: winlink.check_mail -> KAMTimeoutError:
                 Timed out returning to Command mode
             08:48:26 conn-4464: disconnected
@@ -862,14 +862,14 @@ class KAMXLWinlinkIntegrationTests(unittest.TestCase):
         kam, calls = self._kam_with_stubs([
             "Welcome to the Denton County Texas EOC\r\n"
             "[WL2K-5.0-B2FWIHJM$]\r\n;PQ: 97759037\r\nCMS via KD5EOC >\r\n",
-            ";FW: AI6K\r\n[kamxl-0.1-F$]\r\n;PR: 84304290\r\nFF\r\n"
+            ";FW: N5BA\r\n[kamxl-0.1-F$]\r\n;PR: 84304290\r\nFF\r\n"
             "*** [3] Use B2 protocol - Disconnecting (47.190.139.106)\r\n"
-            "*** DISCONNECTED\r\ncmd:AI6K>KD5EOC-10/2: <<UA>>:\r\n",
+            "*** DISCONNECTED\r\ncmd:N5BA>KD5EOC-10/2: <<UA>>:\r\n",
         ])
 
         with self.assertRaises(KAMConnectionError) as ctx:
             kam.check_winlink_mail(
-                "KD5EOC-10", "REALPASSWORD", mycall="AI6K",
+                "KD5EOC-10", "REALPASSWORD", mycall="N5BA",
                 read_timeout=0.05
             )
 
@@ -887,11 +887,11 @@ class KAMXLWinlinkIntegrationTests(unittest.TestCase):
     def test_pending_mail_downloaded_and_parsed(self):
         kam, calls = self._kam_with_stubs([
             "[WL2K-5.0-FHM$]\r\n;PQ: 425\r\n>\r\n",
-            "FB P N0CALL AI6K-10 AI6K-10 12345_N0CALL 42\r\nF>\r\n",
+            "FB P N0CALL N5BA-10 N5BA-10 12345_N0CALL 42\r\nF>\r\n",
             "Test Subject\r\nHello there.\r\n\x1a",
         ])
 
-        messages = kam.check_winlink_mail("AI6K-10", "FOOBAR")
+        messages = kam.check_winlink_mail("N5BA-10", "FOOBAR")
 
         self.assertEqual(len(messages), 1)
         self.assertEqual(messages[0].title, "Test Subject")
@@ -931,14 +931,14 @@ class KAMXLWinlinkIntegrationTests(unittest.TestCase):
             read_connected_bytes_chunks=[b2_block],
         )
 
-        messages = kam.check_winlink_mail("AI6K-10", "FOOBAR")
+        messages = kam.check_winlink_mail("N5BA-10", "FOOBAR")
 
         self.assertEqual(len(messages), 1)
         message = messages[0]
         self.assertEqual(message.title, "Test B2 message")
         self.assertEqual(message.subject, "Test B2 message")
         self.assertEqual(message.from_, "N0CALL")
-        self.assertEqual(message.to, ["AI6K"])
+        self.assertEqual(message.to, ["N5BA"])
         self.assertEqual(message.body, "Hello from B2!\r\n")
         self.assertIsInstance(message.proposal, w.B2Proposal)
 
@@ -958,14 +958,14 @@ class KAMXLWinlinkIntegrationTests(unittest.TestCase):
         kam, calls = self._kam_with_stubs([
             "[WL2K-5.0-B2FWIHJM$]\r\n>\r\n",
             (
-                "FB P N0CALL AI6K-10 AI6K-10 12345_N0CALL 42\r\n"
+                "FB P N0CALL N5BA-10 N5BA-10 12345_N0CALL 42\r\n"
                 "FC EM 99999_N0CALL 100 50 0\r\n"
                 "F>\r\n"
             ),
         ])
 
         with self.assertRaises(w.WinlinkProtocolError):
-            kam.check_winlink_mail("AI6K-10", "FOOBAR")
+            kam.check_winlink_mail("N5BA-10", "FOOBAR")
 
         # Must still disconnect cleanly even though it raised.
         self.assertIn(("disconnect_station",), calls)
@@ -976,14 +976,14 @@ class KAMXLWinlinkIntegrationTests(unittest.TestCase):
             "FQ\r\n",
         ])
 
-        kam.check_winlink_mail("AI6K-10", "FOOBAR", mycall="AI6K-2")
+        kam.check_winlink_mail("N5BA-10", "FOOBAR", mycall="N5BA-2")
 
         self.assertNotIn("get", [call[0] for call in calls])
 
         # calls: connect, read (handshake), send (login+FF), ...
         sent = calls[2]
         self.assertEqual(sent[0], "send_connected")
-        self.assertIn("AI6K-2", sent[1])
+        self.assertIn("N5BA-2", sent[1])
 
     def test_disconnect_always_runs_even_if_read_fails(self):
         kam, calls = self._kam_with_stubs([])
@@ -995,7 +995,7 @@ class KAMXLWinlinkIntegrationTests(unittest.TestCase):
         kam.read_connected = failing_read
 
         with self.assertRaises(KAMTimeoutError):
-            kam.check_winlink_mail("AI6K-10", "FOOBAR")
+            kam.check_winlink_mail("N5BA-10", "FOOBAR")
 
         self.assertIn(("disconnect_station",), calls)
 
@@ -1015,7 +1015,7 @@ class KAMXLSendWinlinkMessageIntegrationTests(unittest.TestCase):
     real Winlink CMS accepts it.
     """
 
-    def _kam_with_stubs(self, read_connected_chunks, mycall_lookup="AI6K-10/AI6K-10"):
+    def _kam_with_stubs(self, read_connected_chunks, mycall_lookup="N5BA-10/N5BA-10"):
         kam = make_kam(CannedSerial([]))
         calls = []
         remaining = list(read_connected_chunks)
@@ -1052,7 +1052,7 @@ class KAMXLSendWinlinkMessageIntegrationTests(unittest.TestCase):
         )
 
         accepted = kam.send_winlink_message(
-            "KD5EOC-10", "FOOBAR", [outgoing], mycall="AI6K-10"
+            "KD5EOC-10", "FOOBAR", [outgoing], mycall="N5BA-10"
         )
 
         self.assertEqual(len(accepted), 1)
@@ -1091,7 +1091,7 @@ class KAMXLSendWinlinkMessageIntegrationTests(unittest.TestCase):
         self.assertEqual(encapsulated.mid, accepted[0])
         self.assertEqual(encapsulated.subject, "Test outbound")
         self.assertEqual(encapsulated.to, ["N0CALL"])
-        self.assertEqual(encapsulated.from_, "AI6K-10")
+        self.assertEqual(encapsulated.from_, "N5BA-10")
         self.assertEqual(encapsulated.body, "Hello there\r\n")
 
     def test_gateway_rejects_message_nothing_uploaded(self):
@@ -1104,7 +1104,7 @@ class KAMXLSendWinlinkMessageIntegrationTests(unittest.TestCase):
         outgoing = w.OutgoingMessage(to=["N0CALL"], subject="Hi", body="Hello")
 
         accepted = kam.send_winlink_message(
-            "KD5EOC-10", "FOOBAR", [outgoing], mycall="AI6K-10"
+            "KD5EOC-10", "FOOBAR", [outgoing], mycall="N5BA-10"
         )
 
         self.assertEqual(accepted, [])
@@ -1123,7 +1123,7 @@ class KAMXLSendWinlinkMessageIntegrationTests(unittest.TestCase):
         outgoing = w.OutgoingMessage(to=["N0CALL"], subject="Hi", body="Hello")
 
         kam.send_winlink_message(
-            "KD5EOC-10", "FOOBAR", [outgoing], mycall="AI6K-10"
+            "KD5EOC-10", "FOOBAR", [outgoing], mycall="N5BA-10"
         )
 
         # Send-only scope -- always decline whatever the gateway
@@ -1166,7 +1166,7 @@ class KAMXLSendWinlinkMessageIntegrationTests(unittest.TestCase):
         ]
 
         accepted = kam.send_winlink_message(
-            "KD5EOC-10", "FOOBAR", messages, mycall="AI6K-10"
+            "KD5EOC-10", "FOOBAR", messages, mycall="N5BA-10"
         )
 
         self.assertEqual(len(accepted), 1)
@@ -1180,14 +1180,14 @@ class KAMXLSendWinlinkMessageIntegrationTests(unittest.TestCase):
             "*** Unknown client types are not allowed on production "
             "servers -- use cms-z.winlink.org - Disconnecting "
             "(1.2.3.4)\r\n*** DISCONNECTED\r\n"
-            "cmd:AI6K-10>KD5EOC-10: <<UA>>:\r\n",
+            "cmd:N5BA-10>KD5EOC-10: <<UA>>:\r\n",
         ])
 
         outgoing = w.OutgoingMessage(to=["N0CALL"], subject="Hi", body="Hello")
 
         with self.assertRaises(KAMConnectionError) as ctx:
             kam.send_winlink_message(
-                "KD5EOC-10", "FOOBAR", [outgoing], mycall="AI6K-10",
+                "KD5EOC-10", "FOOBAR", [outgoing], mycall="N5BA-10",
                 read_timeout=0.05
             )
 

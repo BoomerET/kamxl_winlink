@@ -35,17 +35,17 @@ class StationTrackerTests(unittest.TestCase):
         tracker = StationTracker()
 
         station = tracker.update(
-            _ui_packet("AI6K-9", "!4903.50N/07201.75W-Test"),
+            _ui_packet("N5BA-9", "!4903.50N/07201.75W-Test"),
             now=1000.0,
         )
 
         self.assertIsNotNone(station)
-        self.assertEqual(station.callsign, "AI6K-9")
+        self.assertEqual(station.callsign, "N5BA-9")
         self.assertAlmostEqual(station.latitude, 49 + 3.50 / 60, places=6)
         self.assertEqual(station.last_heard, 1000.0)
         self.assertEqual(station.packet_count, 1)
 
-        self.assertEqual(tracker.get_station("AI6K-9"), station)
+        self.assertEqual(tracker.get_station("N5BA-9"), station)
         self.assertEqual(tracker.list_stations(), [station])
 
     def test_non_ui_frame_ignored(self):
@@ -63,7 +63,7 @@ class StationTrackerTests(unittest.TestCase):
         # frame_type is None when MCOM/MRESP tags were off (or a
         # header line didn't carry one) -- still treated as
         # potentially-APRS, same as an explicit "UI" tag.
-        packet = _ui_packet("AI6K-9", "!4903.50N/07201.75W-")
+        packet = _ui_packet("N5BA-9", "!4903.50N/07201.75W-")
         packet = Packet(
             source=packet.source,
             destination=packet.destination,
@@ -82,7 +82,7 @@ class StationTrackerTests(unittest.TestCase):
     def test_non_position_payload_ignored(self):
         tracker = StationTracker()
 
-        result = tracker.update(_ui_packet("AI6K-9", "Just chatter"))
+        result = tracker.update(_ui_packet("N5BA-9", "Just chatter"))
 
         self.assertIsNone(result)
         self.assertEqual(tracker.list_stations(), [])
@@ -91,10 +91,10 @@ class StationTrackerTests(unittest.TestCase):
         tracker = StationTracker()
 
         tracker.update(
-            _ui_packet("AI6K-9", "!4903.50N/07201.75W-"), now=1000.0
+            _ui_packet("N5BA-9", "!4903.50N/07201.75W-"), now=1000.0
         )
         second = tracker.update(
-            _ui_packet("AI6K-9", "!4900.00N/07200.00W-"), now=2000.0
+            _ui_packet("N5BA-9", "!4900.00N/07200.00W-"), now=2000.0
         )
 
         self.assertEqual(second.packet_count, 2)
@@ -107,21 +107,21 @@ class StationTrackerTests(unittest.TestCase):
     def test_different_ssids_are_distinct_stations(self):
         tracker = StationTracker()
 
-        tracker.update(_ui_packet("AI6K-1", "!4903.50N/07201.75W-"))
-        tracker.update(_ui_packet("AI6K-9", "!4900.00N/07200.00W-"))
+        tracker.update(_ui_packet("N5BA-1", "!4903.50N/07201.75W-"))
+        tracker.update(_ui_packet("N5BA-9", "!4900.00N/07200.00W-"))
 
         callsigns = {s.callsign for s in tracker.list_stations()}
-        self.assertEqual(callsigns, {"AI6K-1", "AI6K-9"})
+        self.assertEqual(callsigns, {"N5BA-1", "N5BA-9"})
 
     def test_list_stations_sorted_by_callsign(self):
         tracker = StationTracker()
 
         tracker.update(_ui_packet("WB5NZV", "!4903.50N/07201.75W-"))
-        tracker.update(_ui_packet("AI6K-9", "!4900.00N/07200.00W-"))
+        tracker.update(_ui_packet("N5BA-9", "!4900.00N/07200.00W-"))
         tracker.update(_ui_packet("KD5EOC", "!4901.00N/07200.00W-"))
 
         callsigns = [s.callsign for s in tracker.list_stations()]
-        self.assertEqual(callsigns, ["AI6K-9", "KD5EOC", "WB5NZV"])
+        self.assertEqual(callsigns, ["KD5EOC", "N5BA-9", "WB5NZV"])
 
     def test_get_unknown_callsign_returns_none(self):
         tracker = StationTracker()
@@ -134,7 +134,7 @@ class StationTrackerTests(unittest.TestCase):
         tracker = StationTracker()
 
         station = tracker.update(
-            _ui_packet("AI6K-9", "!4903.50N/07201.75W-")
+            _ui_packet("N5BA-9", "!4903.50N/07201.75W-")
         )
 
         self.assertIsNotNone(station)

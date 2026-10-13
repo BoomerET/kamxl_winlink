@@ -361,7 +361,7 @@ do.
 
 ```
 curl -H "Authorization: Bearer $TOKEN" http://kam-host:8080/stations
-curl -H "Authorization: Bearer $TOKEN" http://kam-host:8080/stations/AI6K-9
+curl -H "Authorization: Bearer $TOKEN" http://kam-host:8080/stations/N5BA-9
 ```
 
 `/stations/<CALLSIGN>` returns `{"ok": true, "result": null}` (not a
@@ -511,7 +511,7 @@ it's set on the daemon's own environment.
 
 ```
 curl -H "Authorization: Bearer $TOKEN" \
-  http://kam-host:8080/winlink/account/AI6K
+  http://kam-host:8080/winlink/account/N5BA
 
 curl -H "Authorization: Bearer $TOKEN" \
   "http://kam-host:8080/winlink/gateways?service_codes=PUBLIC"

@@ -99,10 +99,10 @@ class RoundTripTests(unittest.TestCase):
 
     def test_realistic_message_body(self):
         body = (
-            b"Mid: 12345_AI6K\r\n"
+            b"Mid: 12345_N5BA\r\n"
             b"Date: 2026/08/03 12:00\r\n"
             b"Type: Private\r\n"
-            b"From: AI6K\r\n"
+            b"From: N5BA\r\n"
             b"To: N0CALL\r\n"
             b"Subject: Test message via B2 protocol\r\n"
             b"Body: 26\r\n"
