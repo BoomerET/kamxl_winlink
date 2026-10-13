@@ -1370,6 +1370,7 @@ MAP_HTML = r"""<!doctype html>
 
   var markers = {};
   var trails = {};
+  var trailPoints = {};
   var fitDone = false;
 
   function escapeHtml(text) {
@@ -1480,6 +1481,99 @@ MAP_HTML = r"""<!doctype html>
     return html;
   }
 
+  function updateTrailPoints(station) {
+    var callsign = station.callsign;
+    var history = station.history || [];
+
+    // Keep existing markers so open popups survive refreshes.
+    if (!trailPoints[callsign]) {
+      trailPoints[callsign] = [];
+    }
+
+    var existing = trailPoints[callsign];
+
+    // History is bounded to 25 positions. If it rolls over,
+    // rebuild only the markers whose positions changed.
+    history.forEach(function (point, index) {
+      var current = existing[index];
+
+
+      if (
+        current &&
+        current.positionTimestamp === point.timestamp &&
+        current.positionLat === point.latitude &&
+        current.positionLon === point.longitude
+      ) {
+        var html =
+          "<b>" + escapeHtml(callsign) + "</b><br>" +
+          "Position " + (index + 1) + " of " + history.length + "<br>" +
+          "Received: " +
+          escapeHtml(new Date(point.timestamp * 1000).toLocaleString()) + "<br>" +
+          "Latitude: " + Number(point.latitude).toFixed(5) + "<br>" +
+          "Longitude: " + Number(point.longitude).toFixed(5);
+
+        current.setPopupContent(html);
+        return;
+      }
+
+
+      if (current) {
+        map.removeLayer(current);
+      }
+
+      var timestamp = new Date(point.timestamp * 1000);
+
+      var html =
+        "<b>" + escapeHtml(callsign) + "</b><br>" +
+        "Position " + (index + 1) + " of " + history.length + "<br>" +
+        "Received: " + escapeHtml(timestamp.toLocaleString()) + "<br>" +
+        "Latitude: " + Number(point.latitude).toFixed(5) + "<br>" +
+        "Longitude: " + Number(point.longitude).toFixed(5);
+
+      var marker = L.circleMarker(
+        [point.latitude, point.longitude],
+        {
+          radius: 5,
+          color: "#3388ff",
+          fillColor: "#ffffff",
+          fillOpacity: 1,
+          weight: 2,
+          bubblingMouseEvents: false
+        }
+      );
+
+      marker.positionTimestamp = point.timestamp;
+      marker.positionLat = point.latitude;
+      marker.positionLon = point.longitude;
+
+      marker.bindPopup(html);
+
+      marker.on("click", function () {
+        marker.setRadius(7);
+      });
+
+      marker.on("popupclose", function () {
+        marker.setRadius(5);
+      });
+
+      marker.addTo(map);
+      existing[index] = marker;
+    });
+
+    // Remove markers no longer present in the history.
+    while (existing.length > history.length) {
+      map.removeLayer(existing.pop());
+    }
+
+    // Don't show historical circles for a single position.
+    if (history.length < 2) {
+      existing.forEach(function (marker) {
+        map.removeLayer(marker);
+      });
+      trailPoints[callsign] = [];
+    }
+  }
+
   async function refresh() {
     try {
       var res = await fetch(authedUrl("/stations"));
@@ -1541,6 +1635,8 @@ MAP_HTML = r"""<!doctype html>
           map.removeLayer(trails[station.callsign]);
           delete trails[station.callsign];
         }
+
+        updateTrailPoints(station);
       });
 
       Object.keys(markers).forEach(function (callsign) {
@@ -1555,6 +1651,16 @@ MAP_HTML = r"""<!doctype html>
         if (!seen[callsign]) {
           map.removeLayer(trails[callsign]);
           delete trails[callsign];
+        }
+      });
+
+      // Remove historical position markers for expired stations.
+      Object.keys(trailPoints).forEach(function (callsign) {
+        if (!seen[callsign]) {
+          trailPoints[callsign].forEach(function (marker) {
+            map.removeLayer(marker);
+          });
+          delete trailPoints[callsign];
         }
       });
 
