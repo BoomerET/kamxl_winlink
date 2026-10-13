@@ -140,4 +140,3 @@ class StationTracker:
             del self._stations[callsign]
 
         return len(expired)
-
