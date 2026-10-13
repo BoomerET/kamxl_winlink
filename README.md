@@ -1,5 +1,13 @@
 # kamxl
 
+<p align="center">
+  <img
+    src="certified-95.9-ai.png"
+    alt="Certified 95.9% AI"
+    width="200"
+  />
+</p>
+
 A Python library for controlling the Kantronics KAM-XL packet TNC in
 Terminal Mode -- a clean, Pythonic API instead of hand-typed terminal
 commands.
