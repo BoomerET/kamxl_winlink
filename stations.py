@@ -6,8 +6,10 @@ Milestone 7 (APRS mapping). In-memory only, by explicit design choice
 (offered against persisting to SQLite; in-memory won for the MVP) --
 restarting the daemon starts the station list over empty, and it
 rebuilds naturally as new position traffic arrives, the same way a
-real APRS station's own screen would after a power cycle. No history
-is kept beyond each station's single latest-known position.
+real APRS station's own screen would after a power cycle.
+Each station retains its latest known position and up to 25 distinct
+consecutive positions for map trails. History is held in memory only
+and is discarded when the station expires or the daemon restarts.
 
 StationTracker.update() is meant to be fed every Packet the daemon's
 monitor loop sees (see kamxl_daemon.py) -- it's cheap to call for
@@ -18,11 +20,18 @@ immediately for anything that isn't a decodable position report.
 import time
 
 from dataclasses import dataclass
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 from aprs import parse_position
 from packet import Packet
 
+@dataclass(frozen=True)
+class PositionPoint:
+    """One APRS position in a station's trail."""
+
+    latitude: float
+    longitude: float
+    timestamp: float
 
 @dataclass(frozen=True)
 class Station:
@@ -48,12 +57,14 @@ class Station:
     comment: str
     last_heard: float
     packet_count: int
+    history: Tuple[PositionPoint, ...] = ()
 
 
 class StationTracker:
     """
     Decodes APRS position reports out of Packets and maintains one
-    Station per source callsign, keeping only the most recent report.
+    Station per source callsign, retaining the latest report and a
+    bounded history of up to 25 distinct positions.
 
     Only ordinary AX.25 UI frames (Packet.frame_type is None or "UI")
     are ever considered -- connect-session control/supervisory frames
@@ -90,6 +101,21 @@ class StationTracker:
 
         existing = self._stations.get(packet.source)
         packet_count = (existing.packet_count + 1) if existing else 1
+        history = existing.history if existing else ()
+
+        point = PositionPoint(
+            latitude=position.latitude,
+            longitude=position.longitude,
+            timestamp=now,
+        )
+
+        # Avoid adding identical consecutive positions.
+        if (
+            not history
+            or history[-1].latitude != point.latitude
+            or history[-1].longitude != point.longitude
+        ):
+            history = (*history, point)[-25:]
 
         station = Station(
             callsign=packet.source,
@@ -100,6 +126,7 @@ class StationTracker:
             comment=position.comment,
             last_heard=now,
             packet_count=packet_count,
+            history=history,
         )
 
         self._stations[packet.source] = station

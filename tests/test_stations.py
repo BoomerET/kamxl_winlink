@@ -161,5 +161,63 @@ class StationTrackerTests(unittest.TestCase):
         self.assertIsNone(tracker.get_station("OLD-1"))
         self.assertIsNotNone(tracker.get_station("NEW-1"))
 
+    def test_history_tracks_movement(self):
+        tracker = StationTracker()
+
+        tracker.update(
+            _ui_packet("N5BA-9", "!4903.50N/07201.75W-"),
+            now=1000.0,
+        )
+        station = tracker.update(
+            _ui_packet("N5BA-9", "!4904.50N/07202.75W-"),
+            now=2000.0,
+        )
+
+        self.assertEqual(len(station.history), 2)
+        self.assertEqual(
+            [p.timestamp for p in station.history],
+            [1000.0, 2000.0],
+        )
+        self.assertNotEqual(
+            station.history[0].latitude,
+            station.history[1].latitude,
+        )
+
+    def test_history_ignores_duplicate_positions(self):
+        tracker = StationTracker()
+
+        tracker.update(
+            _ui_packet("N5BA-9", "!4903.50N/07201.75W-"),
+            now=1000.0,
+        )
+        station = tracker.update(
+            _ui_packet("N5BA-9", "!4903.50N/07201.75W-"),
+            now=2000.0,
+        )
+
+        self.assertEqual(len(station.history), 1)
+        self.assertEqual(station.history[0].timestamp, 1000.0)
+        self.assertEqual(station.last_heard, 2000.0)
+        self.assertEqual(station.packet_count, 2)
+
+    def test_history_limited_to_25_positions(self):
+        tracker = StationTracker()
+
+        for minute in range(30):
+            tracker.update(
+                _ui_packet(
+                    "N5BA-9",
+                    f"!49{minute:02d}.00N/07201.75W-",
+                ),
+                now=1000.0 + minute,
+            )
+
+        station = tracker.get_station("N5BA-9")
+
+        self.assertEqual(len(station.history), 25)
+        self.assertEqual(station.history[0].timestamp, 1005.0)
+        self.assertEqual(station.history[-1].timestamp, 1029.0)
+        self.assertEqual(station.packet_count, 30)
+
 if __name__ == "__main__":
     unittest.main()

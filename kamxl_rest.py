@@ -1369,6 +1369,7 @@ MAP_HTML = r"""<!doctype html>
   }).addTo(map);
 
   var markers = {};
+  var trails = {};
   var fitDone = false;
 
   function escapeHtml(text) {
@@ -1515,12 +1516,45 @@ MAP_HTML = r"""<!doctype html>
           var marker = icon ? L.marker(latLng, { icon: icon }) : L.marker(latLng);
           markers[station.callsign] = marker.addTo(map).bindPopup(popupHtml(station));
         }
+        // Draw a trail when at least two distinct positions exist.
+        var history = station.history || [];
+
+        if (history.length >= 2) {
+          var points = history.map(function (point) {
+            return [point.latitude, point.longitude];
+          });
+
+          if (trails[station.callsign]) {
+            trails[station.callsign].setLatLngs(points);
+          } else {
+            trails[station.callsign] = L.polyline(points, {
+              color: "#3388ff",
+              weight: 3,
+              opacity: 0.75,
+              interactive: false
+            }).addTo(map);
+
+            // Keep the trail underneath station markers.
+            trails[station.callsign].bringToBack();
+          }
+        } else if (trails[station.callsign]) {
+          map.removeLayer(trails[station.callsign]);
+          delete trails[station.callsign];
+        }
       });
 
       Object.keys(markers).forEach(function (callsign) {
         if (!seen[callsign]) {
           map.removeLayer(markers[callsign]);
           delete markers[callsign];
+        }
+      });
+
+      // Remove trails belonging to expired stations.
+      Object.keys(trails).forEach(function (callsign) {
+        if (!seen[callsign]) {
+          map.removeLayer(trails[callsign]);
+          delete trails[callsign];
         }
       });
 

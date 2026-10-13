@@ -1200,6 +1200,27 @@ class StationsEndpointTests(RestTestCase):
 
         self.assertEqual(response.status, 401)
 
+    def test_stations_list_includes_position_history(self):
+        daemon, port = self.start_stack(ScriptedSerial({}))
+        self._seed_station(daemon)
+
+        status, payload = self.request(port, "GET", "/stations")
+
+        self.assertEqual(status, 200)
+
+        station = payload["result"][0]
+        history = station["history"]
+
+        self.assertEqual(len(history), 1)
+        self.assertAlmostEqual(
+            history[0]["latitude"], station["latitude"]
+        )
+        self.assertAlmostEqual(
+            history[0]["longitude"], station["longitude"]
+        )
+        self.assertEqual(
+            history[0]["timestamp"], station["last_heard"]
+        )
 
 class RoutingErrorTests(RestTestCase):
     def test_unknown_route_is_404(self):
