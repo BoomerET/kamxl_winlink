@@ -987,7 +987,7 @@ class StationsEndpointTests(RestTestCase):
             raw="",
             frame_type="UI",
         )
-        daemon._stations.update(packet, now=1000.0)
+        daemon._stations.update(packet)
 
     def test_stations_list(self):
         daemon, port = self.start_stack(ScriptedSerial({}))
@@ -1021,6 +1021,54 @@ class StationsEndpointTests(RestTestCase):
         _, port = self.start_stack(ScriptedSerial({}))
 
         status, payload = self.request(port, "GET", "/stations/NOBODY")
+
+        self.assertEqual(status, 200)
+        self.assertIsNone(payload["result"])
+    def test_expired_station_not_listed(self):
+        daemon, port = self.start_stack(ScriptedSerial({}))
+        self._seed_station(daemon)
+
+        # Make the station older than the one-hour expiration limit.
+        with daemon._stations_lock:
+            daemon._stations.update(
+                Packet(
+                    source="N5BA-9",
+                    destination="APRS",
+                    digipeaters=(),
+                    port=1,
+                    payload="!4903.50N/07201.75W-Test comment",
+                    raw="",
+                    frame_type="UI",
+                ),
+                now=1000.0,
+            )
+
+        status, payload = self.request(port, "GET", "/stations")
+
+        self.assertEqual(status, 200)
+        self.assertEqual(payload["result"], [])
+
+    def test_expired_station_get_returns_none(self):
+        daemon, port = self.start_stack(ScriptedSerial({}))
+        self._seed_station(daemon)
+        with daemon._stations_lock:
+            daemon._stations.update(
+                Packet(
+                    source="N5BA-9",
+                    destination="APRS",
+                    digipeaters=(),
+                    port=1,
+                    payload="!4903.50N/07201.75W-Test comment",
+                    raw="",
+                    frame_type="UI",
+                ),
+                now=1000.0,
+            )
+
+
+        status, payload = self.request(
+            port, "GET", "/stations/N5BA-9"
+        )
 
         self.assertEqual(status, 200)
         self.assertIsNone(payload["result"])

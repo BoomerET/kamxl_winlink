@@ -140,6 +140,26 @@ class StationTrackerTests(unittest.TestCase):
         self.assertIsNotNone(station)
         self.assertGreater(station.last_heard, 0)
 
+    def test_expire_stale_stations(self):
+        tracker = StationTracker()
+
+        tracker.update(
+            _ui_packet("OLD-1", "!4903.50N/07201.75W-"),
+            now=1000.0,
+        )
+        tracker.update(
+            _ui_packet("NEW-1", "!4900.00N/07200.00W-"),
+            now=4000.0,
+        )
+
+        removed = tracker.expire_stale(
+            max_age_seconds=3600,
+            now=5000.0,
+        )
+
+        self.assertEqual(removed, 1)
+        self.assertIsNone(tracker.get_station("OLD-1"))
+        self.assertIsNotNone(tracker.get_station("NEW-1"))
 
 if __name__ == "__main__":
     unittest.main()

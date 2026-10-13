@@ -116,3 +116,28 @@ class StationTracker:
 
     def get_station(self, callsign: str) -> Optional[Station]:
         return self._stations.get(callsign)
+
+    def expire_stale(
+        self, max_age_seconds: float, now: Optional[float] = None
+    ) -> int:
+        """Remove stations older than the specified age.
+
+        Returns the number of stations removed.
+        """
+        if max_age_seconds < 0:
+            raise ValueError("max_age_seconds must be non-negative")
+
+        if now is None:
+            now = time.time()
+
+        expired = [
+            callsign
+            for callsign, station in self._stations.items()
+            if now - station.last_heard > max_age_seconds
+        ]
+
+        for callsign in expired:
+            del self._stations[callsign]
+
+        return len(expired)
+

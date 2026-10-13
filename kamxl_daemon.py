@@ -386,16 +386,17 @@ class KAMDaemon:
 
     def _m_stations_list(self, params: Dict[str, Any]) -> List[Dict[str, Any]]:
         with self._stations_lock:
+            self._stations.expire_stale(max_age_seconds=3600)
             stations = self._stations.list_stations()
 
         return [dataclasses.asdict(station) for station in stations]
 
     def _m_stations_get(self, params: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         with self._stations_lock:
+            self._stations.expire_stale(max_age_seconds=3600)
             station = self._stations.get_station(params["callsign"])
 
         return dataclasses.asdict(station) if station is not None else None
-
     # -----------------------------------------------------------------------
     # Monitor broadcast
     # -----------------------------------------------------------------------
