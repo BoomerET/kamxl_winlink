@@ -2,7 +2,7 @@
 
 <p align="center">
   <img
-    src="certified-95.9-ai.png"
+    src="examples/certified-95.9-ai.png"
     alt="Certified 95.9% AI"
     width="200"
   />
