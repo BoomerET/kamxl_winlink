@@ -34,6 +34,58 @@ pip install -e .
 Requires Python 3.8+ and [pyserial](https://pypi.org/project/pyserial/),
 which `pip install -e .` pulls in automatically.
 
+### Persistent Serial Device (Linux)
+
+Linux may assign different device names to USB serial adapters
+after reconnecting or rebooting. A udev rule provides a stable
+device name such as `/dev/kam-xl`.
+
+Identify your USB serial adapter:
+
+```bash
+ls -l /dev/serial/by-id/
+udevadm info -q property -n /dev/ttyUSB0 | grep -E 'ID_VENDOR_ID|ID_MODEL_ID|ID_SERIAL_SHORT'
+```
+
+Create `/etc/udev/rules.d/99-kam-xl.rules`:
+
+```udev
+SUBSYSTEM=="tty", ATTRS{idVendor}=="0403", ATTRS{idProduct}=="6001", ATTRS{serial}=="A10LK78T", SYMLINK+="kam-xl"
+```
+
+Replace the identifiers with those reported for your own adapter.
+The values above identify a specific FTDI FT232R USB serial adapter.
+
+Reload udev and verify the device:
+
+```bash
+sudo udevadm control --reload-rules
+sudo udevadm trigger --subsystem-match=tty
+ls -l /dev/kam-xl
+```
+
+Use the stable device name in Python:
+
+```python
+from kamxl import KAMXL
+
+kam = KAMXL("/dev/kam-xl")
+try:
+    kam.connect()
+    print(kam.get("MYCALL"))
+finally:
+    kam.disconnect()
+```
+
+For the background daemon, set the following in `.env`:
+
+```dotenv
+KAMXL_PORT=/dev/kam-xl
+```
+
+The library accepts an explicit serial port on all platforms.
+The daemon requires `--port` or `KAMXL_PORT` rather than
+silently selecting a serial device.
 ## Status
 
 Actively developed and tested against real hardware (Kantronics
