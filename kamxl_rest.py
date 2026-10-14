@@ -199,6 +199,9 @@ DASHBOARD_HTML = """<!doctype html>
     <h2>KAM-XL Link</h2>
     <div class="big"><span id="statusDot" class="checking">checking...</span></div>
     <div class="sub" id="statusDetail"></div>
+    <div class="sub" id="receptionHealth" role="status" aria-live="polite">
+      Reception: checking...
+    </div>
     <div class="sub" id="diagnosticsDetail">
       Waiting for APRS diagnostics...
     </div>
@@ -391,7 +394,7 @@ DASHBOARD_HTML = """<!doctype html>
   
     activitySummary.textContent =
       "Packets in last 60 minutes: " + total +
-      " | Peak minute: " + maxPackets + " packets";
+      " | Peak minute: " + peakPackets + " packets";
   }
 
   function formatUptime(seconds) {
@@ -405,6 +408,31 @@ DASHBOARD_HTML = """<!doctype html>
     return secs + "s";
   }
 
+  function updateReceptionHealth(connected, diag) {
+    var element = document.getElementById("receptionHealth");
+
+    if (!connected) {
+      element.textContent = "Reception: Disconnected";
+      return;
+    }
+
+    if (!diag) {
+      element.textContent = "Reception: Unknown (diagnostics unavailable)";
+      return;
+    }
+
+    var packets = Number(diag.packets_last_5m || 0);
+    var uptime = Number(diag.uptime_seconds || 0);
+
+    if (packets > 0) {
+      element.textContent = "Reception: Receiving (last 5 minutes)";
+    } else if (diag.last_packet_at == null && uptime < 300) {
+      element.textContent = "Reception: Waiting for first packet";
+    } else {
+      element.textContent = "Reception: Quiet (no packets in 5 minutes)";
+    }
+  }  
+
   async function refreshStatus() {
     try {
       var status = await apiGet("/status");
@@ -415,6 +443,7 @@ DASHBOARD_HTML = """<!doctype html>
         status.port + " -- " + status.monitor_subscribers +
         " monitor subscriber" + (status.monitor_subscribers === 1 ? "" : "s");
       var diag = status.diagnostics;
+      updateReceptionHealth(status.connected, diag);
 
       if (diag) {
         renderActivityHistory(diag.activity_history);
@@ -445,6 +474,8 @@ DASHBOARD_HTML = """<!doctype html>
       statusDetail.textContent = err.message || String(err);
       diagnosticsDetail.textContent = "Diagnostics unavailable";
       renderActivityHistory(null);
+      document.getElementById("receptionHealth").textContent =
+        "Reception: Unavailable (daemon unreachable)";
     }
   }
 
