@@ -199,6 +199,38 @@ class PingStatusTests(DaemonTestCase):
             after["uptime_seconds"],
             before["uptime_seconds"],
         )
+    def test_packet_receive_rates(self):
+        from unittest.mock import patch
+
+        daemon, socket_path = self.start_daemon(ScriptedSerial({}))
+
+        # Test the rolling-window calculation without relying on
+        # real time or waiting five minutes.
+        with daemon._stats_lock:
+            daemon._recent_packet_times.clear()
+            daemon._recent_packet_times.extend([
+                700.0,   # Older than five minutes
+                750.0,   # Inside five minutes, outside one minute
+                950.0,   # Inside one minute
+                990.0,   # Inside one minute
+            ])
+
+        with patch("kamxl_daemon.time.monotonic", return_value=1000.0):
+            status = daemon._m_status({})
+
+        diag = status["diagnostics"]
+
+        self.assertEqual(diag["packets_last_1m"], 2)
+        self.assertEqual(diag["packets_last_5m"], 3)
+        self.assertEqual(diag["rate_1m"], 2.0)
+        self.assertEqual(diag["rate_5m"], 0.6)
+
+        # Verify old timestamps are pruned.
+        with daemon._stats_lock:
+            self.assertEqual(
+                list(daemon._recent_packet_times),
+                [750.0, 950.0, 990.0],
+            )
 
 class TypedCommandTests(DaemonTestCase):
     def test_get_typed_multiport_int(self):

@@ -283,6 +283,8 @@ DASHBOARD_HTML = """<!doctype html>
 
         diagnosticsDetail.textContent =
           "Packets: " + diag.packets_received +
+          " | 1m: " + Number(diag.rate_1m || 0).toFixed(1) + "/min" +
+          " | 5m: " + Number(diag.rate_5m || 0).toFixed(1) + "/min" +
           " | " + (portCounts || "No packets yet") +
           " | Last heard: " + lastHeard +
           " | Uptime: " + formatUptime(diag.uptime_seconds);

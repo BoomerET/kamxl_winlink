@@ -53,6 +53,7 @@ from kamxl import KAMXL, KAMError
 from packet import Packet, PacketParser
 from stations import StationTracker
 from winlink import OutgoingMessage
+from collections import deque
 
 
 DEFAULT_SOCKET_PATH = "/tmp/kamxl.sock"
@@ -109,6 +110,9 @@ class KAMDaemon:
         self._packets_received = 0
         self._packets_by_port: Dict[int, int] = {}
         self._last_packet_at: Optional[float] = None
+
+        # Monotonic timestamps of packets received within the last 5 minutes.
+        self._recent_packet_times = deque()
 
         self._methods: Dict[str, Callable[[Dict[str, Any]], Any]] = {
             "ping": self._m_ping,
@@ -171,6 +175,15 @@ class KAMDaemon:
             packets_received = self._packets_received
             packets_by_port = dict(self._packets_by_port)
             last_packet_at = self._last_packet_at
+            now = time.monotonic()
+            self._prune_packet_times(now)
+
+            packets_last_1m = sum(
+                1 for timestamp in self._recent_packet_times
+                if timestamp > now - 60.0
+            )
+
+            packets_last_5m = len(self._recent_packet_times)
 
         return {
             "connected": connected,
@@ -181,7 +194,11 @@ class KAMDaemon:
                 "packets_by_port": packets_by_port,
                 "last_packet_at": last_packet_at,
                 "started_at": self._started_at,
-                "uptime_seconds": time.monotonic() - self._started_monotonic,
+                "uptime_seconds": now - self._started_monotonic,
+                "packets_last_1m": packets_last_1m,
+                "packets_last_5m": packets_last_5m,
+                "rate_1m": float(packets_last_1m),
+                "rate_5m": round(packets_last_5m / 5.0, 2),
             },
         }
 
@@ -497,13 +514,31 @@ class KAMDaemon:
         for packet in parser.flush():
             self._handle_packet(packet)
 
+    def _prune_packet_times(self, now: float) -> None:
+        """Remove packet timestamps outside the rolling five-minute window.
+ 
+        Caller must hold _stats_lock.
+        """
+        cutoff = now - 300.0
+
+        while (
+            self._recent_packet_times
+            and self._recent_packet_times[0] <= cutoff
+        ):
+            self._recent_packet_times.popleft()    
+
     def _handle_packet(self, packet: Packet) -> None:
+        now = time.monotonic()
+
         with self._stats_lock:
             self._packets_received += 1
             self._packets_by_port[packet.port] = (
                 self._packets_by_port.get(packet.port, 0) + 1
             )
             self._last_packet_at = time.time()
+
+            self._recent_packet_times.append(now)
+            self._prune_packet_times(now)
     
         with self._stations_lock:
             self._stations.update(packet)
