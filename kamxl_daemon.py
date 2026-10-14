@@ -43,6 +43,7 @@ import signal
 import socketserver
 import threading
 import time
+import serial
 
 from typing import Any, Callable, Dict, List, Optional, Set
 
@@ -441,6 +442,16 @@ class KAMDaemon:
             # wire itself -- see docs/daemon.md's "Known limitation".
             with self._kam_lock:
                 text = self.kam.read_available()
+
+            try:
+                with self._kam_lock:
+                    text = self.kam.read_available()
+            except (OSError, serial.SerialException):
+                logger.exception(
+                    "KAM-XL serial connection lost; "
+                    "exiting so systemd can restart the daemon"
+                )
+                os._exit(1)
 
             if text:
                 # Logged before parsing, unconditionally on any
