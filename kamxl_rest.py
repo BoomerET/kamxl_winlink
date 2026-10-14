@@ -261,9 +261,44 @@ DASHBOARD_HTML = """<!doctype html>
     font-family: monospace;
   }
 
+  .receptionChartRow {
+    margin-bottom: 10px;
+  }
+
+  .receptionBarTrack {
+    height: 8px;
+    background: #1c3030;
+    border-radius: 4px;
+    overflow: hidden;
+    margin-top: 4px;
+  }
+
+  .receptionBarFill {
+    height: 100%;
+    background: #50fa7b;
+    border-radius: 4px;
+    transition: width 0.4s ease;
+  }
+
+  #rxTopDigis .receptionBarFill {
+    background: #22a4a7;
+  }
+
   .receptionRow span:last-child {
     color: #50fa7b;
     font-variant-numeric: tabular-nums;
+  }
+
+  .receptionStationLink {
+    color: inherit;
+    text-decoration: none;
+    border-bottom: 1px dotted #50fa7b;
+  }
+
+  .receptionStationLink:hover,
+  .receptionStationLink:focus-visible {
+    color: #50fa7b;
+    text-decoration: underline;
   }
 
   #rxStatsStatus {
@@ -688,7 +723,7 @@ DASHBOARD_HTML = """<!doctype html>
     }
   });
 
-  function renderReceptionRows(elementId, entries) {
+  function renderReceptionRows(elementId, entries, linkToMap) {
     var element = document.getElementById(elementId);
 
     if (!entries || !entries.length) {
@@ -696,11 +731,39 @@ DASHBOARD_HTML = """<!doctype html>
       return;
     }
 
+    var maxPackets = Math.max.apply(null, entries.map(function(entry) {
+      return Number(entry.packets) || 0;
+    }));
+
     element.innerHTML = entries.map(function(entry) {
-      return '<div class="receptionRow">' +
-        '<span>' + escapeHtml(entry.callsign) + '</span>' +
-        '<span>' + Number(entry.packets).toLocaleString() + '</span>' +
-        '</div>';
+      var packets = Number(entry.packets) || 0;
+      var percentage = maxPackets > 0
+        ? Math.max(0, Math.min(100, packets / maxPackets * 100))
+        : 0;
+      var callsign = escapeHtml(entry.callsign);
+      var label = callsign;
+
+      if (linkToMap) {
+        var url = authedUrl(
+          "/map?station=" + encodeURIComponent(entry.callsign)
+        );
+
+        label = '<a class="receptionStationLink" href="' +
+          escapeHtml(url) +
+          '" target="_blank" rel="noopener noreferrer">' +
+          callsign + '</a>';
+      }
+
+      return '<div class="receptionChartRow">' +
+        '<div class="receptionRow">' +
+          '<span>' + label + '</span>' +
+          '<span>' + packets.toLocaleString() + '</span>' +
+        '</div>' +
+        '<div class="receptionBarTrack">' +
+          '<div class="receptionBarFill" style="width:' +
+            percentage.toFixed(1) + '%"></div>' +
+        '</div>' +
+      '</div>';
     }).join("");
   }
 
@@ -722,8 +785,8 @@ DASHBOARD_HTML = """<!doctype html>
       document.getElementById("rxDirect").textContent =
         Number(stats.no_identified_digipeater_packets).toLocaleString();
 
-      renderReceptionRows("rxTopSources", stats.top_sources);
-      renderReceptionRows("rxTopDigis", stats.top_digipeaters);
+      renderReceptionRows("rxTopSources", stats.top_sources, true);
+      renderReceptionRows("rxTopDigis", stats.top_digipeaters, false);
 
       statusElement.textContent = "";
     } catch (err) {
@@ -1836,6 +1899,7 @@ MAP_HTML = r"""<!doctype html>
   </span>
 </div>
 <div id="empty" style="display:none;">No stations heard yet.</div>
+<div id="stationSelectionStatus" role="status" hidden></div>
 <div id="map"></div>
 <aside id="stationDetails" hidden aria-label="APRS station details">
   <button id="closeStationDetails" type="button">Close</button>
@@ -1847,6 +1911,9 @@ MAP_HTML = r"""<!doctype html>
 (function () {
   var params = new URLSearchParams(location.search);
   var token = params.get("token") || "";
+  var requestedStation = (params.get("station") || "").trim().toUpperCase();
+  var stationSelectionHandled = false;
+  var stationSelectionStatus = document.getElementById("stationSelectionStatus");
   var empty = document.getElementById("empty");
   var stationCount = document.getElementById("stationCount");
 
@@ -2422,6 +2489,27 @@ MAP_HTML = r"""<!doctype html>
         });
 
         map.fitBounds(bounds, { maxZoom: 12, padding: [30, 30] });
+      }
+      if (requestedStation && !stationSelectionHandled) {
+        var selectedMarker = markers[requestedStation];
+
+        if (selectedMarker) {
+          stationSelectionHandled = true;
+
+          var selectedLatLng = selectedMarker.getLatLng();
+          map.setView(selectedLatLng, 13);
+          selectedMarker.openPopup();
+          showStationDetails(requestedStation);
+
+          stationSelectionStatus.hidden = true;
+        } else {
+          stationSelectionStatus.hidden = false;
+          stationSelectionStatus.textContent =
+            requestedStation +
+            " has no known position on this map. " +
+            "The station may have transmitted AX.25 packets " +
+            "without an APRS position report.";
+        }
       }
     } catch (err) {
       // Transient fetch failure -- next poll will retry.
