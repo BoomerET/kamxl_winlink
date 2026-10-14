@@ -362,10 +362,9 @@ class KAMXL:
             self.serial.in_waiting
         )
 
-        return data.decode(
-            "ascii",
-            errors="replace"
-        )
+        # Preserve all 256 byte values in monitored AX.25 payloads.
+        # Mic-E position reports can contain bytes above 0x7F.
+        return data.decode("latin-1")
 
     def listen(
         self,

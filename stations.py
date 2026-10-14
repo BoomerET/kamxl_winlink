@@ -86,12 +86,12 @@ class StationTracker:
         Returns the resulting Station if the packet's payload decoded
         as an APRS position report, None otherwise (not a UI frame,
         not APRS, or a position format not yet supported -- e.g.
-        compressed -- see aprs.py).
+        -- see aprs.py).
         """
         if packet.frame_type not in (None, "UI"):
             return None
 
-        position = parse_position(packet.payload)
+        position = parse_position(packet.payload, destination=packet.destination)
 
         if position is None:
             return None

@@ -207,6 +207,89 @@ class ParsePositionCompressedTests(unittest.TestCase):
         # digit-free) not a valid uncompressed one either.
         self.assertIsNone(parse_position("=/5L!!<*"))
 
+class ParsePositionMicETests(unittest.TestCase):
+    """
+    Mic-E position decoding.
+
+    Real RF captures from the KAM-XL are retained as regression
+    fixtures. Coordinate expectations must be independently
+    verified before treating a successful decode as correct.
+    """
+
+    def test_mice_real_rf_vehicle(self):
+        payload = '`|QWl ,>/`"5j}!DCARES_%'
+
+        position = parse_position(
+            payload,
+            destination="S3PU5W",
+        )
+
+        self.assertIsNotNone(position)
+        self.assertAlmostEqual(
+            position.latitude, 33.09283333333333, places=6
+        )
+        self.assertAlmostEqual(
+            position.longitude, -96.89316666666667, places=6
+        )
+        self.assertEqual(position.symbol_table, "/")
+        self.assertEqual(position.symbol_code, ">")
+
+    def test_mice_real_rf_with_dao_extension(self):
+        payload = '`|QWl"\x7fv/\'"5h}|&P%i($|!w3h!|3'
+
+        position = parse_position(
+            payload,
+            destination="S3PU5W",
+        )
+
+        self.assertIsNotNone(position)
+        self.assertAlmostEqual(
+            position.latitude, 33.09283333333333, places=6
+        )
+        self.assertAlmostEqual(
+            position.longitude, -96.89316666666667, places=6
+        )
+        self.assertEqual(position.symbol_table, "/")
+        self.assertEqual(position.symbol_code, "v")
+
+    def test_mice_requires_destination(self):
+        payload = '`|SFl#)>/`"5s}!DCARES_%'
+
+        self.assertIsNone(parse_position(payload))
+
+    def test_mice_rejects_short_payload(self):
+        self.assertIsNone(
+            parse_position("`abc", destination="S3QS2V")
+        )
+
+    def test_mice_rejects_invalid_destination(self):
+        self.assertIsNone(
+            parse_position(
+                '`|SFl#)>/`"5s}!DCARES_%',
+                destination="APRS",
+            )
+        )
+
+    def test_mice_real_rf_capture(self):
+        payload = '`|SFl#)>/`"5s}!DCARES_%'
+
+        position = parse_position(
+            payload,
+            destination="S3QS2V",
+        )
+
+        self.assertIsNotNone(position)
+        self.assertAlmostEqual(position.latitude, 33.221, places=6)
+        self.assertAlmostEqual(
+            position.longitude, -96.92366666666666, places=6
+        )
+        self.assertEqual(position.symbol_table, "/")
+        self.assertEqual(position.symbol_code, ">")
+        self.assertGreaterEqual(position.latitude, -90)
+        self.assertLessEqual(position.latitude, 90)
+        self.assertGreaterEqual(position.longitude, -180)
+        self.assertLessEqual(position.longitude, 180)
+        self.assertEqual(position.raw, payload)
 
 class ParsePositionNonPositionTests(unittest.TestCase):
     def test_empty_payload(self):

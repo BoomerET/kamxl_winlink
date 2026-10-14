@@ -10,13 +10,19 @@ usual caution, treat it as unverified until checked against a real
 captured live session (milestone 5's HEADER_RE bug is the reminder of
 why that matters even for well-documented formats).
 
-MVP SCOPE: position reports only. An APRS payload's first character
-(the "data type identifier") says what kind of packet it is --
-position, status, message, object, weather, telemetry, and more. Only
-the position report identifiers ('!', '=', '/', '@') are handled here;
-everything else returns None from parse_position(), same as a line
-pbbs.py's parser doesn't recognize -- a deliberate "skip, don't guess"
-choice.
+MVP SCOPE: position reports only. Supports uncompressed and
+compressed APRS position reports ('!', '=', '/', '@') and Mic-E
+position reports ('`', "'"). Mic-E requires the AX.25 destination
+address because its latitude and hemisphere flags are encoded there.
+
+Other APRS packet types (status, messages, objects, weather,
+telemetry, etc.) are not decoded as positions.
+
+Mic-E position decoding extracts latitude, longitude, symbol table,
+symbol code, and the remaining raw comment. Optional Mic-E
+speed/course, altitude, telemetry, status, and DAO precision
+extensions are not decoded into separate fields. DAO refinements
+are not applied to the returned coordinates.
 
 COMPRESSED POSITIONS: APRS has two position encodings --
 human-readable "uncompressed" (degrees-minutes text, e.g. "4903.50N")
@@ -271,8 +277,131 @@ _POSITION_WITH_TIMESTAMP_RE = re.compile(
     r"(?P<comment>.*)$"
 )
 
+def _mice_destination_digits(destination: str) -> Optional[str]:
+    """
+    Extract six latitude digits from a Mic-E destination address.
 
-def parse_position(payload: str) -> Optional[AprsPosition]:
+    0-9 represent digits directly.
+    A-J and P-Y encode digits 0-9.
+    K, L, and Z are ambiguity indicators, treated as zero.
+    """
+    if len(destination) != 6:
+        return None
+
+    digits = []
+
+    for char in destination.upper():
+        if "0" <= char <= "9":
+            digits.append(char)
+        elif "A" <= char <= "J":
+            digits.append(str(ord(char) - ord("A")))
+        elif "P" <= char <= "Y":
+            digits.append(str(ord(char) - ord("P")))
+        elif char in "KLZ":
+            digits.append("0")
+        else:
+            return None
+
+    return "".join(digits)
+
+def _decode_mice_position(
+    payload: str,
+    destination: str,
+) -> Optional[AprsPosition]:
+    """
+    Decode an APRS Mic-E position report.
+
+    Latitude and hemisphere flags are encoded in the destination
+    address; longitude and symbol information are in the payload.
+    """
+    # Mic-E requires six encoded destination characters and at least
+    # nine information-field characters, including the data type.
+    if len(destination) != 6 or len(payload) < 9:
+        return None
+
+    # Reject non-byte characters: monitor data should have been
+    # decoded losslessly using Latin-1.
+    if any(ord(char) > 255 for char in payload):
+        return None
+
+    digits = _mice_destination_digits(destination)
+    if digits is None:
+        return None
+
+    degrees = int(digits[:2])
+    minutes = int(digits[2:4])
+    hundredths = int(digits[4:6])
+
+    if degrees > 90 or minutes >= 60 or hundredths >= 100:
+        return None
+
+    latitude = degrees + (minutes + hundredths / 100.0) / 60.0
+
+    # Destination character 4 encodes the latitude hemisphere.
+    # P-Y indicates north; 0-9 and A-L indicate south.
+    if destination[3].upper() not in "PQRSTUVWXY":
+        latitude = -latitude
+
+
+    # Mic-E longitude occupies payload bytes 1 through 3.
+    # Each encoded byte has an offset of 28.
+    longitude_degrees = ord(payload[1]) - 28
+    longitude_minutes = ord(payload[2]) - 28
+    longitude_hundredths = ord(payload[3]) - 28
+
+    # Reject malformed Mic-E longitude fields before normalization.
+    if not (
+        0 <= longitude_degrees <= 199
+        and 0 <= longitude_minutes <= 119
+        and 0 <= longitude_hundredths <= 99
+    ):
+        return None
+
+    # Destination character 5 indicates the +100 degree offset.
+    if destination[4].upper() in "PQRSTUVWXY":
+        longitude_degrees += 100
+
+    # Normalize the Mic-E longitude degree encoding.
+    if 180 <= longitude_degrees <= 189:
+        longitude_degrees -= 80
+    elif longitude_degrees >= 190:
+        longitude_degrees -= 190
+
+    if longitude_minutes >= 60:
+        longitude_minutes -= 60
+
+    # Reject invalid coordinates rather than plot incorrect positions.
+    if not (
+        0 <= longitude_degrees <= 180
+        and 0 <= longitude_minutes < 60
+        and 0 <= longitude_hundredths < 100
+    ):
+        return None
+
+    longitude = (
+        longitude_degrees
+        + (longitude_minutes + longitude_hundredths / 100.0) / 60.0
+    )
+
+    # Destination character 6 determines east/west longitude.
+    if destination[5].upper() in "PQRSTUVWXY":
+        longitude = -longitude
+
+    # Mic-E symbol code and symbol table occupy bytes 7 and 8.
+    return AprsPosition(
+        latitude=latitude,
+        longitude=longitude,
+        symbol_table=payload[8],
+        symbol_code=payload[7],
+        comment=payload[9:],
+        timestamp=None,
+        raw=payload,
+    )
+
+def parse_position(
+    payload: str,
+    destination: Optional[str] = None,
+) -> Optional[AprsPosition]:
     """
     Parse an AX.25 UI-frame payload as an APRS position report, either
     uncompressed or compressed (see module docstring for both).
@@ -285,6 +414,13 @@ def parse_position(payload: str) -> Optional[AprsPosition]:
     """
     if not payload:
         return None
+
+    # Mic-E encodes latitude in the AX.25 destination address
+    # and longitude in the information payload.
+    if payload[0] in ("`", "'"):
+        if destination is None:
+            return None
+        return _decode_mice_position(payload, destination)
 
     match = _POSITION_RE.match(payload)
     timestamp = None
