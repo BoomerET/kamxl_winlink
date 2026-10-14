@@ -11,5 +11,7 @@ dist/
 # reference during development.
 KAM-XL-Manual-RevE.pdf
 manual.txt
+runWebserver.sh
+runDaemon.sh
 .env
 
