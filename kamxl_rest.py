@@ -1616,6 +1616,29 @@ MAP_HTML = r"""<!doctype html>
     color: #cfc;
     cursor: pointer;
   }
+
+  .packetRecord {
+    border-top: 1px solid #345;
+    padding: 9px 0;
+    overflow-wrap: anywhere;
+  }
+
+  .packetMeta {
+    color: #9aa;
+    font-size: 11px;
+    margin-bottom: 4px;
+  }
+
+  .packetPayload {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    background: #0b1213;
+    border: 1px solid #234;
+    padding: 7px;
+    margin-top: 5px;
+    font-size: 11px;
+  }
+
 </style>
 </head>
 <body>
@@ -1843,7 +1866,40 @@ MAP_HTML = r"""<!doctype html>
             "</div>";
         });
       }
+      var packets = station.recent_packets || [];
 
+      html += "<h3>Recent APRS Packets (" + packets.length + ")</h3>";
+
+      if (!packets.length) {
+        html += "<div class='detailRow'>No recent packets available.</div>";
+      } else {
+        packets.slice().reverse().forEach(function(packet) {
+          var received = new Date(packet.timestamp * 1000).toLocaleString();
+
+          var path = packet.digipeaters && packet.digipeaters.length
+            ? packet.digipeaters.join(", ")
+            : "Direct (no digipeaters listed)";
+
+          html += "<div class='packetRecord'>";
+
+          html += "<div class='packetMeta'>" +
+            escapeHtml(received) +
+            " | " + escapeHtml(packet.frame_type || "UI") +
+            " | Port " + escapeHtml(String(packet.port)) +
+            "</div>";
+
+          html += "<div><span class='detailLabel'>Destination:</span> " +
+            escapeHtml(packet.destination) + "</div>";
+
+          html += "<div><span class='detailLabel'>Path:</span> " +
+            escapeHtml(path) + "</div>";
+
+          html += "<div class='packetPayload'>" +
+            escapeHtml(packet.payload) + "</div>";
+
+          html += "</div>";
+        });
+      }
       stationDetailsBody.innerHTML = html;
     } catch (error) {
       if (requestId !== stationDetailsRequestId) return;
