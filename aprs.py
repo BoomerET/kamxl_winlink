@@ -488,8 +488,30 @@ def parse_position(
             raw=payload,
         )
 
-    # Not uncompressed -- try the compressed format before giving up.
+    # A packet beginning with an uncompressed latitude must not
+    # fall through to compressed decoding if malformed.
+    #
+    # Otherwise, its ASCII digits may be accepted as Base91 data,
+    # creating a plausible but completely incorrect map position.
+
+    # Reject malformed uncompressed-looking positions without
+    # rejecting compressed positions with digit symbol-table overlays.
+    position_start = 1
+
+    if payload[0] in ("/", "@"):
+        position_start = 8
+
+    # Uncompressed latitude starts with DDMM.mm followed by N/S.
+    # A malformed packet may have unexpected characters after
+    # that recognizable latitude field.
+    candidate = payload[position_start:]
+
+    if re.match(r"^\d{4}\.\d{2}[NS]", candidate):
+        return None
+
+    # Not uncompressed -- try the compressed format.
     match = _COMPRESSED_POSITION_RE.match(payload)
+
     timestamp = None
 
     if match is None:

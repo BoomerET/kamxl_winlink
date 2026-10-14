@@ -365,6 +365,15 @@ class ParsePositionNonPositionTests(unittest.TestCase):
     def test_plain_text_not_a_position(self):
         self.assertIsNone(parse_position("Just some plain text"))
 
+    def test_malformed_uncompressed_not_compressed(self):
+        """Malformed uncompressed APRS must not become a false position."""
+        payload = (
+            "!3256.75NDy09709.12W# "
+            "WA0D Digi Southlake, Texas"
+        )
+
+        self.assertIsNone(parse_position(payload))
+
 
 if __name__ == "__main__":
     unittest.main()
