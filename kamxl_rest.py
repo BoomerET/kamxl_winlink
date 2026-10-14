@@ -153,6 +153,35 @@ DASHBOARD_HTML = """<!doctype html>
     white-space: nowrap;
   }
   td.subject { white-space: normal; }
+  /* APRS activity history */
+  #activityCard {
+    margin: 16px 20px;
+  }
+
+  #activityChart {
+    display: block;
+    width: 100%;
+    height: 160px;
+    margin-top: 12px;
+  }
+
+  #activityChart .activity-bar {
+    fill: #6c9;
+  }
+
+  #activityChart .activity-grid {
+    stroke: #345;
+    stroke-width: 1;
+  }
+
+  #activityChart .activity-label {
+    fill: #9ab;
+    font: 11px monospace;
+  }
+
+  #activitySummary {
+    margin-top: 8px;
+  }
 </style>
 </head>
 <body>
@@ -194,6 +223,19 @@ DASHBOARD_HTML = """<!doctype html>
     <h2>Winlink</h2>
     <div class="sub">Check or send mail from the Winlink page (needs your account password -- entered there only).</div>
     <a class="action" href="#" id="winlinkAction">Open Winlink &rarr;</a>
+  </div>
+</div>
+<div class="card" id="activityCard">
+  <h2>APRS Activity History — Last 60 Minutes</h2>
+
+  <svg id="activityChart"
+       viewBox="0 0 900 160"
+       role="img"
+       aria-label="APRS packets received per minute over the last hour">
+  </svg>
+
+  <div class="sub" id="activitySummary">
+    Waiting for APRS activity...
   </div>
 </div>
 <script>
@@ -247,6 +289,108 @@ DASHBOARD_HTML = """<!doctype html>
   var statusDetail = document.getElementById("statusDetail");
 
   var diagnosticsDetail = document.getElementById("diagnosticsDetail");
+  var activityChart = document.getElementById("activityChart");
+  var activitySummary = document.getElementById("activitySummary");
+  
+  function renderActivityHistory(history) {
+    if (!Array.isArray(history) || history.length !== 60) {
+      activityChart.replaceChildren();
+      activitySummary.textContent = "Activity history unavailable";
+      return;
+    }
+  
+    var ns = "http://www.w3.org/2000/svg";
+    var width = 900;
+    var height = 160;
+    var left = 35;
+    var right = 10;
+    var top = 10;
+    var bottom = 25;
+  
+    var plotWidth = width - left - right;
+    var plotHeight = height - top - bottom;
+  
+    var maxPackets = Math.max(1, ...history);
+    var total = history.reduce(function(sum, value) {
+      return sum + value;
+    }, 0);
+  
+    activityChart.replaceChildren();
+  
+    function addSvg(tag, attrs, text) {
+      var el = document.createElementNS(ns, tag);
+  
+      Object.entries(attrs).forEach(function(entry) {
+        el.setAttribute(entry[0], entry[1]);
+      });
+  
+      if (text !== undefined) el.textContent = text;
+      activityChart.appendChild(el);
+      return el;
+    }
+  
+    // Horizontal grid lines and packet-count labels.
+    for (var i = 0; i <= 4; i++) {
+      var y = top + (plotHeight * i / 4);
+      var value = maxPackets * (4 - i) / 4;
+  
+      addSvg("line", {
+        x1: left,
+        y1: y,
+        x2: width - right,
+        y2: y,
+        class: "activity-grid"
+      });
+  
+      addSvg("text", {
+        x: left - 6,
+        y: y + 4,
+        "text-anchor": "end",
+        class: "activity-label"
+      }, String(Math.round(value)));
+    }
+  
+    // One bar for each minute.
+    var step = plotWidth / 60;
+    var barWidth = Math.max(1, step - 2);
+  
+    history.forEach(function(count, index) {
+      var barHeight = count / maxPackets * plotHeight;
+  
+      var bar = addSvg("rect", {
+        x: left + index * step + 1,
+        y: top + plotHeight - barHeight,
+        width: barWidth,
+        height: barHeight,
+        class: "activity-bar"
+      });
+  
+      var tooltip = document.createElementNS(ns, "title");
+      tooltip.textContent =
+        count + " packets, " + (59 - index) + " minutes ago";
+      bar.appendChild(tooltip);
+    });
+  
+    // Time labels.
+    [
+      [0, "-60m"],
+      [15, "-45m"],
+      [30, "-30m"],
+      [45, "-15m"],
+      [59, "Now"]
+    ].forEach(function(item) {
+      addSvg("text", {
+        x: left + (item[0] + 0.5) * step,
+        y: height - 5,
+        "text-anchor": "middle",
+        class: "activity-label"
+      }, item[1]);
+    });
+  
+    activitySummary.textContent =
+      "Packets in last 60 minutes: " + total +
+      " | Peak minute: " + maxPackets + " packets";
+  }
 
   function formatUptime(seconds) {
     seconds = Math.floor(Math.max(0, seconds));
@@ -271,6 +415,7 @@ DASHBOARD_HTML = """<!doctype html>
       var diag = status.diagnostics;
 
       if (diag) {
+        renderActivityHistory(diag.activity_history);
         var portCounts = Object.entries(diag.packets_by_port || {})
           .map(function(entry) {
             return "Port " + entry[0] + ": " + entry[1];
@@ -290,12 +435,14 @@ DASHBOARD_HTML = """<!doctype html>
           " | Uptime: " + formatUptime(diag.uptime_seconds);
       } else {
         diagnosticsDetail.textContent = "Diagnostics unavailable";
+        renderActivityHistory(null);
       }
     } catch (err) {
       statusDot.className = "down";
       statusDot.textContent = "unreachable";
       statusDetail.textContent = err.message || String(err);
       diagnosticsDetail.textContent = "Diagnostics unavailable";
+      renderActivityHistory(null);
     }
   }
 
