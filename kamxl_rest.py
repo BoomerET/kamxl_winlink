@@ -310,7 +310,9 @@ DASHBOARD_HTML = """<!doctype html>
     var plotWidth = width - left - right;
     var plotHeight = height - top - bottom;
   
-    var maxPackets = Math.max(1, ...history);
+    var peakPackets = Math.max(0, ...history);
+    var tickStep = Math.max(1, Math.ceil(peakPackets / 4));
+    var maxPackets = tickStep * 4;
     var total = history.reduce(function(sum, value) {
       return sum + value;
     }, 0);
@@ -332,7 +334,7 @@ DASHBOARD_HTML = """<!doctype html>
     // Horizontal grid lines and packet-count labels.
     for (var i = 0; i <= 4; i++) {
       var y = top + (plotHeight * i / 4);
-      var value = maxPackets * (4 - i) / 4;
+      var value = tickStep * (4 - i);
   
       addSvg("line", {
         x1: left,
