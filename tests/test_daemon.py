@@ -143,7 +143,6 @@ class DaemonTestCase(unittest.TestCase):
 
         return client
 
-
 class PingStatusTests(DaemonTestCase):
     def test_ping(self):
         _, socket_path = self.start_daemon(ScriptedSerial({}))
@@ -165,6 +164,41 @@ class PingStatusTests(DaemonTestCase):
         self.assertEqual(response["result"]["port"], "COM_FAKE")
         self.assertEqual(response["result"]["monitor_subscribers"], 0)
 
+    def test_packet_diagnostics(self):
+        daemon, socket_path = self.start_daemon(ScriptedSerial({}))
+        client = self.connect(socket_path)
+
+        before = client.call("status")["result"]["diagnostics"]
+
+        self.assertEqual(before["packets_received"], 0)
+        self.assertEqual(before["packets_by_port"], {})
+        self.assertIsNone(before["last_packet_at"])
+        self.assertGreaterEqual(before["uptime_seconds"], 0)
+
+        from packet import Packet
+
+        packet = Packet(
+            source="N5BA",
+            destination="APRS",
+            digipeaters=(),
+            port=2,
+            payload=">Test packet",
+            raw="N5BA>APRS/2: <UI>:\n>Test packet",
+            frame_type="UI",
+        )
+
+        daemon._handle_packet(packet)
+
+        after = client.call("status")["result"]["diagnostics"]
+
+        self.assertEqual(after["packets_received"], 1)
+        self.assertEqual(after["packets_by_port"], {"2": 1})
+        self.assertIsNotNone(after["last_packet_at"])
+        self.assertGreaterEqual(after["last_packet_at"], before["started_at"])
+        self.assertGreaterEqual(
+            after["uptime_seconds"],
+            before["uptime_seconds"],
+        )
 
 class TypedCommandTests(DaemonTestCase):
     def test_get_typed_multiport_int(self):

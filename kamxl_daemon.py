@@ -101,6 +101,15 @@ class KAMDaemon:
         self._stations = StationTracker()
         self._stations_lock = threading.Lock()
 
+        # APRS diagnostics — counters are maintained independently
+        # of serial access and station tracking.
+        self._stats_lock = threading.Lock()
+        self._started_at = time.time()
+        self._started_monotonic = time.monotonic()
+        self._packets_received = 0
+        self._packets_by_port: Dict[int, int] = {}
+        self._last_packet_at: Optional[float] = None
+
         self._methods: Dict[str, Callable[[Dict[str, Any]], Any]] = {
             "ping": self._m_ping,
             "status": self._m_status,
@@ -158,10 +167,22 @@ class KAMDaemon:
         with self._kam_lock:
             connected = self.kam.is_connected
 
+        with self._stats_lock:
+            packets_received = self._packets_received
+            packets_by_port = dict(self._packets_by_port)
+            last_packet_at = self._last_packet_at
+
         return {
             "connected": connected,
             "port": self.kam.port,
             "monitor_subscribers": subscriber_count,
+            "diagnostics": {
+                "packets_received": packets_received,
+                "packets_by_port": packets_by_port,
+                "last_packet_at": last_packet_at,
+                "started_at": self._started_at,
+                "uptime_seconds": time.monotonic() - self._started_monotonic,
+            },
         }
 
     def _m_get(self, params: Dict[str, Any]) -> str:
@@ -477,9 +498,16 @@ class KAMDaemon:
             self._handle_packet(packet)
 
     def _handle_packet(self, packet: Packet) -> None:
+        with self._stats_lock:
+            self._packets_received += 1
+            self._packets_by_port[packet.port] = (
+                self._packets_by_port.get(packet.port, 0) + 1
+            )
+            self._last_packet_at = time.time()
+    
         with self._stations_lock:
             self._stations.update(packet)
-
+    
         self._broadcast_packet(packet)
 
     def _broadcast_packet(self, packet: Packet) -> None:
