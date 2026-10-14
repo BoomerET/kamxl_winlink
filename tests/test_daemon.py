@@ -199,6 +199,75 @@ class PingStatusTests(DaemonTestCase):
             after["uptime_seconds"],
             before["uptime_seconds"],
         )
+
+    def test_aprs_reception_stats(self):
+        from packet import Packet
+
+        daemon, socket_path = self.start_daemon(ScriptedSerial({}))
+        client = self.connect(socket_path)
+
+        before = client.call("aprs.stats")
+
+        self.assertTrue(before["ok"])
+        self.assertEqual(before["result"]["total_packets"], 0)
+        self.assertEqual(before["result"]["unique_sources"], 0)
+        self.assertEqual(before["result"]["top_sources"], [])
+
+        def make_packet(source, digipeaters=()):
+            return Packet(
+                source=source,
+                destination="APRS",
+                digipeaters=digipeaters,
+                port=2,
+                payload=">Reception statistics test",
+                raw=f"{source}>APRS:>Reception statistics test",
+                frame_type="UI",
+            )
+
+        daemon._handle_packet(
+            make_packet("N5BA", ("W5NGU-3*", "WIDE2-1"))
+        )
+        daemon._handle_packet(
+            make_packet("N5BA", ("W5NGU-3*",))
+        )
+        daemon._handle_packet(
+            make_packet("K5TEST", ("W5NGU-3", "WIDE2-1"))
+        )
+
+        response = client.call("aprs.stats")
+
+        self.assertTrue(response["ok"])
+
+        stats = response["result"]
+
+        self.assertEqual(stats["scope"], "since_daemon_start")
+        self.assertEqual(stats["total_packets"], 3)
+        self.assertEqual(stats["unique_sources"], 2)
+
+        self.assertEqual(
+            stats["top_sources"][0],
+            {"callsign": "N5BA", "packets": 2},
+        )
+
+        self.assertEqual(
+            stats["top_digipeaters"],
+            [{"callsign": "W5NGU-3", "packets": 2}],
+        )
+
+        self.assertEqual(stats["used_digipeater_packets"], 2)
+        self.assertEqual(
+            stats["no_identified_digipeater_packets"],
+            1,
+        )
+
+        # Existing diagnostics and new statistics must agree.
+        status = client.call("status")["result"]["diagnostics"]
+
+        self.assertEqual(
+            status["packets_received"],
+            stats["total_packets"],
+        )
+
     def test_packet_receive_rates(self):
         from unittest.mock import patch
 

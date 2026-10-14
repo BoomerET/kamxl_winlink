@@ -215,6 +215,70 @@ DASHBOARD_HTML = """<!doctype html>
     accent-color: #22a4a7;
     cursor: pointer;
   }
+
+  #receptionStatsCard {
+    margin-top: 16px;
+  }
+
+  .receptionMetrics {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 12px;
+    margin: 18px 0;
+  }
+
+  .receptionMetrics > div {
+    padding: 12px;
+    border: 1px solid #344;
+    border-radius: 6px;
+    min-width: 0;
+  }
+
+  .receptionMetricValue {
+    font-size: 26px;
+    font-weight: bold;
+    color: #50fa7b;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .receptionLists {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 20px;
+  }
+
+  .receptionLists h3 {
+    font-size: 14px;
+    color: #9ab;
+  }
+
+  .receptionRow {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 6px 0;
+    border-bottom: 1px solid #344;
+    font-family: monospace;
+  }
+
+  .receptionRow span:last-child {
+    color: #50fa7b;
+    font-variant-numeric: tabular-nums;
+  }
+
+  #rxStatsStatus {
+    margin: 12px 0;
+  }
+
+  @media (max-width: 650px) {
+    .receptionMetrics {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .receptionLists {
+      grid-template-columns: 1fr;
+    }
+  }
 </style>
 </head>
 <body>
@@ -272,6 +336,46 @@ DASHBOARD_HTML = """<!doctype html>
 
   <div class="sub" id="activitySummary">
     Waiting for APRS activity...
+  </div>
+</div>
+<div class="card" id="receptionStatsCard">
+  <h2>AX.25 Reception Statistics</h2>
+  <div class="sub">Since daemon startup — refreshes every 15 seconds</div>
+
+  <div class="receptionMetrics">
+    <div>
+      <div class="receptionMetricValue" id="rxTotal">-</div>
+      <div class="sub">Packets received</div>
+    </div>
+    <div>
+      <div class="receptionMetricValue" id="rxSources">-</div>
+      <div class="sub">Unique sources</div>
+    </div>
+    <div>
+      <div class="receptionMetricValue" id="rxRelayed">-</div>
+      <div class="sub">With identified used digi</div>
+    </div>
+    <div>
+      <div class="receptionMetricValue" id="rxDirect">-</div>
+      <div class="sub">No identified used digi</div>
+    </div>
+  </div>
+
+  <div class="receptionLists">
+    <div>
+      <h3>Top Heard Sources</h3>
+      <div id="rxTopSources" class="sub">Loading...</div>
+    </div>
+    <div>
+      <h3>Top Digipeaters</h3>
+      <div id="rxTopDigis" class="sub">Loading...</div>
+    </div>
+  </div>
+
+  <div class="sub" id="rxStatsStatus" role="status"></div>
+  <div class="sub">
+    Digipeaters are identified from used (*) path entries.
+    A packet without an identified used digi is not necessarily a direct RF reception.
   </div>
 </div>
 <script>
@@ -584,10 +688,57 @@ DASHBOARD_HTML = """<!doctype html>
     }
   });
 
+  function renderReceptionRows(elementId, entries) {
+    var element = document.getElementById(elementId);
+
+    if (!entries || !entries.length) {
+      element.textContent = "None heard yet.";
+      return;
+    }
+
+    element.innerHTML = entries.map(function(entry) {
+      return '<div class="receptionRow">' +
+        '<span>' + escapeHtml(entry.callsign) + '</span>' +
+        '<span>' + Number(entry.packets).toLocaleString() + '</span>' +
+        '</div>';
+    }).join("");
+  }
+
+  async function refreshReceptionStats() {
+    var statusElement = document.getElementById("rxStatsStatus");
+
+    try {
+      var stats = await apiGet("/aprs/stats");
+
+      document.getElementById("rxTotal").textContent =
+        Number(stats.total_packets).toLocaleString();
+
+      document.getElementById("rxSources").textContent =
+        Number(stats.unique_sources).toLocaleString();
+
+      document.getElementById("rxRelayed").textContent =
+        Number(stats.used_digipeater_packets).toLocaleString();
+
+      document.getElementById("rxDirect").textContent =
+        Number(stats.no_identified_digipeater_packets).toLocaleString();
+
+      renderReceptionRows("rxTopSources", stats.top_sources);
+      renderReceptionRows("rxTopDigis", stats.top_digipeaters);
+
+      statusElement.textContent = "";
+    } catch (err) {
+      statusElement.textContent =
+        "Reception statistics unavailable: " + (err.message || String(err));
+    }
+  }
+
   refreshStatus();
   refreshStations();
+  refreshReceptionStats();
+
   setInterval(refreshStatus, 15000);
   setInterval(refreshStations, 15000);
+  setInterval(refreshReceptionStats, 15000);
 })();
 </script>
 </body>
@@ -2483,6 +2634,7 @@ ROUTES: Tuple[Tuple[str, "re.Pattern", str], ...] = (
     ("GET", re.compile(r"^/winlink/gateways/nearby$"), "_h_winlink_gateways_nearby"),
     ("GET", re.compile(r"^/winlink/gateways$"), "_h_winlink_gateways"),
     ("GET", re.compile(r"^/winlink$"), "_h_winlink_page"),
+    ("GET", re.compile(r"^/aprs/stats$"), "_h_aprs_stats"),
 )
 
 
@@ -2915,6 +3067,13 @@ class RESTRequestHandler(BaseHTTPRequestHandler):
 
     def _h_stations_get(self, params: Dict[str, str], query: Dict[str, Any]) -> None:
         self._relay("stations.get", callsign=params["callsign"])
+
+    def _h_aprs_stats(
+        self,
+        params: Dict[str, str],
+        query: Dict[str, Any],
+    ) -> None:
+        self._relay("aprs.stats")
 
     # -- Winlink (milestone 8) -------------------------------------------
     #
