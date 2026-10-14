@@ -54,6 +54,7 @@ from packet import Packet, PacketParser
 from stations import StationTracker
 from winlink import OutgoingMessage
 from collections import deque
+from reception_stats import ReceptionStats
 
 
 DEFAULT_SOCKET_PATH = "/tmp/kamxl.sock"
@@ -105,6 +106,7 @@ class KAMDaemon:
         # APRS diagnostics — counters are maintained independently
         # of serial access and station tracking.
         self._stats_lock = threading.Lock()
+        self._reception_stats = ReceptionStats()
         self._started_at = time.time()
         self._started_monotonic = time.monotonic()
         self._packets_received = 0
@@ -141,6 +143,7 @@ class KAMDaemon:
             "monitor.unsubscribe": self._m_monitor_unsubscribe,
             "stations.list": self._m_stations_list,
             "stations.get": self._m_stations_get,
+            "aprs.stats": self._m_aprs_stats,
         }
 
         self._server: Optional["_ThreadingUnixStreamServer"] = None
@@ -433,6 +436,10 @@ class KAMDaemon:
     def _m_monitor_unsubscribe(self, params: Dict[str, Any]) -> None:
         return None
 
+    def _m_aprs_stats(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        with self._stats_lock:
+            return self._reception_stats.snapshot()
+
     def _m_stations_list(self, params: Dict[str, Any]) -> List[Dict[str, Any]]:
         with self._stations_lock:
             self._stations.expire_stale(max_age_seconds=3600)
@@ -541,6 +548,7 @@ class KAMDaemon:
         now = time.monotonic()
 
         with self._stats_lock:
+            self._reception_stats.update(packet)
             self._packets_received += 1
             self._packets_by_port[packet.port] = (
                 self._packets_by_port.get(packet.port, 0) + 1

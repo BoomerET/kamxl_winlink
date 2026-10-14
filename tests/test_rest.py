@@ -474,9 +474,9 @@ class DashboardTests(RestTestCase):
         # Both PBBS message listing and Winlink mail checking drive a
         # real AX.25 connect/command/disconnect cycle against actual
         # hardware -- the dashboard must not trigger either just from
-        # being loaded. Checked at the source level: the only two
+        # being loaded. Checked at the source level: the only three
         # calls made unconditionally at the bottom of the script are
-        # refreshStatus()/refreshStations() (cheap, passive reads);
+        # refreshStatus()/refreshStations()/refreshReceptionStats() (cheap, passive reads);
         # "/pbbs/messages" only appears inside the "Check PBBS"
         # button's click handler (never called on its own), and
         # "/winlink/check" doesn't appear anywhere at all -- the
@@ -498,6 +498,40 @@ class DashboardTests(RestTestCase):
         self.assertNotIn("/pbbs/messages", unconditional_tail)
         self.assertIn("pbbsCheckBtn.addEventListener", html)
         self.assertNotIn("/winlink/check", html)
+
+    def test_page_contains_reception_statistics(self):
+        html = kamxl_rest.DASHBOARD_HTML
+
+        self.assertIn('id="receptionStatsCard"', html)
+
+        for element_id in (
+            "rxTotal",
+            "rxSources",
+            "rxRelayed",
+            "rxDirect",
+            "rxTopSources",
+            "rxTopDigis",
+            "rxStatsStatus",
+        ):
+            with self.subTest(element_id=element_id):
+                self.assertIn(f'id="{element_id}"', html)
+
+        self.assertIn("AX.25 Reception Statistics", html)
+        self.assertIn("Top Heard Sources", html)
+        self.assertIn("Top Digipeaters", html)
+
+    def test_page_refreshes_reception_statistics(self):
+        html = kamxl_rest.DASHBOARD_HTML
+
+        self.assertIn('apiGet("/aprs/stats")', html)
+        self.assertIn("refreshReceptionStats();", html)
+        self.assertIn(
+            "setInterval(refreshReceptionStats, 15000);",
+            html,
+        )
+
+        # Callsigns must be escaped before insertion into HTML.
+        self.assertIn("escapeHtml(entry.callsign)", html)
 
     def test_page_requires_auth_when_enabled(self):
         _, port = self.start_stack(ScriptedSerial({}))
@@ -1070,6 +1104,79 @@ class WinlinkApiEndpointTests(RestTestCase):
         self.assertEqual(status, 400)
         self.assertEqual(payload["error"]["type"], "MissingParam")
 
+
+class ReceptionStatsEndpointTests(RestTestCase):
+    """End-to-end tests for GET /aprs/stats."""
+
+    def test_empty_reception_stats(self):
+        _, port = self.start_stack(ScriptedSerial({}))
+
+        status, payload = self.request(port, "GET", "/aprs/stats")
+
+        self.assertEqual(status, 200)
+        self.assertTrue(payload["ok"])
+
+        stats = payload["result"]
+
+        self.assertEqual(stats["scope"], "since_daemon_start")
+        self.assertEqual(stats["total_packets"], 0)
+        self.assertEqual(stats["unique_sources"], 0)
+        self.assertEqual(stats["top_sources"], [])
+        self.assertEqual(stats["top_digipeaters"], [])
+        self.assertEqual(stats["used_digipeater_packets"], 0)
+        self.assertEqual(
+            stats["no_identified_digipeater_packets"], 0
+        )
+
+    def test_reception_stats_with_packets(self):
+        daemon, port = self.start_stack(ScriptedSerial({}))
+
+        for source, digipeaters in (
+            ("N5BA", ("W5NGU-3*", "WIDE2-1")),
+            ("N5BA", ("W5NGU-3*",)),
+            ("K5TEST", ()),
+        ):
+            daemon._handle_packet(Packet(
+                source=source,
+                destination="APRS",
+                digipeaters=digipeaters,
+                port=2,
+                payload=">Test packet",
+                raw="",
+                frame_type="UI",
+            ))
+
+        status, payload = self.request(port, "GET", "/aprs/stats")
+
+        self.assertEqual(status, 200)
+        self.assertTrue(payload["ok"])
+
+        stats = payload["result"]
+
+        self.assertEqual(stats["total_packets"], 3)
+        self.assertEqual(stats["unique_sources"], 2)
+        self.assertEqual(
+            stats["top_sources"][0],
+            {"callsign": "N5BA", "packets": 2},
+        )
+        self.assertEqual(
+            stats["top_digipeaters"],
+            [{"callsign": "W5NGU-3", "packets": 2}],
+        )
+        self.assertEqual(stats["used_digipeater_packets"], 2)
+        self.assertEqual(
+            stats["no_identified_digipeater_packets"], 1
+        )
+
+    def test_reception_stats_requires_authentication(self):
+        _, port = self.start_stack(ScriptedSerial({}))
+
+        status, payload = self.request(
+            port, "GET", "/aprs/stats", token=None
+        )
+
+        self.assertEqual(status, 401)
+        self.assertIn("error", payload)
 
 class StationsEndpointTests(RestTestCase):
     """
