@@ -1127,6 +1127,7 @@ class StationsEndpointTests(RestTestCase):
 
         self.assertEqual(status, 200)
         self.assertIsNone(payload["result"])
+
     def test_expired_station_not_listed(self):
         daemon, port = self.start_stack(ScriptedSerial({}))
         self._seed_station(daemon)
@@ -1289,6 +1290,37 @@ class StationsEndpointTests(RestTestCase):
             0,
             "MAP_HTML's inline <script> is not valid JavaScript:\n"
             + result.stderr,
+        )
+
+    def test_map_station_details_markup(self):
+        html = kamxl_rest.MAP_HTML
+
+        self.assertIn('id="stationDetails"', html)
+        self.assertIn('id="closeStationDetails"', html)
+        self.assertIn('id="detailCallsign"', html)
+        self.assertIn('id="stationDetailsBody"', html)
+        self.assertIn('class="viewStationDetails"', html.replace(
+            "class='viewStationDetails'", 'class="viewStationDetails"'
+        ))
+
+        self.assertIn("showStationDetails(callsign)", html)
+        self.assertIn('authedUrl("/stations/"', html)
+        self.assertIn("encodeURIComponent(callsign)", html)
+        self.assertIn("escapeHtml(String(value))", html)
+        self.assertIn("stationDetails.hidden = true", html)
+        self.assertIn("Station no longer available.", html)
+        self.assertIn("Unable to load station details:", html)
+
+    def test_map_station_details_request_generation(self):
+        html = kamxl_rest.MAP_HTML
+
+        self.assertIn("var stationDetailsRequestId = 0;", html)
+        self.assertIn("var requestId = ++stationDetailsRequestId;", html)
+        self.assertIn("stationDetailsRequestId++;", html)
+
+        self.assertGreaterEqual(
+            html.count("if (requestId !== stationDetailsRequestId) return;"),
+            2,
         )
 
     def test_map_page_requires_auth_when_enabled(self):

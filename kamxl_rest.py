@@ -312,14 +312,14 @@ DASHBOARD_HTML = """<!doctype html>
   var diagnosticsDetail = document.getElementById("diagnosticsDetail");
   var activityChart = document.getElementById("activityChart");
   var activitySummary = document.getElementById("activitySummary");
-  
+
   function renderActivityHistory(history) {
     if (!Array.isArray(history) || history.length !== 60) {
       activityChart.replaceChildren();
       activitySummary.textContent = "Activity history unavailable";
       return;
     }
-  
+
     var ns = "http://www.w3.org/2000/svg";
     var width = 900;
     var height = 160;
@@ -327,36 +327,36 @@ DASHBOARD_HTML = """<!doctype html>
     var right = 10;
     var top = 10;
     var bottom = 25;
-  
+
     var plotWidth = width - left - right;
     var plotHeight = height - top - bottom;
-  
+
     var peakPackets = Math.max(0, ...history);
     var tickStep = Math.max(1, Math.ceil(peakPackets / 4));
     var maxPackets = tickStep * 4;
     var total = history.reduce(function(sum, value) {
       return sum + value;
     }, 0);
-  
+
     activityChart.replaceChildren();
-  
+
     function addSvg(tag, attrs, text) {
       var el = document.createElementNS(ns, tag);
-  
+
       Object.entries(attrs).forEach(function(entry) {
         el.setAttribute(entry[0], entry[1]);
       });
-  
+
       if (text !== undefined) el.textContent = text;
       activityChart.appendChild(el);
       return el;
     }
-  
+
     // Horizontal grid lines and packet-count labels.
     for (var i = 0; i <= 4; i++) {
       var y = top + (plotHeight * i / 4);
       var value = tickStep * (4 - i);
-  
+
       addSvg("line", {
         x1: left,
         y1: y,
@@ -364,7 +364,7 @@ DASHBOARD_HTML = """<!doctype html>
         y2: y,
         class: "activity-grid"
       });
-  
+
       addSvg("text", {
         x: left - 6,
         y: y + 4,
@@ -372,14 +372,14 @@ DASHBOARD_HTML = """<!doctype html>
         class: "activity-label"
       }, String(Math.round(value)));
     }
-  
+
     // One bar for each minute.
     var step = plotWidth / 60;
     var barWidth = Math.max(1, step - 2);
-  
+
     history.forEach(function(count, index) {
       var barHeight = count / maxPackets * plotHeight;
-  
+
       var bar = addSvg("rect", {
         x: left + index * step + 1,
         y: top + plotHeight - barHeight,
@@ -387,13 +387,13 @@ DASHBOARD_HTML = """<!doctype html>
         height: barHeight,
         class: "activity-bar"
       });
-  
+
       var tooltip = document.createElementNS(ns, "title");
       tooltip.textContent =
         count + " packets, " + (59 - index) + " minutes ago";
       bar.appendChild(tooltip);
     });
-  
+
     // Time labels.
     [
       [0, "-60m"],
@@ -409,7 +409,7 @@ DASHBOARD_HTML = """<!doctype html>
         class: "activity-label"
       }, item[1]);
     });
-  
+
     activitySummary.textContent =
       "Packets in last 60 minutes: " + total +
       " | Peak minute: " + peakPackets + " packets";
@@ -1574,6 +1574,48 @@ MAP_HTML = r"""<!doctype html>
     padding: 0 2px;
     box-shadow: 0 0 0 1px #000;
   }
+  #stationDetails {
+    position: absolute;
+    top: 42px;
+    right: 12px;
+    width: min(360px, calc(100vw - 40px));
+    max-height: calc(100vh - 70px);
+    overflow-y: auto;
+    background: #101b1c;
+    border: 1px solid #3a6;
+    border-radius: 6px;
+    padding: 14px;
+    box-sizing: border-box;
+    z-index: 1100;
+    box-shadow: 0 6px 24px #0009;
+  }
+
+  #stationDetails[hidden] {
+    display: none;
+  }
+
+  #stationDetails h2 {
+    margin: 0 0 12px;
+    color: #9f9;
+    font-size: 17px;
+  }
+
+  #stationDetails .detailRow {
+    margin: 8px 0;
+    overflow-wrap: anywhere;
+  }
+
+  #stationDetails .detailLabel {
+    color: #999;
+  }
+
+  #closeStationDetails {
+    float: right;
+    background: transparent;
+    border: 1px solid #456;
+    color: #cfc;
+    cursor: pointer;
+  }
 </style>
 </head>
 <body>
@@ -1588,6 +1630,11 @@ MAP_HTML = r"""<!doctype html>
 </div>
 <div id="empty" style="display:none;">No stations heard yet.</div>
 <div id="map"></div>
+<aside id="stationDetails" hidden aria-label="APRS station details">
+  <button id="closeStationDetails" type="button">Close</button>
+  <h2 id="detailCallsign">Station Details</h2>
+  <div id="stationDetailsBody">Loading...</div>
+</aside>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script>
 (function () {
@@ -1723,8 +1770,98 @@ MAP_HTML = r"""<!doctype html>
     html += "heard " + relativeTime(station.last_heard) +
       " (" + station.packet_count + " report" +
       (station.packet_count === 1 ? "" : "s") + ")";
+    html += "<br><a href='#' class='viewStationDetails' data-callsign='" +
+      escapeHtml(station.callsign) + "'>View Details &rarr;</a>";
     return html;
   }
+
+  var stationDetailsRequestId = 0;
+  var stationDetails = document.getElementById("stationDetails");
+  var detailCallsign = document.getElementById("detailCallsign");
+  var stationDetailsBody = document.getElementById("stationDetailsBody");
+
+  document.getElementById("closeStationDetails").addEventListener(
+    "click", function () {
+      stationDetailsRequestId++;
+      stationDetails.hidden = true;
+    }
+  );
+
+  async function showStationDetails(callsign) {
+    var requestId = ++stationDetailsRequestId;
+
+    stationDetails.hidden = false;
+    detailCallsign.textContent = callsign;
+    stationDetailsBody.textContent = "Loading station information...";
+
+    try {
+      var response = await fetch(
+        authedUrl("/stations/" + encodeURIComponent(callsign))
+      );
+
+      if (!response.ok) {
+        throw new Error("HTTP " + response.status);
+      }
+
+      var payload = await response.json();
+      if (requestId !== stationDetailsRequestId) return;
+
+      if (!payload.ok || !payload.result) {
+        stationDetailsBody.textContent = "Station no longer available.";
+        return;
+      }
+
+      var station = payload.result;
+      var history = station.history || [];
+
+      var html = "";
+
+      function detail(label, value) {
+        html += "<div class='detailRow'>" +
+          "<span class='detailLabel'>" + escapeHtml(label) + ":</span> " +
+          escapeHtml(String(value)) + "</div>";
+      }
+
+      detail("Last heard", relativeTime(station.last_heard));
+      detail("Position reports", station.packet_count);
+      detail("Latitude", Number(station.latitude).toFixed(5));
+      detail("Longitude", Number(station.longitude).toFixed(5));
+      detail("Symbol", station.symbol_table + station.symbol_code);
+      detail("Comment", station.comment || "(none)");
+
+      html += "<h3>Position History (" + history.length + ")</h3>";
+
+      if (!history.length) {
+        html += "<div>No position history available.</div>";
+      } else {
+        history.slice().reverse().forEach(function(point) {
+          html += "<div class='detailRow'>" +
+            escapeHtml(new Date(point.timestamp * 1000).toLocaleString()) +
+            "<br>" +
+            Number(point.latitude).toFixed(5) + ", " +
+            Number(point.longitude).toFixed(5) +
+            "</div>";
+        });
+      }
+
+      stationDetailsBody.innerHTML = html;
+    } catch (error) {
+      if (requestId !== stationDetailsRequestId) return;
+      stationDetailsBody.textContent =
+        "Unable to load station details: " + error.message;
+    }
+  }
+
+  document.addEventListener("click", function(event) {
+    var link = event.target.closest(".viewStationDetails");
+
+    if (!link) return;
+
+    event.preventDefault();
+
+    var callsign = link.getAttribute("data-callsign");
+    if (callsign) showStationDetails(callsign);
+  });
 
   function updateTrailPoints(station) {
     var callsign = station.callsign;
