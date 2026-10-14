@@ -63,6 +63,7 @@ alone. Documented here as a known simplification rather than silently
 getting it wrong.
 """
 
+import math
 import re
 
 from dataclasses import dataclass
@@ -283,7 +284,7 @@ def _mice_destination_digits(destination: str) -> Optional[str]:
 
     0-9 represent digits directly.
     A-J and P-Y encode digits 0-9.
-    K, L, and Z are ambiguity indicators, treated as zero.
+    K, L, and Z are ambiguity indicators, initially treated as zero.
     """
     if len(destination) != 6:
         return None
@@ -328,6 +329,14 @@ def _decode_mice_position(
     if digits is None:
         return None
 
+    # Mic-E ambiguity characters represent trailing unspecified digits.
+    ambiguity = 0
+    for char in reversed(destination.upper()):
+        if char in "KLZ":
+            ambiguity += 1
+        else:
+            break
+
     degrees = int(digits[:2])
     minutes = int(digits[2:4])
     hundredths = int(digits[4:6])
@@ -335,13 +344,24 @@ def _decode_mice_position(
     if degrees > 90 or minutes >= 60 or hundredths >= 100:
         return None
 
-    latitude = degrees + (minutes + hundredths / 100.0) / 60.0
+    # Center latitude within the ambiguous area.  For 1-3 missing
+    # digits, set the first missing digit to 5.  For 4 missing digits,
+    # the midpoint of the 0-59 minute range is 30 minutes.
+    centered_digits = list(digits)
+    if ambiguity >= 4:
+        centered_digits[2] = "3"
+    elif ambiguity:
+        centered_digits[6 - ambiguity] = "5"
 
-    # Destination character 4 encodes the latitude hemisphere.
-    # P-Y indicates north; 0-9 and A-L indicate south.
-    if destination[3].upper() not in "PQRSTUVWXY":
+    centered = "".join(centered_digits)
+    latitude = (
+        int(centered[:2])
+        + (int(centered[2:4]) + int(centered[4:6]) / 100.0) / 60.0
+    )
+
+    # Character 4 selects the latitude hemisphere (P-Z = north).
+    if destination[3].upper() not in "PQRSTUVWXYZ":
         latitude = -latitude
-
 
     # Mic-E longitude occupies payload bytes 1 through 3.
     # Each encoded byte has an offset of 28.
@@ -358,7 +378,7 @@ def _decode_mice_position(
         return None
 
     # Destination character 5 indicates the +100 degree offset.
-    if destination[4].upper() in "PQRSTUVWXY":
+    if destination[4].upper() in "PQRSTUVWXYZ":
         longitude_degrees += 100
 
     # Normalize the Mic-E longitude degree encoding.
@@ -378,13 +398,25 @@ def _decode_mice_position(
     ):
         return None
 
-    longitude = (
-        longitude_degrees
-        + (longitude_minutes + longitude_hundredths / 100.0) / 60.0
-    )
+    # Center the longitude *minutes*, not the complete coordinate.
+    longitude_minutes_decimal = longitude_minutes + longitude_hundredths / 100.0
+    if ambiguity == 4:
+        longitude_minutes_decimal = 30.0
+    elif ambiguity == 3:
+        longitude_minutes_decimal = (
+            math.floor(longitude_minutes_decimal / 10.0) + 0.5
+        ) * 10.0
+    elif ambiguity == 2:
+        longitude_minutes_decimal = math.floor(longitude_minutes_decimal) + 0.5
+    elif ambiguity == 1:
+        longitude_minutes_decimal = (
+            math.floor(longitude_minutes_decimal * 10.0) + 0.5
+        ) / 10.0
 
-    # Destination character 6 determines east/west longitude.
-    if destination[5].upper() in "PQRSTUVWXY":
+    longitude = longitude_degrees + longitude_minutes_decimal / 60.0
+
+    # Character 6 selects east/west (P-Z = west).
+    if destination[5].upper() in "PQRSTUVWXYZ":
         longitude = -longitude
 
     # Mic-E symbol code and symbol table occupy bytes 7 and 8.

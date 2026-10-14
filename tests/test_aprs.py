@@ -252,6 +252,33 @@ class ParsePositionMicETests(unittest.TestCase):
         self.assertEqual(position.symbol_table, "/")
         self.assertEqual(position.symbol_code, "v")
 
+    def test_mice_real_rf_w5ang_position_ambiguity(self):
+        """
+        W5ANG Mic-E packet captured via W5NGU-3.
+
+        Regression: longitude was decoded as +97 degrees,
+        incorrectly placing this Texas station in Asia.
+
+        Expected coordinates independently verified with aprslib.
+        """
+        payload = "`}':l \x1c-/`\"5Y}_%"
+
+        position = parse_position(
+            payload,
+            destination="SRTR4Z",
+        )
+
+        self.assertIsNotNone(position)
+        self.assertAlmostEqual(
+            position.latitude, 32.7075, places=6
+        )
+        self.assertAlmostEqual(
+            position.longitude, -97.18916666666667, places=6
+        )
+        self.assertEqual(position.symbol_table, "/")
+        self.assertEqual(position.symbol_code, "-")
+        self.assertEqual(position.raw, payload)
+
     def test_mice_requires_destination(self):
         payload = '`|SFl#)>/`"5s}!DCARES_%'
 
@@ -290,6 +317,33 @@ class ParsePositionMicETests(unittest.TestCase):
         self.assertGreaterEqual(position.longitude, -180)
         self.assertLessEqual(position.longitude, 180)
         self.assertEqual(position.raw, payload)
+
+    def test_mice_multiple_ambiguity_levels(self):
+        """Verify Mic-E ambiguity centering against aprslib."""
+        payload = "`}':l \x1c-/`\"5Y}_%"
+
+        cases = [
+            ("SRTR4Z", 32.7075, -97.18916666666667),
+            ("SRTR4Y", 32.70816666666666, -97.18833333333333),
+            ("SRTRZZ", 32.708333333333336, -7.191666666666666),
+            ("SRTZZZ", 32.75, -7.25),
+            ("SRZZZZ", 32.5, -7.5),
+        ]
+
+        for destination, latitude, longitude in cases:
+            with self.subTest(destination=destination):
+                position = parse_position(
+                    payload,
+                    destination=destination,
+                )
+
+                self.assertIsNotNone(position)
+                self.assertAlmostEqual(
+                    position.latitude, latitude, places=6
+                )
+                self.assertAlmostEqual(
+                    position.longitude, longitude, places=6
+                )
 
 class ParsePositionNonPositionTests(unittest.TestCase):
     def test_empty_payload(self):
