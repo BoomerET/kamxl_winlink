@@ -170,6 +170,9 @@ DASHBOARD_HTML = """<!doctype html>
     <h2>KAM-XL Link</h2>
     <div class="big"><span id="statusDot" class="checking">checking...</span></div>
     <div class="sub" id="statusDetail"></div>
+    <div class="sub" id="diagnosticsDetail">
+      Waiting for APRS diagnostics...
+    </div>
   </div>
 
   <div class="card" id="stationsCard">
@@ -243,6 +246,19 @@ DASHBOARD_HTML = """<!doctype html>
   var statusDot = document.getElementById("statusDot");
   var statusDetail = document.getElementById("statusDetail");
 
+  var diagnosticsDetail = document.getElementById("diagnosticsDetail");
+
+  function formatUptime(seconds) {
+    seconds = Math.floor(Math.max(0, seconds));
+    var hours = Math.floor(seconds / 3600);
+    var minutes = Math.floor((seconds % 3600) / 60);
+    var secs = seconds % 60;
+
+    if (hours) return hours + "h " + minutes + "m";
+    if (minutes) return minutes + "m " + secs + "s";
+    return secs + "s";
+  }
+
   async function refreshStatus() {
     try {
       var status = await apiGet("/status");
@@ -252,10 +268,32 @@ DASHBOARD_HTML = """<!doctype html>
       statusDetail.textContent =
         status.port + " -- " + status.monitor_subscribers +
         " monitor subscriber" + (status.monitor_subscribers === 1 ? "" : "s");
+      var diag = status.diagnostics;
+
+      if (diag) {
+        var portCounts = Object.entries(diag.packets_by_port || {})
+          .map(function(entry) {
+            return "Port " + entry[0] + ": " + entry[1];
+          })
+          .join(" | ");
+
+        var lastHeard = diag.last_packet_at == null
+          ? "Never"
+          : relativeTime(diag.last_packet_at);
+
+        diagnosticsDetail.textContent =
+          "Packets: " + diag.packets_received +
+          " | " + (portCounts || "No packets yet") +
+          " | Last heard: " + lastHeard +
+          " | Uptime: " + formatUptime(diag.uptime_seconds);
+      } else {
+        diagnosticsDetail.textContent = "Diagnostics unavailable";
+      }
     } catch (err) {
       statusDot.className = "down";
       statusDot.textContent = "unreachable";
       statusDetail.textContent = err.message || String(err);
+      diagnosticsDetail.textContent = "Diagnostics unavailable";
     }
   }
 
