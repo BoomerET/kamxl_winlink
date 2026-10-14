@@ -440,8 +440,6 @@ class KAMDaemon:
             # NOT fully prevent unsolicited MONITOR traffic and a
             # command's response from arriving interleaved on the
             # wire itself -- see docs/daemon.md's "Known limitation".
-            with self._kam_lock:
-                text = self.kam.read_available()
 
             try:
                 with self._kam_lock:
