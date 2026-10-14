@@ -555,7 +555,110 @@ class DashboardTests(RestTestCase):
             "DASHBOARD_HTML's inline <script> is not valid JavaScript:\n"
             + result.stderr,
         )
+    def test_reception_health_markup_and_styles(self):
+        from kamxl_rest import DASHBOARD_HTML
 
+        html = DASHBOARD_HTML
+
+        self.assertIn('id="receptionHealth"', html)
+
+        for state in (
+            "receiving",
+            "waiting",
+            "quiet",
+            "disconnected",
+            "unavailable",
+        ):
+            self.assertIn("#receptionHealth." + state, html)
+
+        self.assertIn("updateReceptionHealth(status.connected, diag)", html)
+
+    def test_reception_health_states(self):
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("node not available")
+
+        from kamxl_rest import DASHBOARD_HTML
+
+        html = DASHBOARD_HTML
+
+        # Extract the actual function from the served dashboard source.
+        match = re.search(
+            r"  function updateReceptionHealth\(connected, diag\) \{"
+            r"(.*?)"
+            r"\n  \}\n",
+            html,
+            re.DOTALL,
+        )
+        self.assertIsNotNone(match, "Reception health function not found")
+
+        function_source = (
+            "function updateReceptionHealth(connected, diag) {"
+            + match.group(1)
+            + "\n}"
+        )
+
+        harness = r"""
+const assert = require("node:assert/strict");
+
+const element = { className: "", textContent: "" };
+
+global.document = {
+  getElementById: function(id) {
+    assert.equal(id, "receptionHealth");
+    return element;
+  }
+};
+
+""" + function_source + r"""
+
+function check(connected, diagnostics, expectedClass, expectedText) {
+  element.className = "";
+  element.textContent = "";
+
+  updateReceptionHealth(connected, diagnostics);
+
+  assert.equal(element.className, expectedClass);
+  assert.equal(element.textContent, expectedText);
+}
+
+check(false, null,
+      "disconnected", "Reception: Disconnected");
+
+check(true, null,
+      "unavailable", "Reception: Unknown (diagnostics unavailable)");
+
+check(true, {
+  packets_last_5m: 3,
+  uptime_seconds: 600,
+  last_packet_at: 12345
+}, "receiving", "Reception: Receiving (last 5 minutes)");
+
+check(true, {
+  packets_last_5m: 0,
+  uptime_seconds: 60,
+  last_packet_at: null
+}, "waiting", "Reception: Waiting for first packet");
+
+check(true, {
+  packets_last_5m: 0,
+  uptime_seconds: 600,
+  last_packet_at: 12345
+}, "quiet", "Reception: Quiet (no packets in 5 minutes)");
+"""
+
+        result = subprocess.run(
+            [node, "-e", harness],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+
+        self.assertEqual(
+            result.returncode,
+            0,
+            "Reception health JavaScript test failed:\n" + result.stderr,
+        )
 
 class PBBSEndpointTests(RestTestCase):
     """

@@ -182,6 +182,24 @@ DASHBOARD_HTML = """<!doctype html>
   #activitySummary {
     margin-top: 8px;
   }
+  #receptionHealth {
+    margin-top: 6px;
+    font-weight: bold;
+  }
+
+  #receptionHealth.receiving {
+    color: #50fa7b;
+  }
+
+  #receptionHealth.waiting,
+  #receptionHealth.quiet {
+    color: #f1c40f;
+  }
+
+  #receptionHealth.disconnected,
+  #receptionHealth.unavailable {
+    color: #ff5555;
+  }
 </style>
 </head>
 <body>
@@ -412,11 +430,13 @@ DASHBOARD_HTML = """<!doctype html>
     var element = document.getElementById("receptionHealth");
 
     if (!connected) {
+      element.className = "disconnected";
       element.textContent = "Reception: Disconnected";
       return;
     }
 
     if (!diag) {
+      element.className = "unavailable";
       element.textContent = "Reception: Unknown (diagnostics unavailable)";
       return;
     }
@@ -425,13 +445,16 @@ DASHBOARD_HTML = """<!doctype html>
     var uptime = Number(diag.uptime_seconds || 0);
 
     if (packets > 0) {
+      element.className = "receiving";
       element.textContent = "Reception: Receiving (last 5 minutes)";
     } else if (diag.last_packet_at == null && uptime < 300) {
+      element.className = "waiting";
       element.textContent = "Reception: Waiting for first packet";
     } else {
+      element.className = "quiet";
       element.textContent = "Reception: Quiet (no packets in 5 minutes)";
     }
-  }  
+  }
 
   async function refreshStatus() {
     try {
@@ -474,8 +497,10 @@ DASHBOARD_HTML = """<!doctype html>
       statusDetail.textContent = err.message || String(err);
       diagnosticsDetail.textContent = "Diagnostics unavailable";
       renderActivityHistory(null);
-      document.getElementById("receptionHealth").textContent =
-        "Reception: Unavailable (daemon unreachable)";
+      var receptionHealth = document.getElementById("receptionHealth");
+      receptionHealth.className = "unavailable";
+      receptionHealth.textContent =
+          "Reception: Unavailable (daemon unreachable)";
     }
   }
 
