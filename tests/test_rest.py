@@ -694,6 +694,235 @@ check(true, {
             "Reception health JavaScript test failed:\n" + result.stderr,
         )
 
+    def test_reception_charts_render_horizontal_bars(self):
+        html = kamxl_rest.DASHBOARD_HTML
+
+        self.assertIn("receptionChartRow", html)
+        self.assertIn("receptionBarTrack", html)
+        self.assertIn("receptionBarFill", html)
+
+        self.assertIn("maxPackets", html)
+        self.assertIn("packets / maxPackets * 100", html)
+        self.assertIn("percentage.toFixed(1)", html)
+
+        # Both lists use the same rendering function.
+        self.assertIn(
+            'renderReceptionRows("rxTopSources", stats.top_sources, true)',
+            html,
+        )
+        self.assertIn(
+            'renderReceptionRows("rxTopDigis", stats.top_digipeaters, false)',
+            html,
+        )
+
+    def test_reception_chart_bar_widths(self):
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("node not available")
+
+        html = kamxl_rest.DASHBOARD_HTML
+
+        # Extract the actual dashboard function, not a duplicate.
+        match = re.search(
+            r"  function renderReceptionRows\(elementId, entries, linkToMap\) \{"
+            r"(.*?)"
+            r"\n  \}\n",
+            html,
+            re.DOTALL,
+        )
+        self.assertIsNotNone(
+            match, "Reception chart rendering function not found"
+        )
+
+        function_source = (
+            "function renderReceptionRows(elementId, entries, linkToMap) {"
+            + match.group(1)
+            + "\n}"
+        )
+
+        harness = r"""
+const assert = require("node:assert/strict");
+
+const elements = {};
+
+global.document = {
+    getElementById: function(id) {
+        if (!elements[id]) {
+            elements[id] = {
+                innerHTML: "",
+                textContent: ""
+            };
+        }
+        return elements[id];
+    }
+};
+
+function escapeHtml(value) {
+    return String(value)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+}
+
+function widths(html) {
+    return Array.from(
+        html.matchAll(/style="width:([0-9.]+)%"/g),
+        match => Number(match[1])
+    );
+}
+
+// Different packet counts.
+renderReceptionRows("test", [
+    {callsign: "N5BA", packets: 10},
+    {callsign: "K5TEST", packets: 5},
+    {callsign: "W5NGU-3", packets: 1}
+]);
+
+assert.deepEqual(
+    widths(elements.test.innerHTML),
+    [100, 50, 10]
+);
+
+// Equal counts.
+renderReceptionRows("test", [
+    {callsign: "N5BA", packets: 3},
+    {callsign: "K5TEST", packets: 3}
+]);
+
+assert.deepEqual(
+    widths(elements.test.innerHTML),
+    [100, 100]
+);
+
+// Zero counts must not produce NaN or Infinity.
+renderReceptionRows("test", [
+    {callsign: "N5BA", packets: 0},
+    {callsign: "K5TEST", packets: 0}
+]);
+
+assert.deepEqual(
+    widths(elements.test.innerHTML),
+    [0, 0]
+);
+
+// Empty list.
+renderReceptionRows("empty", []);
+
+assert.equal(
+    elements.empty.textContent,
+    "None heard yet."
+);
+
+// Callsigns must be escaped before insertion into HTML.
+renderReceptionRows("test", [
+    {callsign: "<script>alert(1)</script>", packets: 1}
+]);
+
+assert.ok(
+    elements.test.innerHTML.includes(
+        "&lt;script&gt;alert(1)&lt;/script&gt;"
+    )
+);
+
+assert.ok(
+    !elements.test.innerHTML.includes("<script>")
+);
+// Simulate the dashboard's authenticated URL helper.
+function authedUrl(path) {
+    return path + (path.includes("?") ? "&" : "?") +
+        "token=test-token";
+}
+
+// Source stations should link to the APRS map.
+renderReceptionRows("sources", [
+    {callsign: "N5BA-9", packets: 10}
+], true);
+
+assert.ok(
+    elements.sources.innerHTML.includes(
+        '/map?station=N5BA-9&amp;token=test-token'
+    )
+);
+
+assert.ok(
+    elements.sources.innerHTML.includes(
+        'target="_blank" rel="noopener noreferrer"'
+    )
+);
+
+// Digipeaters should remain plain text.
+renderReceptionRows("digis", [
+    {callsign: "W5NGU-3", packets: 10}
+], false);
+
+assert.ok(
+    !elements.digis.innerHTML.includes("<a ")
+);
+
+// A callsign containing HTML must not inject markup.
+renderReceptionRows("sources", [
+    {callsign: "<script>", packets: 1}
+], true);
+
+assert.ok(
+    !elements.sources.innerHTML.includes("<script>")
+);
+
+assert.ok(
+    elements.sources.innerHTML.includes("%3Cscript%3E")
+);
+console.log("Reception chart behavior: PASS");
+"""
+
+        result = subprocess.run(
+            [node, "-e", function_source + "\n" + harness],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+
+        self.assertEqual(
+            result.returncode,
+            0,
+            "Reception chart behavioral test failed:\n"
+            + result.stdout
+            + result.stderr,
+        )
+
+    def test_map_station_selection_support(self):
+        html = kamxl_rest.MAP_HTML
+
+        self.assertIn(
+            'params.get("station")',
+            html,
+        )
+        self.assertIn(
+            'id="stationSelectionStatus"',
+            html,
+        )
+        self.assertIn(
+            "markers[requestedStation]",
+            html,
+        )
+        self.assertIn(
+            "selectedMarker.openPopup()",
+            html,
+        )
+        self.assertIn(
+            "showStationDetails(requestedStation)",
+            html,
+        )
+        self.assertIn(
+            "stationSelectionHandled = true",
+            html,
+        )
+        self.assertIn(
+            "has no known position on this map",
+            html,
+        )
+
 class PBBSEndpointTests(RestTestCase):
     """
     daemon.kam.list_pbbs_messages()/read_pbbs_message() are stubbed
