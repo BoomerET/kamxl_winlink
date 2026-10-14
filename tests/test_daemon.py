@@ -231,6 +231,34 @@ class PingStatusTests(DaemonTestCase):
                 list(daemon._recent_packet_times),
                 [750.0, 950.0, 990.0],
             )
+    def test_activity_history(self):
+        from unittest.mock import patch
+    
+        daemon, socket_path = self.start_daemon(ScriptedSerial({}))
+    
+        with daemon._stats_lock:
+            daemon._activity_minutes.clear()
+            daemon._activity_minutes.update({
+                40: 9,   # Outside the 60-minute window
+                41: 2,   # Oldest included minute
+                75: 4,
+                99: 3,
+                100: 5,  # Current minute
+            })
+    
+        # Minute 100 corresponds to monotonic time 6000.
+        with patch("kamxl_daemon.time.monotonic", return_value=6000.0):
+            diagnostics = daemon._m_status({})["diagnostics"]
+    
+        history = diagnostics["activity_history"]
+    
+        self.assertEqual(len(history), 60)
+        self.assertEqual(history[0], 2)
+        self.assertEqual(history[75 - 41], 4)
+        self.assertEqual(history[99 - 41], 3)
+        self.assertEqual(history[-1], 5)
+        self.assertEqual(history[1], 0)
+        self.assertEqual(sum(history), 14)
 
 class TypedCommandTests(DaemonTestCase):
     def test_get_typed_multiport_int(self):

@@ -113,6 +113,9 @@ class KAMDaemon:
 
         # Monotonic timestamps of packets received within the last 5 minutes.
         self._recent_packet_times = deque()
+        # Minute-indexed APRS activity history.
+        # Store only the most recent 60 minute buckets.
+        self._activity_minutes: Dict[int, int] = {}        
 
         self._methods: Dict[str, Callable[[Dict[str, Any]], Any]] = {
             "ping": self._m_ping,
@@ -184,6 +187,12 @@ class KAMDaemon:
             )
 
             packets_last_5m = len(self._recent_packet_times)
+            current_minute = int(now // 60)
+
+            activity_history = [
+                self._activity_minutes.get(minute, 0)
+                for minute in range(current_minute - 59, current_minute + 1)
+            ]
 
         return {
             "connected": connected,
@@ -199,6 +208,7 @@ class KAMDaemon:
                 "packets_last_5m": packets_last_5m,
                 "rate_1m": float(packets_last_1m),
                 "rate_5m": round(packets_last_5m / 5.0, 2),
+                "activity_history": activity_history,
             },
         }
 
@@ -539,6 +549,16 @@ class KAMDaemon:
 
             self._recent_packet_times.append(now)
             self._prune_packet_times(now)
+            minute = int(now // 60)
+            self._activity_minutes[minute] = (
+                self._activity_minutes.get(minute, 0) + 1
+            )
+
+            # Keep the current minute and the previous 59 minutes.
+            cutoff_minute = minute - 59
+            for old_minute in list(self._activity_minutes):
+                if old_minute < cutoff_minute:
+                    del self._activity_minutes[old_minute]
     
         with self._stations_lock:
             self._stations.update(packet)
