@@ -17,6 +17,7 @@ every packet, including non-APRS ones, since it just returns None
 immediately for anything that isn't a decodable position report.
 """
 
+import dataclasses
 import time
 
 from dataclasses import dataclass
@@ -32,6 +33,18 @@ class PositionPoint:
     latitude: float
     longitude: float
     timestamp: float
+
+@dataclass(frozen=True)
+class PacketRecord:
+    """One recently received APRS UI packet."""
+
+    timestamp: float
+    destination: str
+    digipeaters: Tuple[str, ...]
+    port: int
+    payload: str
+    raw: str
+    frame_type: Optional[str]
 
 @dataclass(frozen=True)
 class Station:
@@ -58,7 +71,7 @@ class Station:
     last_heard: float
     packet_count: int
     history: Tuple[PositionPoint, ...] = ()
-
+    recent_packets: Tuple[PacketRecord, ...] = ()
 
 class StationTracker:
     """
@@ -91,13 +104,40 @@ class StationTracker:
         if packet.frame_type not in (None, "UI"):
             return None
 
-        position = parse_position(packet.payload, destination=packet.destination)
-
-        if position is None:
-            return None
-
         if now is None:
             now = time.time()
+
+        existing = self._stations.get(packet.source)
+        position = parse_position(
+            packet.payload, destination=packet.destination
+        )
+
+        # A station must first be established by a valid position
+        # report. Non-position APRS packets can then be retained.
+        if position is None and existing is None:
+            return None
+
+        record = PacketRecord(
+            timestamp=now,
+            destination=packet.destination,
+            digipeaters=packet.digipeaters,
+            port=packet.port,
+            payload=packet.payload,
+            raw=packet.raw,
+            frame_type=packet.frame_type,
+        )
+
+        recent_packets = (
+            (*(existing.recent_packets if existing else ()), record)
+        )[-25:]
+
+        if position is None:
+            station = dataclasses.replace(
+                existing,
+                recent_packets=recent_packets,
+            )
+            self._stations[packet.source] = station
+            return station
 
         existing = self._stations.get(packet.source)
         packet_count = (existing.packet_count + 1) if existing else 1
@@ -127,6 +167,7 @@ class StationTracker:
             last_heard=now,
             packet_count=packet_count,
             history=history,
+            recent_packets=recent_packets,
         )
 
         self._stations[packet.source] = station

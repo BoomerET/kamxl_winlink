@@ -1356,6 +1356,27 @@ class StationsEndpointTests(RestTestCase):
         self.assertEqual(
             history[0]["timestamp"], station["last_heard"]
         )
+    def test_stations_get_includes_recent_packets(self):
+        daemon, port = self.start_stack(ScriptedSerial({}))
+        self._seed_station(daemon)
+
+        status, payload = self.request(
+            port, "GET", "/stations/N5BA-9"
+        )
+
+        self.assertEqual(status, 200)
+
+        station = payload["result"]
+        self.assertIn("recent_packets", station)
+        self.assertEqual(len(station["recent_packets"]), 1)
+
+        packet = station["recent_packets"][0]
+        self.assertEqual(packet["destination"], "APRS")
+        self.assertEqual(
+            packet["payload"],
+            "!4903.50N/07201.75W-Test comment",
+        )
+        self.assertEqual(packet["frame_type"], "UI")
 
 class RoutingErrorTests(RestTestCase):
     def test_unknown_route_is_404(self):

@@ -219,5 +219,104 @@ class StationTrackerTests(unittest.TestCase):
         self.assertEqual(station.history[-1].timestamp, 1029.0)
         self.assertEqual(station.packet_count, 30)
 
+    def test_position_packet_is_retained(self):
+        tracker = StationTracker()
+        packet = _ui_packet(
+            "N5BA-9", "!4903.50N/07201.75W-Test"
+        )
+
+        station = tracker.update(packet, now=1000.0)
+
+        self.assertEqual(len(station.recent_packets), 1)
+        self.assertEqual(station.recent_packets[0].timestamp, 1000.0)
+        self.assertEqual(station.recent_packets[0].payload, packet.payload)
+
+    def test_non_position_packet_retained_for_known_station(self):
+        tracker = StationTracker()
+
+        tracker.update(
+            _ui_packet("N5BA-9", "!4903.50N/07201.75W-"),
+            now=1000.0,
+        )
+
+        station = tracker.update(
+            _ui_packet("N5BA-9", ">Monitoring APRS"),
+            now=1010.0,
+        )
+
+        self.assertEqual(station.packet_count, 1)
+        self.assertEqual(station.last_heard, 1000.0)
+        self.assertEqual(len(station.recent_packets), 2)
+        self.assertEqual(
+            station.recent_packets[-1].payload,
+            ">Monitoring APRS",
+        )
+
+    def test_recent_packets_bounded_to_25(self):
+        tracker = StationTracker()
+
+        tracker.update(
+            _ui_packet("N5BA-9", "!4903.50N/07201.75W-"),
+            now=1000.0,
+        )
+
+        for i in range(30):
+            station = tracker.update(
+                _ui_packet("N5BA-9", f">Status {i}"),
+                now=1001.0 + i,
+            )
+
+        self.assertEqual(len(station.recent_packets), 25)
+        self.assertEqual(
+            station.recent_packets[-1].payload,
+            ">Status 29",
+        )
+        self.assertEqual(
+            station.recent_packets[0].payload,
+            ">Status 5",
+        )
+
+    def test_recent_packets_preserve_digipeater_path(self):
+        tracker = StationTracker()
+
+        packet = Packet(
+            source="N5BA-9",
+            destination="APRS",
+            digipeaters=("WIDE1-1*", "WIDE2-1"),
+            port=2,
+            payload="!4903.50N/07201.75W-Test",
+            raw="N5BA-9>APRS,WIDE1-1*,WIDE2-1/2: <UI>:\n"
+                "!4903.50N/07201.75W-Test",
+            frame_type="UI",
+        )
+
+        station = tracker.update(packet, now=1000.0)
+        record = station.recent_packets[0]
+
+        self.assertEqual(record.digipeaters, ("WIDE1-1*", "WIDE2-1"))
+        self.assertEqual(record.destination, "APRS")
+        self.assertEqual(record.port, 2)
+        self.assertEqual(record.raw, packet.raw)
+        self.assertEqual(record.frame_type, "UI")
+
+    def test_control_frames_not_retained_for_known_station(self):
+        tracker = StationTracker()
+
+        tracker.update(
+            _ui_packet("N5BA-9", "!4903.50N/07201.75W-"),
+            now=1000.0,
+        )
+
+        result = tracker.update(
+            _control_packet("N5BA-9", "C"),
+            now=1010.0,
+        )
+
+        station = tracker.get_station("N5BA-9")
+
+        self.assertIsNone(result)
+        self.assertEqual(len(station.recent_packets), 1)
+        self.assertEqual(station.packet_count, 1)
+
 if __name__ == "__main__":
     unittest.main()
