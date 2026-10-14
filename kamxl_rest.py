@@ -200,6 +200,21 @@ DASHBOARD_HTML = """<!doctype html>
   #receptionHealth.unavailable {
     color: #ff5555;
   }
+
+  .digiToggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    margin-right: 15px;
+    color: #9c9;
+    font-size: 11px;
+    cursor: pointer;
+  }
+
+  .digiToggle input {
+    accent-color: #22a4a7;
+    cursor: pointer;
+  }
 </style>
 </head>
 <body>
@@ -1639,12 +1654,30 @@ MAP_HTML = r"""<!doctype html>
     font-size: 11px;
   }
 
+  #digiStationFilter {
+    background: #101617;
+    color: #9c9;
+    border: 1px solid #345;
+    font: inherit;
+    font-size: 11px;
+    padding: 2px 5px;
+    margin-right: 12px;
+    max-width: 170px;
+  }
+
 </style>
 </head>
 <body>
 <div class="paneHeader">
   <span>STATION MAP <span id="stationCount"></span></span>
   <span>
+    <label class="digiToggle">
+      <input type="checkbox" id="showDigiPaths">
+      Show Digipeater Paths
+    </label>
+    <select id="digiStationFilter" aria-label="Filter digipeater paths by station">
+      <option value="">All stations</option>
+    </select>
     <a href="#" id="homeLink">home</a>
     <a href="#" id="terminalLink">terminal</a>
     <a href="#" id="pbbsLink">pbbs</a>
@@ -1686,7 +1719,52 @@ MAP_HTML = r"""<!doctype html>
   var markers = {};
   var trails = {};
   var trailPoints = {};
+  var digiPaths = L.layerGroup();
   var fitDone = false;
+
+  var showDigiPaths = document.getElementById("showDigiPaths");
+
+  showDigiPaths.addEventListener("change", function() {
+    if (showDigiPaths.checked) {
+      digiPaths.addTo(map);
+    } else {
+      map.removeLayer(digiPaths);
+    }
+  });
+
+  var digiStationFilter = document.getElementById("digiStationFilter");
+  var currentDigiLinks = [];
+
+  digiStationFilter.addEventListener("change", function() {
+    drawDigipeaterPaths();
+  });
+
+  function drawDigipeaterPaths() {
+    digiPaths.clearLayers();
+
+    var selected = digiStationFilter.value;
+
+    currentDigiLinks.forEach(function(link) {
+      if (selected && link.source !== selected) return;
+
+      L.polyline([link.from, link.to], {
+        color: "#22a4a7",
+        weight: 2,
+        opacity: 0.35,
+        dashArray: "7, 5",
+        interactive: true,
+        bubblingMouseEvents: false
+      })
+      .bindTooltip(
+        escapeHtml(link.source) +
+        " &rarr; " +
+        escapeHtml(link.digipeater) +
+        " (inferred relay relationship)",
+        { sticky: true }
+      )
+      .addTo(digiPaths);
+    });
+  }
 
   function escapeHtml(text) {
     var div = document.createElement("div");
@@ -1701,6 +1779,62 @@ MAP_HTML = r"""<!doctype html>
     if (deltaSeconds < 3600) return Math.floor(deltaSeconds / 60) + "m ago";
     if (deltaSeconds < 86400) return Math.floor(deltaSeconds / 3600) + "h ago";
     return Math.floor(deltaSeconds / 86400) + "d ago";
+  }
+
+  function resolveDigipeaterLinks(stations) {
+    var byCallsign = {};
+    var links = [];
+    var seen = {};
+
+    stations.forEach(function(station) {
+      byCallsign[station.callsign.toUpperCase()] = station;
+    });
+
+    stations.forEach(function(station) {
+      var packets = station.recent_packets || [];
+
+      packets.forEach(function(packet) {
+        var path = packet.digipeaters || [];
+
+        // Only consider path entries marked as already used.
+        path.forEach(function(entry) {
+          if (!entry.endsWith("*")) return;
+
+          var digiCallsign = entry.slice(0, -1).toUpperCase();
+
+          // APRS routing aliases aren't uniquely located stations.
+          if (/^(WIDE|TRACE|RELAY|TCPIP|TCPXX)/i.test(digiCallsign)) {
+            return;
+          }
+
+          var digi = byCallsign[digiCallsign];
+          if (!digi || digi.callsign === station.callsign) return;
+
+          var coordinates = [
+            station.latitude,
+            station.longitude,
+            digi.latitude,
+            digi.longitude
+          ];
+
+          if (!coordinates.every(Number.isFinite)) return;
+
+          var key = station.callsign + ">" + digi.callsign;
+
+          if (seen[key]) return;
+          seen[key] = true;
+
+          links.push({
+            source: station.callsign,
+            digipeater: digi.callsign,
+            from: [station.latitude, station.longitude],
+            to: [digi.latitude, digi.longitude]
+          });
+        });
+      });
+    });
+
+    return links;
   }
 
   // APRS symbol-table icon rendering. Translation table and sprite-grid
@@ -2012,6 +2146,31 @@ MAP_HTML = r"""<!doctype html>
     }
   }
 
+  function updateDigipeaterPaths(stations) {
+    currentDigiLinks = resolveDigipeaterLinks(stations);
+
+    var selected = digiStationFilter.value;
+    var sources = Array.from(
+      new Set(currentDigiLinks.map(function(link) {
+        return link.source;
+      }))
+    ).sort();
+
+    digiStationFilter.replaceChildren(
+      new Option("All stations", "")
+    );
+
+    sources.forEach(function(callsign) {
+      digiStationFilter.add(new Option(callsign, callsign));
+    });
+
+    if (selected && sources.includes(selected)) {
+      digiStationFilter.value = selected;
+    }
+
+    drawDigipeaterPaths();
+  }
+
   async function refresh() {
     try {
       var res = await fetch(authedUrl("/stations"));
@@ -2101,6 +2260,8 @@ MAP_HTML = r"""<!doctype html>
           delete trailPoints[callsign];
         }
       });
+
+      updateDigipeaterPaths(stations);
 
       if (!fitDone && stations.length) {
         fitDone = true;

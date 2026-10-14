@@ -1311,6 +1311,255 @@ class StationsEndpointTests(RestTestCase):
         self.assertIn("Station no longer available.", html)
         self.assertIn("Unable to load station details:", html)
 
+    def test_map_digipeater_controls(self):
+        html = kamxl_rest.MAP_HTML
+
+        self.assertIn('id="showDigiPaths"', html)
+        self.assertIn('id="digiStationFilter"', html)
+        self.assertIn("Show Digipeater Paths", html)
+        self.assertIn('new Option("All stations", "")', html)
+
+    def test_map_digipeater_layer_lifecycle(self):
+        html = kamxl_rest.MAP_HTML
+
+        self.assertIn("L.layerGroup()", html)
+        self.assertIn("digiPaths.addTo(map)", html)
+        self.assertIn("map.removeLayer(digiPaths)", html)
+        self.assertIn("digiPaths.clearLayers()", html)
+        self.assertIn("updateDigipeaterPaths(stations)", html)
+
+    def test_map_digipeater_resolver_present(self):
+        html = kamxl_rest.MAP_HTML
+
+        self.assertIn("function resolveDigipeaterLinks(stations)", html)
+        self.assertIn("function drawDigipeaterPaths()", html)
+        self.assertIn('entry.endsWith("*")', html)
+        self.assertIn("seen[key]", html)
+        self.assertIn("bindTooltip(", html)
+
+    def test_map_digipeater_resolver_behavior(self):
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("node not available")
+
+        html = kamxl_rest.MAP_HTML
+
+        match = re.search(
+            r"  function resolveDigipeaterLinks\(stations\) \{"
+            r"(.*?)"
+            r"\n  \}\n",
+            html,
+            re.DOTALL,
+        )
+        self.assertIsNotNone(match, "Digipeater resolver not found")
+
+        function_source = (
+            "function resolveDigipeaterLinks(stations) {"
+            + match.group(1)
+            + "\n}"
+        )
+
+        harness = r"""
+const assert = require("node:assert/strict");
+
+""" + function_source + r"""
+
+const stations = [
+  {
+    callsign: "N5BA",
+    latitude: 33.2,
+    longitude: -96.8,
+    recent_packets: [
+      { digipeaters: ["W5NGU-3*", "WIDE2-1"] },
+      { digipeaters: ["W5NGU-3*", "WIDE2-1"] },
+      { digipeaters: ["WIDE2-1"] }
+    ]
+  },
+  {
+    callsign: "W5NGU-3",
+    latitude: 33.3,
+    longitude: -97.1,
+    recent_packets: []
+  },
+  {
+    callsign: "K5TEST",
+    latitude: 33.4,
+    longitude: -96.9,
+    recent_packets: [
+      { digipeaters: ["UNKNOWN-1*"] },
+      { digipeaters: ["WIDE1-1*"] }
+    ]
+  }
+];
+
+const links = resolveDigipeaterLinks(stations);
+
+assert.equal(links.length, 1);
+assert.equal(links[0].source, "N5BA");
+assert.equal(links[0].digipeater, "W5NGU-3");
+assert.deepEqual(links[0].from, [33.2, -96.8]);
+assert.deepEqual(links[0].to, [33.3, -97.1]);
+
+console.log("Digipeater resolver behavior: PASS");
+"""
+
+        result = subprocess.run(
+            [node, "-e", harness],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+
+        self.assertEqual(
+            result.returncode,
+            0,
+            "Digipeater resolver JavaScript test failed:\n"
+            + result.stderr,
+        )
+
+    def test_map_digipeater_filter_behavior(self):
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("node not available")
+
+        html = kamxl_rest.MAP_HTML
+
+        def extract_function(name, args):
+            pattern = (
+                r"  function " + re.escape(name) +
+                r"\(" + re.escape(args) + r"\) \{"
+                r"(.*?)\n  \}\n"
+            )
+            match = re.search(pattern, html, re.DOTALL)
+            self.assertIsNotNone(match, name + " not found")
+            return (
+                "function " + name + "(" + args + ") {"
+                + match.group(1) + "\n}"
+            )
+
+        source = "\n".join([
+            extract_function("drawDigipeaterPaths", ""),
+            extract_function("updateDigipeaterPaths", "stations"),
+        ])
+
+        harness = r"""
+const assert = require("node:assert/strict");
+
+const rendered = [];
+let clears = 0;
+
+const digiPaths = {
+  clearLayers() {
+    clears++;
+    rendered.length = 0;
+  }
+};
+
+const digiStationFilter = {
+  value: "",
+  options: [],
+  replaceChildren(...options) {
+    this.options = options;
+    this.value = "";
+  },
+  add(option) {
+    this.options.push(option);
+  }
+};
+
+function Option(text, value) {
+  this.text = text;
+  this.value = value;
+}
+
+const L = {
+  polyline(points, options) {
+    return {
+      bindTooltip() {
+        return this;
+      },
+      addTo() {
+        rendered.push(points);
+        return this;
+      }
+    };
+  }
+};
+
+function escapeHtml(value) {
+  return String(value);
+}
+
+let currentDigiLinks = [];
+
+function resolveDigipeaterLinks(stations) {
+  return stations;
+}
+
+""" + source + r"""
+
+const links = [
+  {
+    source: "N5BA",
+    digipeater: "W5NGU-3",
+    from: [33.2, -96.8],
+    to: [33.3, -97.1]
+  },
+  {
+    source: "K5TEST",
+    digipeater: "W5NGU-3",
+    from: [33.4, -96.9],
+    to: [33.3, -97.1]
+  }
+];
+
+// All stations: both links visible.
+updateDigipeaterPaths(links);
+assert.equal(rendered.length, 2);
+assert.deepEqual(
+  digiStationFilter.options.map(option => option.value),
+  ["", "K5TEST", "N5BA"]
+);
+
+// Selecting N5BA displays only its link.
+digiStationFilter.value = "N5BA";
+drawDigipeaterPaths();
+assert.equal(rendered.length, 1);
+assert.deepEqual(rendered[0][0], [33.2, -96.8]);
+
+// Refresh preserves the selected station.
+updateDigipeaterPaths(links);
+assert.equal(digiStationFilter.value, "N5BA");
+assert.equal(rendered.length, 1);
+
+// If the selected station disappears, reset to all.
+updateDigipeaterPaths([links[1]]);
+assert.equal(digiStationFilter.value, "");
+assert.equal(rendered.length, 1);
+
+// An empty update clears the paths and dropdown.
+updateDigipeaterPaths([]);
+assert.equal(rendered.length, 0);
+assert.equal(digiStationFilter.options.length, 1);
+assert.ok(clears >= 5);
+
+console.log("Digipeater filter behavior: PASS");
+"""
+
+        result = subprocess.run(
+            [node, "-e", harness],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+
+        self.assertEqual(
+            result.returncode,
+            0,
+            "Digipeater filter JavaScript test failed:\n"
+            + result.stderr,
+        )
+
     def test_map_station_details_request_generation(self):
         html = kamxl_rest.MAP_HTML
 
