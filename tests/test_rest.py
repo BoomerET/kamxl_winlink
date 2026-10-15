@@ -2801,7 +2801,7 @@ class DaemonClientTimeoutTests(unittest.TestCase):
                                 {"id": "1", "ok": True, "result": "slow"}
                             ) + "\n").encode("ascii")
                         )
-                    except BrokenPipeError:
+                    except (BrokenPipeError, ConnectionResetError):
                         # Expected when the timeout test disconnects
                         # before the delayed response is sent.
                         pass
