@@ -707,12 +707,242 @@ check(true, {
 
         # Both lists use the same rendering function.
         self.assertIn(
-            'renderReceptionRows("rxTopSources", stats.top_sources, true)',
+            'renderReceptionRows("rxTopSources", visible, true)',
             html,
         )
         self.assertIn(
             'renderReceptionRows("rxTopDigis", stats.top_digipeaters, false)',
             html,
+        )
+
+    def test_reception_source_filtering(self):
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("node not available")
+
+        html = kamxl_rest.DASHBOARD_HTML
+
+        match = re.search(
+            r"  function filterReceptionSources"
+            r"\(entries, query, minimum, sortBy\) \{"
+            r"(.*?)"
+            r"\n  \}\n",
+            html,
+            re.DOTALL,
+        )
+
+        self.assertIsNotNone(
+            match, "Reception source filtering function not found"
+        )
+
+        function_source = (
+            "function filterReceptionSources"
+            "(entries, query, minimum, sortBy) {"
+            + match.group(1)
+            + "\n}"
+        )
+
+        harness = r"""
+const assert = require("node:assert/strict");
+
+const sources = [
+    {callsign: "N5BA", packets: 20},
+    {callsign: "W5NGU-3", packets: 10},
+    {callsign: "K5AAA", packets: 5},
+    {callsign: "N5TEST", packets: 2},
+    {callsign: "K5BBB", packets: 1}
+];
+
+// Partial callsign search.
+assert.deepEqual(
+    filterReceptionSources(sources, "N5", 1, "most")
+        .map(entry => entry.callsign),
+    ["N5BA", "N5TEST"]
+);
+
+// Case-insensitive search.
+assert.deepEqual(
+    filterReceptionSources(sources, "n5ba", 1, "most")
+        .map(entry => entry.callsign),
+    ["N5BA"]
+);
+
+// Minimum packet threshold.
+assert.deepEqual(
+    filterReceptionSources(sources, "", 5, "most")
+        .map(entry => entry.callsign),
+    ["N5BA", "W5NGU-3", "K5AAA"]
+);
+
+// Most heard first.
+assert.deepEqual(
+    filterReceptionSources(sources, "", 1, "most")
+        .map(entry => entry.callsign),
+    ["N5BA", "W5NGU-3", "K5AAA", "N5TEST", "K5BBB"]
+);
+
+// Least heard first.
+assert.deepEqual(
+    filterReceptionSources(sources, "", 1, "least")
+        .map(entry => entry.callsign),
+    ["K5BBB", "N5TEST", "K5AAA", "W5NGU-3", "N5BA"]
+);
+
+// Alphabetical callsign sorting.
+assert.deepEqual(
+    filterReceptionSources(sources, "", 1, "callsign")
+        .map(entry => entry.callsign),
+    ["K5AAA", "K5BBB", "N5BA", "N5TEST", "W5NGU-3"]
+);
+
+// Search and minimum count together.
+assert.deepEqual(
+    filterReceptionSources(sources, "N5", 5, "most")
+        .map(entry => entry.callsign),
+    ["N5BA"]
+);
+
+// Empty dataset.
+assert.deepEqual(
+    filterReceptionSources([], "N5", 1, "most"),
+    []
+);
+
+// Filtering must not reorder the original dataset.
+assert.equal(sources[0].callsign, "N5BA");
+assert.equal(sources[4].callsign, "K5BBB");
+
+console.log("Reception source filtering tests passed");
+"""
+
+        result = subprocess.run(
+            [node, "-e", function_source + "\n" + harness],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+
+        self.assertEqual(
+            result.returncode,
+            0,
+            result.stdout + result.stderr,
+        )
+
+    def test_reception_source_display_filters_and_refresh(self):
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("node not available")
+
+        html = kamxl_rest.DASHBOARD_HTML
+
+        functions = []
+        for name, arguments in (
+            ("filterReceptionSources", "entries, query, minimum, sortBy"),
+            ("updateReceptionSourceDisplay", ""),
+        ):
+            pattern = (
+                r"  function " + name + r"\(" +
+                re.escape(arguments) + r"\) \{" +
+                r"(.*?)\n  \}\n"
+            )
+            match = re.search(pattern, html, re.DOTALL)
+            self.assertIsNotNone(match, name + " not found")
+
+            functions.append(
+                "function " + name + "(" + arguments + ") {" +
+                match.group(1) + "\n}"
+            )
+
+        harness = r"""
+const assert = require("node:assert/strict");
+
+const elements = {
+    rxSourceSearch: {value: ""},
+    rxSourceMinimum: {value: "1"},
+    rxSourceSort: {value: "most"},
+    rxSourceCount: {textContent: ""}
+};
+
+global.document = {
+    getElementById: id => elements[id]
+};
+
+let rendered = [];
+
+function renderReceptionRows(id, entries, linkToMap) {
+    assert.equal(id, "rxTopSources");
+    assert.equal(linkToMap, true);
+    rendered = entries.map(entry => entry.callsign);
+}
+
+var receptionSources = Array.from(
+    {length: 15},
+    (_, index) => ({
+        callsign: "N5TEST-" + index,
+        packets: 15 - index
+    })
+);
+
+// Default dashboard shows only ten.
+updateReceptionSourceDisplay();
+assert.equal(rendered.length, 10);
+assert.equal(rendered[0], "N5TEST-0");
+assert.match(elements.rxSourceCount.textContent, /top 10 of 15/);
+
+// Search includes stations outside the top ten.
+elements.rxSourceSearch.value = "N5TEST-14";
+updateReceptionSourceDisplay();
+assert.deepEqual(rendered, ["N5TEST-14"]);
+
+// Change search and sorting.
+elements.rxSourceSearch.value = "N5TEST";
+elements.rxSourceSort.value = "least";
+elements.rxSourceMinimum.value = "5";
+updateReceptionSourceDisplay();
+
+assert.equal(rendered.length, 11);
+assert.equal(rendered[0], "N5TEST-10");
+assert.equal(rendered[10], "N5TEST-0");
+
+// Simulate fresh statistics arriving from the daemon.
+receptionSources = receptionSources.map(entry => ({
+    callsign: entry.callsign,
+    packets: entry.packets + 1
+}));
+
+updateReceptionSourceDisplay();
+
+// Current selections are preserved.
+assert.equal(elements.rxSourceSearch.value, "N5TEST");
+assert.equal(elements.rxSourceSort.value, "least");
+assert.equal(elements.rxSourceMinimum.value, "5");
+
+// The new packet counts affect filtering.
+assert.equal(rendered.length, 12);
+assert.equal(rendered[0], "N5TEST-11");
+
+// Clear filters and restore compact view.
+elements.rxSourceSearch.value = "";
+elements.rxSourceSort.value = "most";
+elements.rxSourceMinimum.value = "1";
+
+updateReceptionSourceDisplay();
+assert.equal(rendered.length, 10);
+
+console.log("Reception display integration tests passed");
+"""
+
+        result = subprocess.run(
+            [node, "-e", "\n".join(functions) + "\n" + harness],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+
+        self.assertEqual(
+            result.returncode,
+            0,
+            result.stdout + result.stderr,
         )
 
     def test_reception_chart_bar_widths(self):
@@ -891,6 +1121,196 @@ console.log("Reception chart behavior: PASS");
             + result.stderr,
         )
 
+    def test_map_station_search_behavior(self):
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("node not available")
+
+        html = kamxl_rest.MAP_HTML
+
+        # Extract production code, including the form submit handler.
+        match = re.search(
+            r"  function selectMapStation\(callsign\) \{"
+            r"(.*?)"
+            r"\n  async function refresh\(\) \{",
+            html,
+            re.DOTALL,
+        )
+        self.assertIsNotNone(
+            match, "Map station search code not found"
+        )
+
+        source = (
+            "function selectMapStation(callsign) {"
+            + match.group(1)
+        )
+
+        harness = r"""
+const assert = require("node:assert/strict");
+
+const status = {
+    hidden: true,
+    textContent: ""
+};
+
+const searchInput = {
+    value: ""
+};
+
+const handlers = {};
+
+global.document = {
+    getElementById(id) {
+        if (id === "stationSearchForm") {
+            return {
+                addEventListener(event, callback) {
+                    handlers[event] = callback;
+                }
+            };
+        }
+        if (id === "stationSearch") return searchInput;
+        throw new Error("Unexpected element: " + id);
+    }
+};
+
+const stationSelectionStatus = status;
+
+let stationSelectionHandled = false;
+let selectedPosition = null;
+let selectedZoom = null;
+let popupOpened = null;
+let detailsOpened = null;
+
+const map = {
+    setView(position, zoom) {
+        selectedPosition = position;
+        selectedZoom = zoom;
+    }
+};
+
+function showStationDetails(callsign) {
+    detailsOpened = callsign;
+}
+
+function makeMarker(callsign, lat, lon) {
+    return {
+        getLatLng() {
+            return [lat, lon];
+        },
+        openPopup() {
+            popupOpened = callsign;
+        }
+    };
+}
+
+const markers = {
+    "N5BA": makeMarker("N5BA", 33.2, -96.8),
+    "N5BA-9": makeMarker("N5BA-9", 33.3, -96.9),
+    "W5NGU-3": makeMarker("W5NGU-3", 33.1, -97.0),
+    "K5TEST": makeMarker("K5TEST", 32.9, -96.7)
+};
+
+function submit(value) {
+    searchInput.value = value;
+
+    let prevented = false;
+    handlers.submit({
+        preventDefault() {
+            prevented = true;
+        }
+    });
+
+    assert.equal(prevented, true);
+}
+
+assert.equal(typeof handlers.submit, "function");
+
+// Exact match takes precedence over partial matches.
+submit("N5BA");
+
+assert.equal(popupOpened, "N5BA");
+assert.equal(detailsOpened, "N5BA");
+assert.deepEqual(selectedPosition, [33.2, -96.8]);
+assert.equal(selectedZoom, 13);
+assert.equal(status.hidden, true);
+
+// Case-insensitive search.
+submit("w5ngu-3");
+
+assert.equal(popupOpened, "W5NGU-3");
+assert.equal(detailsOpened, "W5NGU-3");
+
+// Unique partial match.
+submit("test");
+
+assert.equal(popupOpened, "K5TEST");
+assert.equal(detailsOpened, "K5TEST");
+
+// Ambiguous partial match must not select a station.
+popupOpened = null;
+detailsOpened = null;
+
+submit("N5BA-");
+
+assert.equal(popupOpened, "N5BA-9");
+
+// N5BA matches two stations, so no automatic selection.
+popupOpened = null;
+detailsOpened = null;
+
+submit("N5");
+
+assert.equal(popupOpened, null);
+assert.equal(detailsOpened, null);
+assert.equal(status.hidden, false);
+assert.match(status.textContent, /2 stations match/);
+
+// Unknown callsign produces a useful message.
+submit("ZZ9UNKNOWN");
+
+assert.equal(status.hidden, false);
+assert.match(
+    status.textContent,
+    /has no known position on this map/
+);
+
+// Empty search.
+submit(" ");
+
+assert.equal(status.hidden, false);
+assert.match(
+    status.textContent,
+    /Enter a callsign/
+);
+
+// Manual searches supersede pending deep links.
+stationSelectionHandled = false;
+submit("K5TEST");
+
+assert.equal(stationSelectionHandled, true);
+assert.equal(detailsOpened, "K5TEST");
+
+console.log("Map station search behavior: PASS");
+"""
+
+        result = subprocess.run(
+            [node, "-e", harness.replace(
+                'assert.equal(typeof handlers.submit, "function");',
+                source + '\nassert.equal(typeof handlers.submit, "function");',
+            )],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+
+        self.assertEqual(
+            result.returncode,
+            0,
+            "Map station search behavioral test failed:\n"
+            + result.stdout
+            + result.stderr,
+        )
+
     def test_map_station_selection_support(self):
         html = kamxl_rest.MAP_HTML
 
@@ -903,15 +1323,19 @@ console.log("Reception chart behavior: PASS");
             html,
         )
         self.assertIn(
-            "markers[requestedStation]",
+            "stationSelectionHandled = selectMapStation(requestedStation)",
             html,
         )
         self.assertIn(
-            "selectedMarker.openPopup()",
+            "var marker = markers[selected]",
             html,
         )
         self.assertIn(
-            "showStationDetails(requestedStation)",
+            "marker.openPopup()",
+            html,
+        )
+        self.assertIn(
+            "showStationDetails(selected)",
             html,
         )
         self.assertIn(
