@@ -83,16 +83,22 @@ class ReceptionWriterTests(unittest.TestCase):
             writer.start()
 
     def test_database_initialization_failure(self):
-        from unittest.mock import patch
-
         writer = ReceptionWriter(self.database_path)
 
-        with patch(
-            "reception_writer.ReceptionHistory",
-            side_effect=OSError("Simulated database failure"),
-        ):
-            writer.start()
-            writer._thread.join(timeout=5)
+        with self.assertLogs("reception_writer", level="ERROR") as logs:
+            with patch(
+                "reception_writer.ReceptionHistory",
+                side_effect=OSError("Simulated database failure"),
+            ):
+                writer.start()
+                writer._thread.join(timeout=5)
+
+        self.assertEqual(len(logs.records), 1)
+        self.assertIn(
+            "Failed to initialize reception history",
+            logs.records[0].getMessage(),
+        )
+        self.assertIsNotNone(logs.records[0].exc_info)
 
         self.assertFalse(writer._thread.is_alive())
         self.assertTrue(writer._failed)
@@ -116,23 +122,31 @@ class ReceptionWriterTests(unittest.TestCase):
 
         writer = ReceptionWriter(self.database_path)
 
-        with patch(
-            "reception_writer.ReceptionHistory",
-            side_effect=fail_initialization,
-        ):
-            writer.start()
-            self.assertTrue(entered.wait(timeout=5))
+        with self.assertLogs("reception_writer", level="ERROR") as logs:
+            with patch(
+                "reception_writer.ReceptionHistory",
+                side_effect=fail_initialization,
+            ):
+                writer.start()
+                self.assertTrue(entered.wait(timeout=5))
 
-            shutdown_thread = threading.Thread(target=writer.stop)
-            shutdown_thread.start()
+                shutdown_thread = threading.Thread(target=writer.stop)
+                shutdown_thread.start()
 
-            release.set()
-            shutdown_thread.join(timeout=5)
+                release.set()
+                shutdown_thread.join(timeout=5)
 
-            self.assertFalse(
-                shutdown_thread.is_alive(),
-                "Writer shutdown deadlocked",
-            )
+                self.assertFalse(
+                    shutdown_thread.is_alive(),
+                    "Writer shutdown deadlocked",
+                )
+
+        self.assertEqual(len(logs.records), 1)
+        self.assertIn(
+            "Failed to initialize reception history",
+            logs.records[0].getMessage(),
+        )
+        self.assertIsNotNone(logs.records[0].exc_info)
 
         self.assertTrue(writer._failed)
         self.assertEqual(writer.write_errors, 1)
@@ -155,13 +169,21 @@ class ReceptionWriterTests(unittest.TestCase):
             database_path = str(Path(tmp) / "history.sqlite3")
             writer = ReceptionWriter(database_path)
 
-            with patch(
-                "reception_writer.ReceptionHistory",
-                side_effect=OSError("Simulated initialization failure"),
-            ):
-                writer.start()
+            with self.assertLogs("reception_writer", level="ERROR") as logs:
+                with patch(
+                    "reception_writer.ReceptionHistory",
+                    side_effect=OSError("Simulated initialization failure"),
+                ):
+                    writer.start()
 
-                try:
-                    self.assertFalse(writer.wait_ready(timeout=5.0))
-                finally:
-                    writer.stop()
+                    try:
+                        self.assertFalse(writer.wait_ready(timeout=5.0))
+                    finally:
+                        writer.stop()
+
+            self.assertEqual(len(logs.records), 1)
+            self.assertIn(
+                "Failed to initialize reception history",
+                logs.records[0].getMessage(),
+            )
+            self.assertIsNotNone(logs.records[0].exc_info)
