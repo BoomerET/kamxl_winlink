@@ -55,7 +55,7 @@ from stations import StationTracker
 from winlink import OutgoingMessage
 from collections import deque
 from reception_stats import ReceptionStats
-
+from reception_writer import ReceptionWriter
 
 DEFAULT_SOCKET_PATH = "/tmp/kamxl.sock"
 DEFAULT_BAUDRATE = 19200  # matches KAMXL's own constructor default
@@ -77,15 +77,19 @@ class KAMDaemon:
     it, serialized behind a single lock -- only one Terminal Mode
     transaction can be in flight on the wire at a time.
     """
-
     def __init__(
         self,
         kam: KAMXL,
-        socket_path: str = DEFAULT_SOCKET_PATH
+        socket_path: str = DEFAULT_SOCKET_PATH,
+        history_db: Optional[str] = None,
     ) -> None:
         self.kam = kam
         self.socket_path = socket_path
+        self._reception_writer = None
 
+        if history_db is not None:
+            self._reception_writer = ReceptionWriter(history_db)
+            self._reception_writer.start()
         self._kam_lock = threading.RLock()
 
         self._subscribers: Set["DaemonRequestHandler"] = set()
@@ -144,6 +148,7 @@ class KAMDaemon:
             "stations.list": self._m_stations_list,
             "stations.get": self._m_stations_get,
             "aprs.stats": self._m_aprs_stats,
+            "aprs.history": self._m_aprs_history,
         }
 
         self._server: Optional["_ThreadingUnixStreamServer"] = None
@@ -440,6 +445,26 @@ class KAMDaemon:
         with self._stats_lock:
             return self._reception_stats.snapshot()
 
+    def _m_aprs_history(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """Return persistent packet reception history."""
+        if self._reception_writer is None:
+            return {
+                "enabled": False,
+                "scope": "persistent",
+                "total_packets": 0,
+                "hourly_counts": [],
+            }
+
+        since = params.get("since")
+
+        if since is not None:
+            if isinstance(since, bool) or not isinstance(since, int):
+                raise ValueError("'since' must be a Unix timestamp integer")
+
+        result = self._reception_writer.snapshot(since=since)
+        result["enabled"] = True
+        return result
+
     def _m_stations_list(self, params: Dict[str, Any]) -> List[Dict[str, Any]]:
         with self._stations_lock:
             self._stations.expire_stale(max_age_seconds=3600)
@@ -567,10 +592,11 @@ class KAMDaemon:
             for old_minute in list(self._activity_minutes):
                 if old_minute < cutoff_minute:
                     del self._activity_minutes[old_minute]
-    
+        if self._reception_writer is not None:
+            self._reception_writer.submit(packet)
         with self._stations_lock:
             self._stations.update(packet)
-    
+
         self._broadcast_packet(packet)
 
     def _broadcast_packet(self, packet: Packet) -> None:
@@ -641,6 +667,14 @@ class KAMDaemon:
             self._shutdown_done = True
 
             self._monitor_stop.set()
+            if (
+                self._monitor_thread is not None
+                and self._monitor_thread is not threading.current_thread()
+            ):
+                self._monitor_thread.join()
+
+            if self._reception_writer is not None:
+                self._reception_writer.stop()
 
             if self._server is not None:
                 self._server.shutdown()
@@ -872,6 +906,16 @@ def main(argv: Optional[list] = None) -> None:
             f"to right now."
         ),
     )
+
+    parser.add_argument(
+        "--history-db",
+        default=os.environ.get("KAMXL_HISTORY_DB"),
+        help=(
+            "SQLite reception history database path "
+            "(default: $KAMXL_HISTORY_DB; disabled if unset)"
+        ),
+    )
+
     parser.add_argument(
         "-v", "--verbose",
         action="store_true",
@@ -888,7 +932,11 @@ def main(argv: Optional[list] = None) -> None:
     kam = KAMXL(args.port, baudrate=args.baud)
     kam.connect()
 
-    daemon = KAMDaemon(kam, args.socket)
+    daemon = KAMDaemon(
+        kam,
+        args.socket,
+        history_db=args.history_db,
+    )
 
     # socketserver.BaseServer.shutdown() blocks until serve_forever()'s
     # own loop notices and exits -- and it deadlocks if called from the

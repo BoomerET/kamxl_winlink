@@ -35,13 +35,29 @@ class RestTestCase(unittest.TestCase):
     throwaway addresses, in background threads.
     """
 
-    def start_stack(self, serial, api_key="test-token"):
+    def start_stack(
+        self,
+        serial,
+        api_key="test-token",
+        history_db=False,
+    ):
         kam = make_kam(serial)
 
         tmp_dir = tempfile.mkdtemp()
         socket_path = os.path.join(tmp_dir, "kamxl.sock")
 
-        daemon = KAMDaemon(kam, socket_path)
+        database_path = (
+            os.path.join(tmp_dir, "reception.sqlite3")
+            if history_db
+            else None
+        )
+
+        daemon = KAMDaemon(
+            kam,
+            socket_path,
+            history_db=database_path,
+        )
+
         daemon_thread = threading.Thread(
             target=daemon.serve_forever,
             daemon=True
@@ -455,6 +471,182 @@ class DashboardTests(RestTestCase):
         )
         self.assertIn("kamxl dashboard", html)
 
+    def test_page_includes_persistent_reception_history(self):
+        _, port = self.start_stack(ScriptedSerial({}))
+
+        conn = http.client.HTTPConnection(
+            "127.0.0.1", port, timeout=5
+        )
+        self.addCleanup(conn.close)
+
+        conn.request("GET", "/?token=test-token")
+        response = conn.getresponse()
+        html = response.read().decode("utf-8")
+
+        self.assertEqual(response.status, 200)
+
+        # Historical chart and status elements.
+        self.assertIn('id="historyCard"', html)
+        self.assertIn('id="historyChart"', html)
+        self.assertIn('id="historySummary"', html)
+
+        # Historical data comes from SQLite, not session statistics.
+        self.assertIn('"/aprs/history?since="', html)
+        self.assertIn("renderPersistentHistory(", html)
+
+        # The dashboard handles disabled persistence.
+        self.assertIn(
+            "Persistent reception history is disabled.", html
+        )
+
+        # Initial refresh and subsequent 60-second refreshes.
+        self.assertIn("  refreshPersistentHistory();", html)
+        self.assertIn(
+            "setInterval(refreshPersistentHistory, 60000);",
+            html,
+        )
+
+    def test_daily_history_respects_local_calendar_days(self):
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("node not available")
+
+        html = kamxl_rest.DASHBOARD_HTML
+
+        # Extract the actual functions used by the dashboard.
+        functions = []
+
+        for name, args in (
+            ("localDayStart", "date"),
+            ("buildDailyHistory", "rows, days"),
+        ):
+            pattern = (
+                r"  function " + name +
+                r"\(" + re.escape(args) + r"\) \{"
+                r"(.*?)"
+                r"\n  \}\n"
+            )
+
+            match = re.search(pattern, html, re.DOTALL)
+
+            self.assertIsNotNone(
+                match,
+                f"Dashboard function {name} not found",
+            )
+
+            functions.append(
+                "function " + name + "(" + args + ") {"
+                + match.group(1) + "\n}"
+            )
+
+        harness = r"""
+const assert = require("node:assert/strict");
+
+""" + "\n\n".join(functions) + r"""
+
+function epoch(year, month, day, hour = 0, minute = 0) {
+  return Math.floor(
+    new Date(year, month - 1, day, hour, minute).getTime() / 1000
+  );
+}
+
+function row(timestamp, count) {
+  return {
+    hour_start: timestamp,
+    packet_count: count
+  };
+}
+
+function checkDayLengths(year, month, day, expectedHours) {
+  const start = epoch(year, month, day);
+  const next = epoch(year, month, day + 1);
+
+  assert.equal((next - start) / 3600, expectedHours);
+}
+
+// America/Chicago: spring forward on March 8, 2026.
+checkDayLengths(2026, 3, 8, 23);
+
+// America/Chicago: fall back on November 1, 2026.
+checkDayLengths(2026, 11, 1, 25);
+
+// Spring-forward: both packets belong to March 8.
+{
+  const rows = [
+    row(epoch(2026, 3, 8, 0), 3),
+    row(epoch(2026, 3, 8, 3), 5),
+    row(epoch(2026, 3, 9, 0), 7)
+  ];
+
+  const result = buildDailyHistory(rows, 2);
+
+  assert.deepEqual(
+    result.map(bucket => bucket.count),
+    [8, 7]
+  );
+}
+
+// Fall-back: both occurrences of 1 AM belong to November 1.
+{
+  const firstOneAM = Math.floor(
+    Date.parse("2026-11-01T06:00:00Z") / 1000
+  );
+
+  const secondOneAM = Math.floor(
+    Date.parse("2026-11-01T07:00:00Z") / 1000
+  );
+
+  const rows = [
+    row(firstOneAM, 4),
+    row(secondOneAM, 6),
+    row(epoch(2026, 11, 2, 0), 2)
+  ];
+
+  const result = buildDailyHistory(rows, 2);
+
+  assert.deepEqual(
+    result.map(bucket => bucket.count),
+    [10, 2]
+  );
+}
+"""
+
+        # Freeze the test's current date independently of real time.
+        # The dashboard helper uses new Date() to choose its buckets.
+        harness = (
+            "const RealDate = Date;\n"
+            "let fixedNow = '2026-03-09T17:00:00Z';\n"
+            "class FixedDate extends RealDate {\n"
+            "  constructor(...args) {\n"
+            "    if (args.length === 0) {\n"
+            "      super(fixedNow);\n"
+            "    } else {\n"
+            "      super(...args);\n"
+            "    }\n"
+            "  }\n"
+            "  static now() { return RealDate.parse(fixedNow); }\n"
+            "}\n"
+            "global.Date = FixedDate;\n"
+            + harness.replace(
+                "// Fall-back: both occurrences",
+                "fixedNow = '2026-11-02T18:00:00Z';\n"
+                "// Fall-back: both occurrences",
+            )
+        )
+
+        result = subprocess.run(
+            [node, "-e", harness],
+            env={**os.environ, "TZ": "America/Chicago"},
+            capture_output=True,
+            text=True,
+        )
+
+        self.assertEqual(
+            result.returncode,
+            0,
+            result.stderr,
+        )
+
     def test_page_links_to_all_other_pages(self):
         _, port = self.start_stack(ScriptedSerial({}))
 
@@ -471,17 +663,16 @@ class DashboardTests(RestTestCase):
         self.assertIn("/winlink", html)
 
     def test_page_does_not_auto_fetch_pbbs_or_winlink(self):
-        # Both PBBS message listing and Winlink mail checking drive a
-        # real AX.25 connect/command/disconnect cycle against actual
-        # hardware -- the dashboard must not trigger either just from
-        # being loaded. Checked at the source level: the only three
-        # calls made unconditionally at the bottom of the script are
-        # refreshStatus()/refreshStations()/refreshReceptionStats() (cheap, passive reads);
-        # "/pbbs/messages" only appears inside the "Check PBBS"
-        # button's click handler (never called on its own), and
-        # "/winlink/check" doesn't appear anywhere at all -- the
-        # Winlink card is just a link to the real Winlink page, which
-        # has its own password-gated form.
+        # PBBS message listing and Winlink mail checking can initiate
+        # real AX.25 connect/command/disconnect cycles. The dashboard
+        # must never trigger these operations automatically.
+        #
+        # Its four automatic refresh calls are passive reads:
+        # refreshStatus(), refreshStations(), refreshReceptionStats(),
+        # and refreshPersistentHistory().
+        #
+        # PBBS messages are requested only by the Check PBBS button.
+        # Winlink mail checking occurs on the dedicated Winlink page.
         _, port = self.start_stack(ScriptedSerial({}))
 
         conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
@@ -1757,6 +1948,100 @@ class WinlinkApiEndpointTests(RestTestCase):
         self.assertEqual(status, 400)
         self.assertEqual(payload["error"]["type"], "MissingParam")
 
+class ReceptionHistoryEndpointTests(RestTestCase):
+    """End-to-end tests for GET /aprs/history."""
+
+    def test_history_disabled(self):
+        _, port = self.start_stack(ScriptedSerial({}))
+
+        status, payload = self.request(
+            port, "GET", "/aprs/history"
+        )
+
+        self.assertEqual(status, 200)
+        self.assertTrue(payload["ok"])
+
+        history = payload["result"]
+
+        self.assertFalse(history["enabled"])
+        self.assertEqual(history["scope"], "persistent")
+        self.assertEqual(history["total_packets"], 0)
+        self.assertEqual(history["hourly_counts"], [])
+
+    def test_history_requires_authentication(self):
+        _, port = self.start_stack(ScriptedSerial({}))
+
+        status, payload = self.request(
+            port, "GET", "/aprs/history", token=None
+        )
+
+        self.assertEqual(status, 401)
+        self.assertIn("error", payload)
+
+    def test_history_rejects_invalid_since(self):
+        _, port = self.start_stack(ScriptedSerial({}))
+
+        status, payload = self.request(
+            port, "GET", "/aprs/history?since=yesterday"
+        )
+
+        self.assertEqual(status, 400)
+        self.assertFalse(payload["ok"])
+        self.assertEqual(
+            payload["error"]["type"],
+            "InvalidParam",
+        )
+
+    def test_history_returns_persisted_packets(self):
+        """HTTP history endpoint returns packets stored in SQLite."""
+
+        daemon, port = self.start_stack(
+            ScriptedSerial({}),
+            history_db=True,
+        )
+
+        packet = Packet(
+            source="N5BA",
+            destination="APRS",
+            digipeaters=("W5NGU-3*",),
+            port=2,
+            payload=">SQLite REST integration test",
+            raw="N5BA>APRS,W5NGU-3*:>SQLite REST integration test",
+            frame_type="UI",
+        )
+
+        daemon._handle_packet(packet)
+
+        # Wait for the background SQLite writer to initialize.
+        self.assertTrue(
+            daemon._reception_writer.wait_ready(timeout=5.0)
+        )
+
+        # Flush the queued packet before querying through HTTP.
+        daemon._reception_writer.stop()
+
+        status, payload = self.request(
+            port,
+            "GET",
+            "/aprs/history",
+        )
+
+        self.assertEqual(status, 200)
+        self.assertTrue(payload["ok"])
+
+        history = payload["result"]
+
+        self.assertTrue(history["enabled"])
+        self.assertEqual(history["scope"], "persistent")
+        self.assertEqual(history["total_packets"], 1)
+
+        self.assertEqual(
+            sum(
+                entry["packet_count"]
+                for entry in history["hourly_counts"]
+            ),
+            1,
+        )
 
 class ReceptionStatsEndpointTests(RestTestCase):
     """End-to-end tests for GET /aprs/stats."""
