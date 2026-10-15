@@ -2795,20 +2795,27 @@ class DaemonClientTimeoutTests(unittest.TestCase):
                 try:
                     conn.recv(65536)  # the request line; contents unused
                     time.sleep(delay)
-                    conn.sendall(
-                        (json.dumps(
-                            {"id": "1", "ok": True, "result": "slow"}
-                        ) + "\n").encode("ascii")
-                    )
+                    try:
+                        conn.sendall(
+                            (json.dumps(
+                                {"id": "1", "ok": True, "result": "slow"}
+                            ) + "\n").encode("ascii")
+                        )
+                    except BrokenPipeError:
+                        # Expected when the timeout test disconnects
+                        # before the delayed response is sent.
+                        pass
                 finally:
                     conn.close()
 
         thread = threading.Thread(target=serve, daemon=True)
         thread.start()
 
-        self.addCleanup(stop.set)
-        self.addCleanup(thread.join, 2)
+        # Cleanups run in reverse registration order.
+        # Signal shutdown, wait for the worker, then close the socket.
         self.addCleanup(server_sock.close)
+        self.addCleanup(thread.join, 2)
+        self.addCleanup(stop.set)
 
         return socket_path
 
