@@ -182,6 +182,37 @@ DASHBOARD_HTML = """<!doctype html>
   #activitySummary {
     margin-top: 8px;
   }
+
+  /* Persistent APRS reception history */
+  #historyCard {
+    margin: 16px 20px;
+  }
+
+  #historyChart {
+    display: block;
+    width: 100%;
+    height: 180px;
+    margin-top: 12px;
+  }
+
+  #historyChart .activity-bar {
+    fill: #6c9;
+  }
+
+  #historyChart .activity-grid {
+    stroke: #345;
+    stroke-width: 1;
+  }
+
+  #historyChart .activity-label {
+    fill: #9ab;
+    font: 11px monospace;
+  }
+
+  #historySummary {
+    margin-top: 8px;
+  }
+
   #receptionHealth {
     margin-top: 6px;
     font-weight: bold;
@@ -412,6 +443,33 @@ DASHBOARD_HTML = """<!doctype html>
     Waiting for APRS activity...
   </div>
 </div>
+
+<div class="card" id="historyCard">
+  <h2>APRS Reception History</h2>
+
+  <div class="receptionFilters">
+    <label for="historyRange">Display period</label>
+    <select id="historyRange">
+      <option value="24h">Last 24 hours</option>
+      <option value="7d">Last 7 days</option>
+      <option value="30d">Last 30 days</option>
+    </select>
+  </div>
+  <div class="sub">
+    Persistent SQLite history — survives daemon restarts
+  </div>
+
+  <svg id="historyChart"
+       viewBox="0 0 900 180"
+       role="img"
+       aria-label="APRS packets received per hour over the last 24 hours">
+  </svg>
+
+  <div class="sub" id="historySummary" role="status">
+    Loading reception history...
+  </div>
+</div>
+
 <div class="card" id="receptionStatsCard">
   <h2>AX.25 Reception Statistics</h2>
   <div class="sub">Since daemon startup — refreshes every 15 seconds</div>
@@ -538,6 +596,270 @@ DASHBOARD_HTML = """<!doctype html>
   var diagnosticsDetail = document.getElementById("diagnosticsDetail");
   var activityChart = document.getElementById("activityChart");
   var activitySummary = document.getElementById("activitySummary");
+
+  var historyChart = document.getElementById("historyChart");
+  var historySummary = document.getElementById("historySummary");
+  var historyRange = document.getElementById("historyRange");
+
+  function localDayStart(date) {
+    return new Date(
+      date.getFullYear(),
+      date.getMonth(),
+      date.getDate()
+    );
+  }
+
+  function buildDailyHistory(rows, days) {
+    var today = localDayStart(new Date());
+    var buckets = [];
+    var counts = new Map();
+
+    // Build local calendar days, not fixed 86,400-second intervals.
+    for (var i = days - 1; i >= 0; i--) {
+      var start = new Date(
+        today.getFullYear(),
+        today.getMonth(),
+        today.getDate() - i
+      );
+
+      buckets.push({
+        timestamp: Math.floor(start.getTime() / 1000),
+        count: 0
+      });
+    }
+
+    rows.forEach(function(row) {
+      var hourDate = new Date(Number(row.hour_start) * 1000);
+      var day = localDayStart(hourDate);
+      var key = Math.floor(day.getTime() / 1000);
+
+      counts.set(
+        key,
+        (counts.get(key) || 0) + Number(row.packet_count)
+      );
+    });
+
+    buckets.forEach(function(bucket) {
+      bucket.count = counts.get(bucket.timestamp) || 0;
+    });
+
+    return buckets;
+  }
+
+  function renderPersistentHistory(rows, range) {
+    var ns = "http://www.w3.org/2000/svg";
+    var width = 900;
+    var height = 180;
+    var left = 40;
+    var right = 10;
+    var top = 10;
+    var bottom = 35;
+
+    var plotWidth = width - left - right;
+    var plotHeight = height - top - bottom;
+
+    var hours;
+
+    if (range === "7d" || range === "30d") {
+      hours = buildDailyHistory(
+        rows,
+        range === "7d" ? 7 : 30
+      );
+    } else {
+      // Current hour plus the preceding 23 UTC-hour buckets.
+      var currentHour = Math.floor(Date.now() / 3600000) * 3600;
+      var firstHour = currentHour - 23 * 3600;
+      var counts = new Map();
+
+      rows.forEach(function(row) {
+        counts.set(Number(row.hour_start), Number(row.packet_count));
+      });
+
+      hours = [];
+
+      for (var i = 0; i < 24; i++) {
+        var hourStart = firstHour + i * 3600;
+
+        hours.push({
+          timestamp: hourStart,
+          count: counts.get(hourStart) || 0
+        });
+      }
+    }
+
+    var peak = Math.max(0, ...hours.map(function(h) {
+      return h.count;
+    }));
+
+    var tickStep = Math.max(1, Math.ceil(peak / 4));
+    var maxPackets = tickStep * 4;
+
+    var total = hours.reduce(function(sum, hour) {
+      return sum + hour.count;
+    }, 0);
+
+    historyChart.replaceChildren();
+
+    function addSvg(tag, attrs, text) {
+      var el = document.createElementNS(ns, tag);
+
+      Object.entries(attrs).forEach(function(entry) {
+        el.setAttribute(entry[0], entry[1]);
+      });
+
+      if (text !== undefined) {
+        el.textContent = text;
+      }
+
+      historyChart.appendChild(el);
+      return el;
+    }
+
+    // Horizontal grid lines.
+    for (var j = 0; j <= 4; j++) {
+      var y = top + plotHeight * j / 4;
+      var value = tickStep * (4 - j);
+
+      addSvg("line", {
+        x1: left,
+        y1: y,
+        x2: width - right,
+        y2: y,
+        class: "activity-grid"
+      });
+
+      addSvg("text", {
+        x: left - 8,
+        y: y + 4,
+        "text-anchor": "end",
+        class: "activity-label"
+      }, String(value));
+    }
+
+    // Hourly bars.
+    var slotWidth = plotWidth / hours.length;
+    var barWidth = slotWidth * 0.7;
+
+    hours.forEach(function(hour, index) {
+      var barHeight = maxPackets > 0
+        ? hour.count / maxPackets * plotHeight
+        : 0;
+
+      var x = left + index * slotWidth +
+        (slotWidth - barWidth) / 2;
+
+      var y = top + plotHeight - barHeight;
+
+      var bar = addSvg("rect", {
+        x: x,
+        y: y,
+        width: barWidth,
+        height: barHeight,
+        class: "activity-bar"
+      });
+
+      var label = range === "24h"
+        ? new Date(hour.timestamp * 1000).toLocaleString()
+        : new Date(hour.timestamp * 1000).toLocaleDateString([], {
+            weekday: "short",
+            month: "short",
+            day: "numeric",
+            year: "numeric"
+          });
+
+      var tooltip = document.createElementNS(ns, "title");
+      tooltip.textContent = label + ": " +
+        hour.count + " packets";
+      bar.appendChild(tooltip);
+
+      // Show labels at appropriate intervals for each view.
+      var labelInterval = range === "7d" ? 1 :
+        range === "30d" ? 5 : 3;
+
+      if (index % labelInterval === 0) {
+        addSvg("text", {
+          x: left + (index + 0.5) * slotWidth,
+          y: height - 12,
+          "text-anchor": "middle",
+          class: "activity-label"
+        }, range === "24h"
+          ? new Date(hour.timestamp * 1000)
+              .toLocaleTimeString([], {
+                hour: "2-digit",
+                minute: "2-digit"
+              })
+          : new Date(hour.timestamp * 1000)
+              .toLocaleDateString([], {
+                month: "short",
+                day: "numeric"
+              }));
+      }
+    });
+    var description = range === "7d"
+      ? "7 local calendar days"
+      : range === "30d"
+        ? "30 local calendar days"
+        : "24 hourly buckets";
+
+    historySummary.textContent =
+      total.toLocaleString() +
+      " packets across " + description;
+  }
+
+  async function refreshPersistentHistory() {
+    var range = historyRange.value;
+    var now = new Date();
+    var since;
+
+    if (range === "7d" || range === "30d") {
+      var days = range === "7d" ? 7 : 30;
+
+      // Local midnight, including daylight-saving transitions.
+      var firstDay = new Date(
+        now.getFullYear(),
+        now.getMonth(),
+        now.getDate() - (days - 1)
+      );
+
+      since = Math.floor(firstDay.getTime() / 1000);
+    } else {
+      range = "24h";
+
+      // Current UTC hour plus the preceding 23 hours.
+      var currentHour = Math.floor(Date.now() / 3600000) * 3600;
+      since = currentHour - 23 * 3600;
+    }
+
+    try {
+      var history = await apiGet(
+        "/aprs/history?since=" + since
+      );
+
+      if (!history.enabled) {
+        historyChart.replaceChildren();
+        historySummary.textContent =
+          "Persistent reception history is disabled. " +
+          "Start the daemon with --history-db to enable it.";
+        return;
+      }
+
+      renderPersistentHistory(history.hourly_counts || [], range);
+
+      historyChart.setAttribute(
+        "aria-label",
+        range === "24h"
+          ? "APRS packets received per hour over the last 24 hourly buckets"
+          : "APRS packets received per local calendar day over the last " +
+            (range === "7d" ? "7" : "30") + " days"
+      );
+
+    } catch (err) {
+      historyChart.replaceChildren();
+      historySummary.textContent =
+        "Reception history unavailable: " +
+        (err.message || String(err));
+    }
+  }
 
   function renderActivityHistory(history) {
     if (!Array.isArray(history) || history.length !== 60) {
@@ -940,13 +1262,16 @@ DASHBOARD_HTML = """<!doctype html>
     "change", updateReceptionSourceDisplay
   );
 
+  historyRange.addEventListener("change", refreshPersistentHistory);
   refreshStatus();
   refreshStations();
   refreshReceptionStats();
+  refreshPersistentHistory();
 
   setInterval(refreshStatus, 15000);
   setInterval(refreshStations, 15000);
   setInterval(refreshReceptionStats, 15000);
+  setInterval(refreshPersistentHistory, 60000);
 })();
 </script>
 </body>
@@ -2983,6 +3308,7 @@ ROUTES: Tuple[Tuple[str, "re.Pattern", str], ...] = (
     ("GET", re.compile(r"^/winlink/gateways$"), "_h_winlink_gateways"),
     ("GET", re.compile(r"^/winlink$"), "_h_winlink_page"),
     ("GET", re.compile(r"^/aprs/stats$"), "_h_aprs_stats"),
+    ("GET", re.compile(r"^/aprs/history$"), "_h_aprs_history"),
 )
 
 
@@ -3422,6 +3748,43 @@ class RESTRequestHandler(BaseHTTPRequestHandler):
         query: Dict[str, Any],
     ) -> None:
         self._relay("aprs.stats")
+
+    def _h_aprs_history(
+        self,
+        params: Dict[str, str],
+        query: Dict[str, Any],
+    ) -> None:
+        """Return persistent APRS reception history."""
+
+        since_values = query.get("since")
+
+        if since_values is None:
+            self._relay("aprs.history")
+            return
+
+        if len(since_values) != 1:
+            self._send_json(400, {
+                "ok": False,
+                "error": {
+                    "type": "InvalidParam",
+                    "message": "'since' must be specified exactly once",
+                },
+            })
+            return
+
+        try:
+            since = int(since_values[0])
+        except (TypeError, ValueError):
+            self._send_json(400, {
+                "ok": False,
+                "error": {
+                    "type": "InvalidParam",
+                    "message": "'since' must be a Unix timestamp integer",
+                },
+            })
+            return
+
+        self._relay("aprs.history", since=since)
 
     # -- Winlink (milestone 8) -------------------------------------------
     #

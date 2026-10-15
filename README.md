@@ -137,6 +137,61 @@ more).
 - [examples/](examples/) -- runnable scripts, including two that need
   no hardware at all
 
+## Persistent APRS Reception History
+
+The KAM-XL daemon can optionally record received AX.25/APRS packets in a SQLite database. This provides reception statistics that survive daemon restarts and can be displayed in the web dashboard.
+
+Persistence is disabled by default. Enable it using the `--history-db` command-line option or the `KAMXL_HISTORY_DB` environment variable:
+
+```bash
+export KAMXL_HISTORY_DB=/var/lib/kamxl/reception.sqlite3
+```
+
+For a systemd installation, create a service override:
+
+```bash
+sudo systemctl edit kamxl-daemon.service
+```
+
+Add:
+
+```ini
+[Service]
+Environment=KAMXL_HISTORY_DB=/var/lib/kamxl/reception.sqlite3
+```
+
+Ensure that the service account can write to the database directory. Apply the configuration with:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl restart kamxl-daemon.service
+```
+
+The SQLite database uses write-ahead logging (WAL). Packet recording is handled by a background writer so database operations do not block the serial reception path.
+
+### Reception history API
+
+The authenticated REST API provides:
+
+```http
+GET /aprs/history
+GET /aprs/history?since=UNIX_TIMESTAMP
+```
+
+The optional `since` parameter is a Unix timestamp in seconds. The response includes the persistent packet total, hourly reception counts, and whether history recording is enabled.
+
+### Dashboard history charts
+
+The web dashboard provides three reception-history display periods:
+
+- **Last 24 hours:** Hourly reception counts, including the current partial hour.
+- **Last 7 days:** Daily reception counts.
+- **Last 30 days:** Daily reception counts.
+
+The 7-day and 30-day views aggregate hourly records into calendar days using the browser's local timezone. Day boundaries account for daylight-saving transitions, including 23-hour and 25-hour days.
+
+Persistent reception history is separate from the live reception statistics and the in-memory APRS station database. It does not store a historical trail of station positions.
+
 ## Testing
 
 ```

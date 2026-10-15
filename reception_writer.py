@@ -1,0 +1,170 @@
+"""Background SQLite writer for AX.25 reception history."""
+
+import logging
+import queue
+import threading
+import time
+
+from packet import Packet
+from reception_history import ReceptionHistory
+
+
+logger = logging.getLogger(__name__)
+
+
+class ReceptionWriter:
+    """Persist received packets without blocking the monitor thread."""
+
+    def __init__(
+        self,
+        database_path: str,
+        queue_size: int = 10000,
+    ) -> None:
+        self.database_path = database_path
+        self._queue = queue.Queue(maxsize=queue_size)
+        self._thread = None
+        self._lock = threading.Lock()
+        self._stop_event = threading.Event()
+        self._ready_event = threading.Event()
+        self._stopped = False
+        self._failed = False
+        self.dropped_packets = 0
+        self.write_errors = 0
+
+    def start(self) -> None:
+        """Start the background SQLite writer."""
+
+        with self._lock:
+            if self._stopped:
+                raise RuntimeError("ReceptionWriter has been stopped")
+
+            if self._thread is not None:
+                return
+
+            self._thread = threading.Thread(
+                target=self._run,
+                name="reception-sqlite-writer",
+                daemon=False,
+            )
+            self._thread.start()
+
+    def submit(self, packet: Packet) -> bool:
+        """Queue a packet without waiting for SQLite."""
+
+        with self._lock:
+            if self._stopped or self._failed or self._thread is None:
+                return False
+
+            try:
+                self._queue.put_nowait((packet, int(time.time())))
+                return True
+            except queue.Full:
+                self.dropped_packets += 1
+                return False
+
+    def _run(self) -> None:
+        """Initialize SQLite and process queued packets."""
+
+        try:
+            history = ReceptionHistory(self.database_path)
+
+        except Exception:
+            logger.exception("Failed to initialize reception history")
+
+            with self._lock:
+                self._failed = True
+                self.write_errors += 1
+
+            # Initialization failed. Wake any waiting readers.
+            self._ready_event.set()
+
+            self._discard_pending()
+            return
+
+        # SQLite is initialized and ready for queries.
+        self._ready_event.set()
+
+        try:
+            while (
+                not self._stop_event.is_set()
+                or not self._queue.empty()
+            ):
+                try:
+                    packet, received_at = self._queue.get(timeout=0.1)
+
+                except queue.Empty:
+                    continue
+
+                try:
+                    history.record(
+                        packet,
+                        received_at=received_at,
+                    )
+
+                except Exception:
+                    logger.exception("Failed to persist received packet")
+
+                    with self._lock:
+                        self.write_errors += 1
+
+                finally:
+                    self._queue.task_done()
+
+        finally:
+            history.close()
+
+    def _discard_pending(self) -> None:
+        """Discard pending records after initialization failure."""
+
+        while True:
+            try:
+                self._queue.get_nowait()
+
+            except queue.Empty:
+                break
+
+            else:
+                self._queue.task_done()
+
+    def wait_ready(self, timeout: float = 5.0) -> bool:
+        """Wait for SQLite initialization to finish successfully."""
+
+        if not self._ready_event.wait(timeout=timeout):
+            return False
+
+        with self._lock:
+            return not self._failed
+
+    def stop(self) -> None:
+        """Stop accepting packets and flush pending records."""
+
+        with self._lock:
+            if self._stopped:
+                return
+
+            self._stopped = True
+            self._stop_event.set()
+            thread = self._thread
+
+        if thread is not None:
+            thread.join()
+
+    def snapshot(self, since=None):
+        """Read persisted history using a separate SQLite connection."""
+
+        if not self.wait_ready():
+            raise RuntimeError(
+                "Reception history database is not ready"
+            )
+
+        history = ReceptionHistory(self.database_path)
+
+        try:
+            return {
+                "scope": "persistent",
+                "total_packets": history.total_packets(),
+                "hourly_counts": history.hourly_counts(since=since),
+            }
+
+        finally:
+            history.close()

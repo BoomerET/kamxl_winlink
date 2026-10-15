@@ -20,6 +20,9 @@ from fakes import CannedSerial, ChunkSerial, ScriptedSerial, make_kam
 
 from kamxl_daemon import KAMDaemon, _load_dotenv
 from pbbs import PBBSMessage, PBBSMessageSummary
+from pathlib import Path
+from packet import Packet
+from reception_history import ReceptionHistory
 from winlink import OutgoingMessage, Proposal, WinlinkMessage
 
 
@@ -1181,6 +1184,137 @@ class StationsTests(DaemonTestCase):
         self.assertTrue(response["ok"])
         self.assertEqual(response["result"], [])
 
+class ReceptionHistoryIntegrationTests(DaemonTestCase):
+    """Verify daemon packet reception persists to SQLite."""
+
+    def test_packet_survives_daemon_restart(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            database_path = str(Path(tmp) / "reception.sqlite3")
+
+            # First daemon instance.
+            kam1 = make_kam(ScriptedSerial({}))
+            daemon1 = KAMDaemon(
+                kam1,
+                str(Path(tmp) / "daemon1.sock"),
+                history_db=database_path,
+            )
+
+            try:
+                packet = Packet(
+                    source="N5BA",
+                    destination="APRS",
+                    digipeaters=("WIDE1-1", "W5NGU-3*"),
+                    port=2,
+                    payload="SQLite integration test",
+                    raw="N5BA>APRS,WIDE1-1,W5NGU-3*/2: <UI>:",
+                    frame_type="UI",
+                )
+
+                daemon1._handle_packet(packet)
+            finally:
+                daemon1.shutdown()
+
+            # Reopen the database after the daemon shuts down.
+            history = ReceptionHistory(database_path)
+
+            try:
+                self.assertEqual(history.total_packets(), 1)
+            finally:
+                history.close()
+
+            # Second daemon instance, using the same database.
+            kam2 = make_kam(ScriptedSerial({}))
+            daemon2 = KAMDaemon(
+                kam2,
+                str(Path(tmp) / "daemon2.sock"),
+                history_db=database_path,
+            )
+
+            try:
+                daemon2._handle_packet(packet)
+            finally:
+                daemon2.shutdown()
+
+            history = ReceptionHistory(database_path)
+
+            try:
+                self.assertEqual(history.total_packets(), 2)
+            finally:
+                history.close()
+
+    def test_history_disabled(self):
+        daemon = KAMDaemon(
+            make_kam(ScriptedSerial({})),
+            "/tmp/kamxl-history-disabled-test.sock",
+        )
+
+        try:
+            result = daemon._m_aprs_history({})
+            self.assertFalse(result["enabled"])
+            self.assertEqual(result["total_packets"], 0)
+            self.assertEqual(result["hourly_counts"], [])
+        finally:
+            daemon.shutdown()
+
+    def test_history_rpc_returns_persisted_packets(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            database_path = str(Path(tmp) / "history.sqlite3")
+
+            daemon = KAMDaemon(
+                make_kam(ScriptedSerial({})),
+                str(Path(tmp) / "daemon.sock"),
+                history_db=database_path,
+            )
+
+            packet = Packet(
+                source="N5BA",
+                destination="APRS",
+                digipeaters=("W5NGU-3*",),
+                port=2,
+                payload="Test",
+                raw="Test",
+                frame_type="UI",
+            )
+
+            try:
+                daemon._handle_packet(packet)
+
+                # Stop the writer to guarantee the queued record
+                # has been committed before querying history.
+                daemon._reception_writer.stop()
+
+                result = daemon._m_aprs_history({})
+
+                self.assertTrue(result["enabled"])
+                self.assertEqual(result["scope"], "persistent")
+                self.assertEqual(result["total_packets"], 1)
+                self.assertEqual(
+                    sum(
+                        entry["packet_count"]
+                        for entry in result["hourly_counts"]
+                    ),
+                    1,
+                )
+            finally:
+                daemon.shutdown()
+
+    def test_history_rpc_rejects_invalid_since(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            daemon = KAMDaemon(
+                make_kam(ScriptedSerial({})),
+                str(Path(tmp) / "daemon.sock"),
+                history_db=str(Path(tmp) / "history.sqlite3"),
+            )
+
+            try:
+                for invalid in ("yesterday", 1.5, True):
+                    with self.subTest(invalid=invalid):
+                        with self.assertRaises(ValueError):
+                            daemon._m_aprs_history({
+                                "since": invalid,
+                            })
+            finally:
+                daemon.shutdown()
 
 if __name__ == "__main__":
     unittest.main()

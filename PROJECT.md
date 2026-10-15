@@ -1617,3 +1617,23 @@ object with properties instead of a plain dict.
 APRS helper library, Winlink helper, BBS helper, GPS helper, Morse
 helper, remote command helper, NET/ROM support, KISS mode support,
 binary protocol support.
+
+## Persistent APRS reception history (PR #10)
+
+Implemented optional SQLite-backed reception history for received
+AX.25/APRS packets.
+
+- Disabled by default; enabled with `--history-db` or
+  `KAMXL_HISTORY_DB`.
+- SQLite WAL database with asynchronous packet recording.
+- Persistent hourly reception counts survive daemon restarts.
+- Authenticated REST endpoint: `GET /aprs/history`, with optional
+  Unix timestamp `since` parameter.
+- Dashboard history selector: 24 hours, 7 days, or 30 days.
+- Daily aggregation uses browser-local calendar boundaries and
+  handles daylight-saving transitions.
+- Regression tests cover persistence, daemon integration, REST
+  integration, and calendar-day aggregation.
+
+This feature does not change milestone 7's in-memory APRS station
+database or introduce historical station-position tracking.
