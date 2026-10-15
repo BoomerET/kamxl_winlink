@@ -48,6 +48,13 @@ class ReceptionStats:
             "scope": "since_daemon_start",
             "total_packets": self._total,
             "unique_sources": len(self._sources),
+            "all_sources": [
+                {"callsign": callsign, "packets": count}
+                for callsign, count in sorted(
+                    self._sources.items(),
+                    key=lambda item: (-item[1], item[0]),
+                )
+            ],
             "top_sources": [
                 {"callsign": callsign, "packets": count}
                 for callsign, count in self._sources.most_common(10)

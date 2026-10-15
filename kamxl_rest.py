@@ -265,6 +265,45 @@ DASHBOARD_HTML = """<!doctype html>
     margin-bottom: 10px;
   }
 
+  .receptionFilters {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin: 12px 0;
+  }
+
+  .receptionFilters input,
+  .receptionFilters select {
+    background: #142525;
+    color: #e0eeee;
+    border: 1px solid #385454;
+    border-radius: 5px;
+    padding: 7px 9px;
+    max-width: 100%;
+  }
+
+  .receptionFilters input {
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  .receptionFilterOptions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+
+  .receptionFilterOptions label {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    font-size: 12px;
+  }
+
+  #rxSourceCount {
+    margin-bottom: 10px;
+  }
+
   .receptionBarTrack {
     height: 8px;
     background: #1c3030;
@@ -397,10 +436,43 @@ DASHBOARD_HTML = """<!doctype html>
   </div>
 
   <div class="receptionLists">
-    <div>
-      <h3>Top Heard Sources</h3>
-      <div id="rxTopSources" class="sub">Loading...</div>
-    </div>
+   <div>
+     <h3>Top Heard Sources</h3>
+
+     <div class="receptionFilters">
+       <input
+         id="rxSourceSearch"
+         type="search"
+         placeholder="Search callsign..."
+         aria-label="Search heard stations"
+         autocomplete="off"
+       >
+
+       <div class="receptionFilterOptions">
+         <label>
+           Minimum packets
+           <select id="rxSourceMinimum">
+             <option value="1">1+</option>
+             <option value="5">5+</option>
+             <option value="10">10+</option>
+             <option value="25">25+</option>
+           </select>
+         </label>
+
+         <label>
+           Sort by
+           <select id="rxSourceSort">
+             <option value="most">Most heard</option>
+             <option value="least">Least heard</option>
+             <option value="callsign">Callsign A-Z</option>
+           </select>
+         </label>
+       </div>
+     </div>
+
+     <div id="rxSourceCount" class="sub" role="status"></div>
+     <div id="rxTopSources" class="sub">Loading...</div>
+   </div>
     <div>
       <h3>Top Digipeaters</h3>
       <div id="rxTopDigis" class="sub">Loading...</div>
@@ -767,6 +839,62 @@ DASHBOARD_HTML = """<!doctype html>
     }).join("");
   }
 
+  var receptionSources = [];
+
+  function filterReceptionSources(entries, query, minimum, sortBy) {
+    var search = String(query || "").trim().toUpperCase();
+    var minPackets = Number(minimum) || 1;
+
+    var filtered = (entries || []).filter(function(entry) {
+      return entry.callsign.toUpperCase().includes(search) &&
+        Number(entry.packets) >= minPackets;
+    });
+
+    filtered.sort(function(a, b) {
+      if (sortBy === "least") {
+        return Number(a.packets) - Number(b.packets) ||
+          a.callsign.localeCompare(b.callsign);
+      }
+
+      if (sortBy === "callsign") {
+        return a.callsign.localeCompare(b.callsign);
+      }
+
+      return Number(b.packets) - Number(a.packets) ||
+        a.callsign.localeCompare(b.callsign);
+    });
+
+    return filtered;
+  }
+
+  function updateReceptionSourceDisplay() {
+    var search = document.getElementById("rxSourceSearch").value;
+    var minimum = document.getElementById("rxSourceMinimum").value;
+    var sortBy = document.getElementById("rxSourceSort").value;
+
+    var filtered = filterReceptionSources(
+      receptionSources, search, minimum, sortBy
+    );
+
+    // Keep the dashboard compact until the user changes a filter.
+    var defaultView =
+      !search.trim() && minimum === "1" && sortBy === "most";
+
+    var visible = defaultView ? filtered.slice(0, 10) : filtered;
+
+    renderReceptionRows("rxTopSources", visible, true);
+
+    var count = document.getElementById("rxSourceCount");
+
+    if (defaultView) {
+      count.textContent = "Showing top " + visible.length +
+        " of " + receptionSources.length + " heard sources";
+    } else {
+      count.textContent = "Showing " + visible.length +
+        " of " + receptionSources.length + " heard sources";
+    }
+  }
+
   async function refreshReceptionStats() {
     var statusElement = document.getElementById("rxStatsStatus");
 
@@ -785,8 +913,13 @@ DASHBOARD_HTML = """<!doctype html>
       document.getElementById("rxDirect").textContent =
         Number(stats.no_identified_digipeater_packets).toLocaleString();
 
-      renderReceptionRows("rxTopSources", stats.top_sources, true);
+      receptionSources = Array.isArray(stats.all_sources)
+        ? stats.all_sources
+        : stats.top_sources || [];
+
+      updateReceptionSourceDisplay();
       renderReceptionRows("rxTopDigis", stats.top_digipeaters, false);
+
 
       statusElement.textContent = "";
     } catch (err) {
@@ -794,6 +927,18 @@ DASHBOARD_HTML = """<!doctype html>
         "Reception statistics unavailable: " + (err.message || String(err));
     }
   }
+
+  document.getElementById("rxSourceSearch").addEventListener(
+    "input", updateReceptionSourceDisplay
+  );
+
+  document.getElementById("rxSourceMinimum").addEventListener(
+    "change", updateReceptionSourceDisplay
+  );
+
+  document.getElementById("rxSourceSort").addEventListener(
+    "change", updateReceptionSourceDisplay
+  );
 
   refreshStatus();
   refreshStations();
@@ -1879,11 +2024,66 @@ MAP_HTML = r"""<!doctype html>
     max-width: 170px;
   }
 
+  #stationSearchForm {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    margin: 0 12px;
+  }
+
+  #stationSearch {
+    background: #101617;
+    color: #d4f7d4;
+    border: 1px solid #345;
+    border-radius: 3px;
+    font: inherit;
+    font-size: 11px;
+    padding: 4px 7px;
+    width: 170px;
+    min-width: 90px;
+  }
+
+  #stationSearch:focus {
+    outline: 1px solid #5a8;
+  }
+
+  .paneHeader {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  #stationSelectionStatus:not([hidden]) {
+    position: absolute;
+    top: 48px;
+    left: 12px;
+    z-index: 1100;
+    background: #101b1c;
+    color: #d4f7d4;
+    border: 1px solid #3a6;
+    border-radius: 5px;
+    padding: 9px 12px;
+    max-width: min(400px, calc(100vw - 40px));
+    font-size: 12px;
+  }
+
 </style>
 </head>
 <body>
 <div class="paneHeader">
   <span>STATION MAP <span id="stationCount"></span></span>
+  <form id="stationSearchForm" role="search">
+    <input
+      id="stationSearch"
+      type="search"
+      placeholder="Find callsign..."
+      aria-label="Find station on map"
+      autocomplete="off"
+      list="stationSearchOptions"
+    >
+    <datalist id="stationSearchOptions"></datalist>
+    <button type="submit">Find</button>
+  </form>
+
   <span>
     <label class="digiToggle">
       <input type="checkbox" id="showDigiPaths">
@@ -2389,6 +2589,70 @@ MAP_HTML = r"""<!doctype html>
     drawDigipeaterPaths();
   }
 
+  function selectMapStation(callsign) {
+    var selected = String(callsign || "").trim().toUpperCase();
+
+    if (!selected) {
+      stationSelectionStatus.hidden = false;
+      stationSelectionStatus.textContent = "Enter a callsign to search.";
+      return false;
+    }
+
+    var marker = markers[selected];
+
+    if (!marker) {
+      stationSelectionStatus.hidden = false;
+      stationSelectionStatus.textContent =
+        selected + " has no known position on this map. " +
+        "The station may have transmitted AX.25 packets " +
+        "without an APRS position report.";
+      return false;
+    }
+
+    map.setView(marker.getLatLng(), 13);
+    marker.openPopup();
+    showStationDetails(selected);
+
+    stationSelectionStatus.hidden = true;
+    stationSelectionStatus.textContent = "";
+
+    return true;
+  }
+
+  document.getElementById("stationSearchForm").addEventListener(
+    "submit",
+    function(event) {
+      event.preventDefault();
+      // A manual search supersedes any pending deep-link selection.
+      stationSelectionHandled = true;
+
+      var search = document.getElementById("stationSearch").value
+        .trim()
+        .toUpperCase();
+
+      var matches = Object.keys(markers)
+        .filter(function(callsign) {
+          return callsign.toUpperCase().includes(search);
+        })
+        .sort();
+
+      if (!search) {
+        selectMapStation("");
+      } else if (markers[search]) {
+        selectMapStation(search);
+      } else if (matches.length === 1) {
+        selectMapStation(matches[0]);
+      } else if (matches.length > 1) {
+        stationSelectionStatus.hidden = false;
+        stationSelectionStatus.textContent =
+          matches.length + " stations match '" + search +
+          "'. Choose a complete callsign from the suggestions.";
+      } else {
+        selectMapStation(search);
+      }
+    }
+  );
+
   async function refresh() {
     try {
       var res = await fetch(authedUrl("/stations"));
@@ -2481,6 +2745,18 @@ MAP_HTML = r"""<!doctype html>
 
       updateDigipeaterPaths(stations);
 
+      var searchOptions = document.getElementById(
+        "stationSearchOptions"
+      );
+
+      searchOptions.replaceChildren();
+
+      Object.keys(markers).sort().forEach(function(callsign) {
+        var option = document.createElement("option");
+        option.value = callsign;
+        searchOptions.appendChild(option);
+      });
+
       if (!fitDone && stations.length) {
         fitDone = true;
 
@@ -2490,27 +2766,11 @@ MAP_HTML = r"""<!doctype html>
 
         map.fitBounds(bounds, { maxZoom: 12, padding: [30, 30] });
       }
+
       if (requestedStation && !stationSelectionHandled) {
-        var selectedMarker = markers[requestedStation];
-
-        if (selectedMarker) {
-          stationSelectionHandled = true;
-
-          var selectedLatLng = selectedMarker.getLatLng();
-          map.setView(selectedLatLng, 13);
-          selectedMarker.openPopup();
-          showStationDetails(requestedStation);
-
-          stationSelectionStatus.hidden = true;
-        } else {
-          stationSelectionStatus.hidden = false;
-          stationSelectionStatus.textContent =
-            requestedStation +
-            " has no known position on this map. " +
-            "The station may have transmitted AX.25 packets " +
-            "without an APRS position report.";
-        }
+        stationSelectionHandled = selectMapStation(requestedStation);
       }
+
     } catch (err) {
       // Transient fetch failure -- next poll will retry.
     }
