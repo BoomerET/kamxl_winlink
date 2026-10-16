@@ -737,6 +737,11 @@ class APRSPreviewTests(DaemonTestCase):
             "disabled",
             str(send["error"]).lower(),
         )
+        # The rejected send request must not touch the TNC.
+        self.assertEqual(
+            serial.written,
+            [b"\x03", b"STATUS\r"],
+        )
 
     def test_aprs_initialize_rejects_stopped_monitor(self):
         serial = APRSTransactionFake()
