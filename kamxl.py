@@ -1406,10 +1406,25 @@ class KAMXL:
         )
 
         if marker is None:
-            raise KAMTimeoutError(
-                "Timed out returning to Command mode; "
-                f"received={text[:200]!r}"
+            # KAM-XL manual: Ctrl-C may produce no prompt when
+            # the TNC is already in Command mode. A carriage
+            # return should produce cmd: in that mode.
+            # Transparent mode will not produce the prompt.
+            self._drain_input()
+            self.serial.write(b"\r")
+            self.serial.flush()
+
+            text, marker = self._read_until_any(
+                {"prompt": self.PROMPT},
+                timeout=timeout,
             )
+
+            if marker is None:
+                raise KAMTimeoutError(
+                    "Timed out verifying Command mode after "
+                    "Ctrl-C and carriage return; "
+                    f"received={text[:200]!r}"
+                )
 
         return text
 

@@ -605,6 +605,40 @@ class APRSSerialTests(unittest.TestCase):
 
         self.assertNotIn(b"CONVERS\r", serial.written)
 
+    def test_recover_already_in_command_mode_with_return(self):
+        serial = APRSTransactionFake()
+        kam = make_kam(serial)
+
+        # Simulate a TNC already in Command mode that
+        # does not generate another prompt for Ctrl-C.
+        original_write = serial.write
+
+        def silent_ctrl_c(data):
+            if data == b"\x03":
+                serial.written.append(data)
+                return len(data)
+
+            if data == b"\r":
+                serial.written.append(data)
+                serial._out.extend(b"cmd:")
+                return len(data)
+
+            return original_write(data)
+
+        serial.write = silent_ctrl_c
+
+        result = recover_aprs_command_mode(kam)
+
+        self.assertTrue(result["recovered"])
+        self.assertEqual(result["active_stream"], "A/2")
+        self.assertFalse(result["rf_enabled"])
+        self.assertFalse(result["transmitted"])
+
+        self.assertEqual(
+            serial.written,
+            [b"\x03", b"\r", b"STATUS\r"],
+        )
+
     def test_recover_command_mode_stops_on_timeout(self):
         serial = APRSTransactionFake()
         kam = make_kam(serial)
