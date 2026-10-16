@@ -350,6 +350,10 @@ def execute_aprs_tx_transaction(kam, payload: str, path: str = "") -> dict:
     It must not be exposed through the daemon or called with live hardware
     until exclusive ownership and operating-mode safety are implemented.
     """
+    if getattr(kam.serial, "_aprs_offline_simulation", False) is not True:
+        raise APRSTransmitError(
+            "APRS transaction requires an offline simulation interface"
+        )
     from aprs import format_aprs_message
 
     if not isinstance(payload, str) or len(payload) < 11:

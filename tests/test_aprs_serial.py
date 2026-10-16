@@ -104,6 +104,7 @@ class APRSTransactionFake(APRSSerialFake):
 
     def __init__(self):
         super().__init__()
+        self._aprs_offline_simulation = True
         self.unproto = "CQ/CQ"
         self.fail_command = None
 
@@ -793,6 +794,20 @@ class APRSSerialTests(unittest.TestCase):
             recover_aprs_command_mode(kam)
 
         # No STATUS query is allowed after recovery fails.
+        self.assertEqual(serial.written, [])
+
+    def test_transaction_rejects_unmarked_serial_interface(self):
+        serial = APRSTransactionFake()
+        del serial._aprs_offline_simulation
+        kam = make_kam(serial)
+        payload = ":ANSRVR   :CQ #APRSTHURSDAY Howdy from Prosper TX"
+
+        with self.assertRaisesRegex(
+            APRSTransmitError,
+            "offline simulation",
+        ):
+            execute_aprs_tx_transaction(kam, payload)
+
         self.assertEqual(serial.written, [])
 
 if __name__ == "__main__":
