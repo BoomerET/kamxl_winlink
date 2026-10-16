@@ -738,6 +738,7 @@ class KAMDaemon:
             try:
                 result = recover_aprs_command_mode(self.kam)
             except Exception:
+                self._aprs_session_uncertain = True
                 self._invalidate_aprs_safety(
                     "APRS command-mode recovery failed; TNC state uncertain"
                 )

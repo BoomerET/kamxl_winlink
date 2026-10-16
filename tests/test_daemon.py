@@ -401,6 +401,9 @@ class APRSPreviewTests(DaemonTestCase):
 
         # The fake cannot complete a valid recovery.
         self.assertFalse(response["ok"])
+        # Failed recovery must restore the session uncertainty latch.
+        with daemon._kam_lock:
+            self.assertTrue(daemon._aprs_session_uncertain)
 
         safety = client.call("aprs.tx_safety")
 
