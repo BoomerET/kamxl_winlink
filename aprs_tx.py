@@ -413,8 +413,8 @@ def execute_aprs_tx_transaction(kam, payload: str, path: str = "") -> dict:
             kam.send_connected(payload)
         except Exception as exc:
             raise APRSTransmitError(
-                "APRS payload submission is uncertain; "
-                "the TNC may already have accepted the packet. "
+                "APRS payload submission is uncertain; the TNC may "
+                "already have accepted the packet. "
                 "Do not retry automatically."
             ) from exc
 
@@ -432,7 +432,8 @@ def execute_aprs_tx_transaction(kam, payload: str, path: str = "") -> dict:
                     "Unable to confirm KAM-XL command mode after "
                     "APRS transmission attempt. TNC state is uncertain; "
                     "manual intervention required. UNPROTO restoration "
-                    "was not attempted."
+                    "was not attempted. APRS payload may already have "
+                    "been transmitted; do not retry automatically."
                 ) from exc
 
         if changed and original is not None:

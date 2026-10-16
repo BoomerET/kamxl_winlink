@@ -471,7 +471,7 @@ class APRSSerialTests(unittest.TestCase):
 
         with self.assertRaisesRegex(
             APRSTransmitError,
-            "TNC state is uncertain",
+            "do not retry automatically",
         ):
             execute_aprs_tx_transaction(kam, payload)
 
