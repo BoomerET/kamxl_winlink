@@ -452,9 +452,16 @@ def execute_aprs_tx_transaction(kam, payload: str, path: str = "") -> dict:
                     )
 
             except Exception as exc:
+                transmission_warning = (
+                    " APRS payload may already have been transmitted; "
+                    "do not retry automatically."
+                    if in_convers else ""
+                )
+
                 raise APRSTransmitError(
                     "Unable to verify original UNPROTO configuration. "
                     "TNC state is uncertain; manual intervention required."
+                    + transmission_warning
                 ) from exc
 
     return {

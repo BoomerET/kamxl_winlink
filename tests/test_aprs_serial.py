@@ -367,6 +367,34 @@ class APRSSerialTests(unittest.TestCase):
         self.assertEqual(serial.mode, "command")
         self.assertEqual(serial.unproto, "CQ/CQ")
 
+    def test_transaction_restoration_failure_warns_payload_submitted(self):
+        serial = APRSTransactionFake()
+        kam = make_kam(serial)
+
+        payload = ":ANSRVR   :CQ #APRSTHURSDAY Howdy from Prosper TX"
+        payload_bytes = payload.encode("ascii") + b"\r"
+
+        original_set = kam.set
+
+        def fail_restoration(command, value):
+            if command == "UNPROTO" and value == "CQ/CQ":
+                raise OSError("Simulated restoration failure")
+            return original_set(command, value)
+
+        kam.set = fail_restoration
+
+        with self.assertRaisesRegex(
+            APRSTransmitError,
+            "may already have been transmitted",
+        ):
+            execute_aprs_tx_transaction(kam, payload)
+
+        self.assertEqual(serial.written.count(payload_bytes), 1)
+        self.assertEqual(serial.mode, "command")
+
+        # Restoration failed; the modified configuration remains.
+        self.assertEqual(serial.unproto, "APRS")
+
     def test_transaction_submits_once_and_restores(self):
         serial = APRSTransactionFake()
         kam = make_kam(serial)
