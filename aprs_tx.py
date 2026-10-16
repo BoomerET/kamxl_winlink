@@ -409,7 +409,15 @@ def execute_aprs_tx_transaction(kam, payload: str, path: str = "") -> dict:
         in_convers = True
         kam.serial.write(b"CONVERS\r")
         kam.serial.flush()
-        kam.send_connected(payload)
+        try:
+            kam.send_connected(payload)
+        except Exception as exc:
+            raise APRSTransmitError(
+                "APRS payload submission is uncertain; "
+                "the TNC may already have accepted the packet. "
+                "Do not retry automatically."
+            ) from exc
+
         submitted = True
 
     finally:

@@ -333,6 +333,40 @@ class APRSSerialTests(unittest.TestCase):
         self.assertEqual(serial.mode, "command")
         self.assertEqual(serial.unproto, "CQ/CQ")
 
+    def test_transaction_reports_uncertain_payload_submission(self):
+        serial = APRSTransactionFake()
+        kam = make_kam(serial)
+
+        payload = ":ANSRVR   :CQ #APRSTHURSDAY Howdy from Prosper TX"
+        payload_bytes = payload.encode("ascii") + b"\r"
+
+        original_write = serial.write
+
+        def fail_after_payload_write(data):
+            result = original_write(data)
+
+            if data == payload_bytes:
+                raise OSError("Simulated error after payload write")
+
+            return result
+
+        serial.write = fail_after_payload_write
+
+        with self.assertRaisesRegex(
+            APRSTransmitError,
+            "submission is uncertain",
+        ):
+            execute_aprs_tx_transaction(kam, payload)
+
+        # The complete payload may have reached the TNC.
+        # It must never be submitted a second time.
+        self.assertEqual(serial.written.count(payload_bytes), 1)
+
+        # Recover command mode and restore configuration.
+        self.assertIn(b"\x03", serial.written)
+        self.assertEqual(serial.mode, "command")
+        self.assertEqual(serial.unproto, "CQ/CQ")
+
     def test_transaction_submits_once_and_restores(self):
         serial = APRSTransactionFake()
         kam = make_kam(serial)
