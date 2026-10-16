@@ -1,0 +1,600 @@
+"""Offline tests for KAM-XL APRS conversational-mode behavior."""
+
+import unittest
+
+from tests.fakes import make_kam
+from kamxl import KAMTimeoutError
+from aprs_tx import (
+    APRSTransmitError,
+    transmit_aprs_message,
+    execute_aprs_tx_transaction,
+    validate_aprs_paclen,
+    validate_aprs_cpactime,
+    validate_aprs_sendpac,
+    validate_aprs_command_character,
+    validate_aprs_recovery_status,
+    recover_aprs_command_mode,
+    check_aprs_tx_preflight,
+)
+
+class APRSSerialFake:
+    """
+    Simulate the command/conversational mode transition.
+
+    This fake never accesses a real serial port.
+    """
+
+    def __init__(self):
+        self.is_open = True
+        self.mode = "command"
+        self.written = []
+        self._out = bytearray()
+
+    def close(self):
+        self.is_open = False
+
+    def write(self, data):
+        self.written.append(data)
+
+        if self.mode == "command":
+            if data == b"CONVERS\r":
+                self.mode = "convers"
+            else:
+                self._out.extend(b"cmd:")
+
+        elif self.mode == "convers":
+            if data == b"\x03":
+                self.mode = "command"
+                self._out.extend(b"cmd:")
+
+        return len(data)
+
+    def flush(self):
+        pass
+
+    def reset_input_buffer(self):
+        self._out.clear()
+
+    @property
+    def in_waiting(self):
+        return len(self._out)
+
+    def read(self, n):
+        if not self._out:
+            return b""
+
+        count = max(1, min(n, len(self._out)))
+        data = bytes(self._out[:count])
+        del self._out[:count]
+        return data
+
+class APRSTransactionFake(APRSSerialFake):
+    """
+    Simulate KAM-XL configuration and conversational mode.
+
+    All writes remain entirely in memory.
+    """
+
+    def __init__(self):
+        super().__init__()
+        self.unproto = "CQ/CQ"
+        self.fail_command = None
+
+    def write(self, data):
+        if self.mode == "convers":
+            return super().write(data)
+
+        self.written.append(data)
+        command = data.decode("ascii").strip("\r\n")
+
+        if command == self.fail_command:
+            self._out.extend(b"EH?\r\ncmd:")
+            return len(data)
+
+        if command == "UNPROTO":
+            self._out.extend(
+                f"UNPROTO  {self.unproto}\r\ncmd:".encode("ascii")
+            )
+
+        elif command.startswith("UNPROTO "):
+            self.unproto = command[len("UNPROTO "):]
+            self._out.extend(b"cmd:")
+
+        elif command == "STATUS":
+            self._out.extend(
+                b"FREE BYTES 2685\r\n"
+                b"A/2  stream - IO DISCONNECTED\r\ncmd:"
+            )
+
+        elif command == "CONVERS":
+            self.mode = "convers"
+
+        else:
+            self._out.extend(b"cmd:")
+
+        return len(data)
+
+class APRSSerialTests(unittest.TestCase):
+
+    def test_convers_does_not_return_command_prompt(self):
+        serial = APRSSerialFake()
+        kam = make_kam(serial)
+
+        serial.write(b"CONVERS\r")
+
+        self.assertEqual(serial.mode, "convers")
+        self.assertEqual(serial.in_waiting, 0)
+
+    def test_ctrl_c_returns_to_command_mode(self):
+        serial = APRSSerialFake()
+        kam = make_kam(serial)
+
+        serial.write(b"CONVERS\r")
+        kam.enter_command_mode(timeout=0.1)
+
+        self.assertEqual(serial.mode, "command")
+        self.assertIn(b"\x03", serial.written)
+
+    def test_payload_is_sent_once(self):
+        serial = APRSSerialFake()
+        kam = make_kam(serial)
+
+        payload = ":ANSRVR   :CQ #APRSTHURSDAY Howdy from Prosper TX"
+
+        serial.write(b"CONVERS\r")
+        kam.send_connected(payload)
+
+        self.assertEqual(
+            serial.written.count(payload.encode("ascii") + b"\r"),
+            1,
+        )
+
+        self.assertEqual(serial.mode, "convers")
+
+    def test_dry_run_performs_no_serial_writes(self):
+        serial = APRSSerialFake()
+        kam = make_kam(serial)
+
+        result = transmit_aprs_message(
+            kam,
+            ":ANSRVR   :CQ #APRSTHURSDAY Howdy from Prosper TX",
+            "CQ/CQ",
+        )
+
+        self.assertTrue(result["dry_run"])
+        self.assertFalse(result["transmitted"])
+        self.assertEqual(result["serial_writes"], 0)
+        self.assertEqual(serial.written, [])
+
+    def test_live_transmission_is_disabled(self):
+        serial = APRSSerialFake()
+        kam = make_kam(serial)
+
+        with self.assertRaises(APRSTransmitError):
+            transmit_aprs_message(
+                kam,
+                ":ANSRVR   :CQ #APRSTHURSDAY Howdy from Prosper TX",
+                "CQ/CQ",
+                dry_run=False,
+            )
+
+        self.assertEqual(serial.written, [])
+
+    def test_dry_run_includes_restore_command(self):
+        serial = APRSSerialFake()
+        kam = make_kam(serial)
+
+        result = transmit_aprs_message(
+            kam,
+            ":ANSRVR   :CQ #APRSTHURSDAY Howdy from Prosper TX",
+            "CQ/CQ",
+            path="WIDE1-1,WIDE2-1",
+        )
+
+        self.assertEqual(
+            result["commands"][-1],
+            "UNPROTO CQ/CQ",
+        )
+
+    def test_transaction_fake_reads_unproto(self):
+        serial = APRSTransactionFake()
+        kam = make_kam(serial)
+
+        self.assertEqual(kam.get("UNPROTO"), "CQ/CQ")
+
+    def test_transaction_fake_changes_unproto(self):
+        serial = APRSTransactionFake()
+        kam = make_kam(serial)
+
+        kam.set("UNPROTO", "APRS")
+
+        self.assertEqual(serial.unproto, "APRS")
+        self.assertEqual(kam.get("UNPROTO"), "APRS")
+
+    def test_transaction_fake_reports_active_stream(self):
+        serial = APRSTransactionFake()
+        kam = make_kam(serial)
+
+        response = kam.send_command("STATUS")
+
+        self.assertIn("A/2  stream - IO DISCONNECTED", response)
+
+    def test_transaction_fake_rejects_command(self):
+        serial = APRSTransactionFake()
+        serial.fail_command = "UNPROTO APRS"
+        kam = make_kam(serial)
+
+        with self.assertRaises(Exception):
+            kam.set("UNPROTO", "APRS")
+
+        self.assertEqual(serial.unproto, "CQ/CQ")
+
+    def test_transaction_submits_once_and_restores(self):
+        serial = APRSTransactionFake()
+        kam = make_kam(serial)
+
+        payload = ":ANSRVR   :CQ #APRSTHURSDAY Howdy from Prosper TX"
+
+        result = execute_aprs_tx_transaction(kam, payload)
+
+        self.assertTrue(result["submitted_to_tnc"])
+        self.assertFalse(result["rf_confirmed"])
+        self.assertFalse(result["delivered"])
+        self.assertTrue(result["unproto_restored"])
+
+        self.assertEqual(serial.unproto, "CQ/CQ")
+        self.assertEqual(serial.mode, "command")
+
+        self.assertEqual(
+            serial.written.count(payload.encode("ascii") + b"\r"),
+            1,
+        )
+
+    def test_transaction_rejects_wrong_stream_without_changes(self):
+        serial = APRSTransactionFake()
+        kam = make_kam(serial)
+
+        original_write = serial.write
+
+        def wrong_stream(data):
+            if data == b"STATUS\r":
+                serial.written.append(data)
+                serial._out.extend(
+                    b"FREE BYTES 2685\r\n"
+                    b"A/1  stream - IO DISCONNECTED\r\ncmd:"
+                )
+                return len(data)
+
+            return original_write(data)
+
+        serial.write = wrong_stream
+
+        with self.assertRaises(APRSTransmitError):
+            execute_aprs_tx_transaction(
+                kam,
+                ":ANSRVR   :CQ #APRSTHURSDAY Howdy from Prosper TX",
+            )
+
+        self.assertEqual(serial.unproto, "CQ/CQ")
+        self.assertNotIn(b"CONVERS\r", serial.written)
+
+    def test_transaction_restores_after_rejected_configuration(self):
+        serial = APRSTransactionFake()
+        serial.fail_command = "UNPROTO APRS"
+        kam = make_kam(serial)
+
+        with self.assertRaises(Exception):
+            execute_aprs_tx_transaction(
+                kam,
+                ":ANSRVR   :CQ #APRSTHURSDAY Howdy from Prosper TX",
+            )
+
+        self.assertEqual(serial.unproto, "CQ/CQ")
+        self.assertNotIn(b"CONVERS\r", serial.written)
+
+    def test_transaction_stops_if_command_mode_recovery_fails(self):
+        serial = APRSTransactionFake()
+        kam = make_kam(serial)
+
+        def fail_command_mode(timeout=5):
+            raise RuntimeError("Simulated command-mode failure")
+
+        kam.enter_command_mode = fail_command_mode
+
+        payload = ":ANSRVR   :CQ #APRSTHURSDAY Howdy from Prosper TX"
+
+        with self.assertRaisesRegex(
+            APRSTransmitError,
+            "TNC state is uncertain",
+        ):
+            execute_aprs_tx_transaction(kam, payload)
+
+        # The payload was submitted, but command-mode recovery failed.
+        self.assertEqual(
+            serial.written.count(payload.encode("ascii") + b"\r"),
+            1,
+        )
+
+        # Critically, we must not send a configuration command
+        # while the TNC may still be in conversational mode.
+        self.assertNotIn(
+            b"UNPROTO CQ/CQ\r",
+            serial.written,
+        )
+
+    def test_transaction_restores_after_lost_unproto_ack(self):
+        serial = APRSTransactionFake()
+        kam = make_kam(serial)
+
+        original_set = kam.set
+
+        def lost_ack(command, value):
+            if command == "UNPROTO" and value == "APRS":
+                # Simulate hardware applying the change, but
+                # the acknowledgment being lost.
+                serial.unproto = "APRS"
+                raise TimeoutError("Simulated lost acknowledgment")
+
+            return original_set(command, value)
+
+        kam.set = lost_ack
+
+        payload = ":ANSRVR   :CQ #APRSTHURSDAY Howdy from Prosper TX"
+
+        with self.assertRaises(TimeoutError):
+            execute_aprs_tx_transaction(kam, payload)
+
+        # Even though the initial command timed out, the
+        # original configuration must be restored.
+        self.assertEqual(serial.unproto, "CQ/CQ")
+        self.assertEqual(serial.mode, "command")
+
+        # No APRS payload should have been submitted.
+        self.assertNotIn(
+            payload.encode("ascii") + b"\r",
+            serial.written,
+        )
+
+        # Verify that restoration was actually attempted.
+        self.assertIn(
+            b"UNPROTO CQ/CQ\r",
+            serial.written,
+        )
+
+    def test_transaction_stops_after_unproto_timeout(self):
+        serial = APRSTransactionFake()
+        kam = make_kam(serial)
+
+        original_set = kam.set
+
+        def timeout_after_change(command, value):
+            if command == "UNPROTO" and value == "APRS":
+                serial.unproto = "APRS"
+
+                raise KAMTimeoutError(
+                    "Simulated lost command response"
+                )
+
+            return original_set(command, value)
+
+        kam.set = timeout_after_change
+
+        payload = ":ANSRVR   :CQ #APRSTHURSDAY Howdy from Prosper TX"
+
+        with self.assertRaisesRegex(
+            APRSTransmitError,
+            "TNC state is uncertain",
+        ):
+            execute_aprs_tx_transaction(kam, payload)
+
+        # The TNC may have accepted the setting.
+        self.assertEqual(serial.unproto, "APRS")
+
+        # No automatic restoration was attempted.
+        self.assertNotIn(
+            b"UNPROTO CQ/CQ\r",
+            serial.written,
+        )
+
+        # No APRS payload was submitted.
+        self.assertNotIn(
+            payload.encode("ascii") + b"\r",
+            serial.written,
+        )
+
+    def test_aprs_preflight_accepts_known_configuration(self):
+        validate_aprs_paclen("PACLEN   64/128")
+        validate_aprs_cpactime("CPACTIME OFF")
+        validate_aprs_sendpac("SENDPAC  $0D (CTRL-M)")
+        validate_aprs_command_character("COMMAND  $03 (CTRL-C)")
+
+    def test_aprs_preflight_rejects_wrong_paclen(self):
+        with self.assertRaises(APRSTransmitError):
+            validate_aprs_paclen("PACLEN 64/64")
+
+    def test_aprs_preflight_rejects_cpactime_enabled(self):
+        with self.assertRaises(APRSTransmitError):
+            validate_aprs_cpactime("CPACTIME ON")
+
+    def test_aprs_preflight_rejects_wrong_sendpac(self):
+        with self.assertRaises(APRSTransmitError):
+            validate_aprs_sendpac("SENDPAC $0A (CTRL-J)")
+
+    def test_aprs_preflight_rejects_wrong_command_character(self):
+        with self.assertRaises(APRSTransmitError):
+            validate_aprs_command_character("COMMAND $04 (CTRL-D)")
+
+    def test_preflight_passes_known_configuration(self):
+        serial = APRSTransactionFake()
+        kam = make_kam(serial)
+
+        original_write = serial.write
+
+        responses = {
+            "PORT": "PORT 2",
+            "PACLEN": "PACLEN 64/128",
+            "CPACTIME": "CPACTIME OFF",
+            "SENDPAC": "SENDPAC $0D (CTRL-M)",
+            "COMMAND": "COMMAND $03 (CTRL-C)",
+        }
+
+        def preflight_write(data):
+            command = data.decode("ascii").strip("\r\n")
+
+            if command in responses:
+                serial.written.append(data)
+                serial._out.extend(
+                    (responses[command] + "\r\ncmd:").encode("ascii")
+                )
+                return len(data)
+
+            return original_write(data)
+
+        serial.write = preflight_write
+
+        result = check_aprs_tx_preflight(kam)
+
+        self.assertTrue(result["passed"])
+        self.assertFalse(result["rf_enabled"])
+        self.assertFalse(result["transmitted"])
+        self.assertEqual(serial.mode, "command")
+
+        self.assertEqual(
+            serial.written,
+            [
+                b"STATUS\r",
+                b"PORT\r",
+                b"PACLEN\r",
+                b"CPACTIME\r",
+                b"SENDPAC\r",
+                b"COMMAND\r",
+            ],
+        )
+
+    def test_preflight_rejects_wrong_port_without_transmitting(self):
+        serial = APRSTransactionFake()
+        kam = make_kam(serial)
+
+        original_write = serial.write
+
+        def wrong_port_write(data):
+            if data == b"PORT\r":
+                serial.written.append(data)
+                serial._out.extend(b"PORT 1\r\ncmd:")
+                return len(data)
+
+            return original_write(data)
+
+        serial.write = wrong_port_write
+
+        with self.assertRaises(APRSTransmitError):
+            check_aprs_tx_preflight(kam)
+
+        self.assertEqual(serial.mode, "command")
+        self.assertEqual(
+            serial.written,
+            [b"STATUS\r", b"PORT\r"],
+        )
+        self.assertNotIn(b"CONVERS\r", serial.written)
+
+    def test_recovery_status_accepts_disconnected_a2(self):
+        response = (
+            "FREE BYTES 2685\r\n"
+            "A/2  stream - IO DISCONNECTED"
+        )
+
+        result = validate_aprs_recovery_status(response)
+
+        self.assertTrue(
+            result["command_mode_response_valid"]
+        )
+        self.assertEqual(result["active_stream"], "A/2")
+        self.assertFalse(result["ax25_connected"])
+        self.assertFalse(result["rf_enabled"])
+
+    def test_recovery_status_rejects_connected_stream(self):
+        response = (
+            "FREE BYTES 2685\r\n"
+            "A/2  stream - IO CONNECTED to N5XYZ"
+        )
+
+        with self.assertRaises(APRSTransmitError):
+            validate_aprs_recovery_status(response)
+
+    def test_recovery_status_rejects_wrong_stream(self):
+        response = (
+            "FREE BYTES 2685\r\n"
+            "A/1  stream - IO DISCONNECTED"
+        )
+
+        with self.assertRaises(APRSTransmitError):
+            validate_aprs_recovery_status(response)
+
+    def test_recover_command_mode_from_convers(self):
+        serial = APRSTransactionFake()
+        kam = make_kam(serial)
+
+        serial.mode = "convers"
+
+        result = recover_aprs_command_mode(kam)
+
+        self.assertTrue(result["recovered"])
+        self.assertEqual(result["active_stream"], "A/2")
+        self.assertFalse(result["rf_enabled"])
+        self.assertFalse(result["transmitted"])
+
+        self.assertEqual(serial.mode, "command")
+        self.assertEqual(
+            serial.written,
+            [b"\x03", b"STATUS\r"],
+        )
+
+    def test_recover_command_mode_rejects_connected_status(self):
+        serial = APRSTransactionFake()
+        kam = make_kam(serial)
+
+        original_write = serial.write
+
+        def connected_status(data):
+            if data == b"STATUS\r":
+                serial.written.append(data)
+                serial._out.extend(
+                    b"FREE BYTES 2685\r\n"
+                    b"A/2  stream - IO CONNECTED to N5XYZ\r\n"
+                    b"cmd:"
+                )
+                return len(data)
+
+            return original_write(data)
+
+        serial.write = connected_status
+        serial.mode = "convers"
+
+        with self.assertRaisesRegex(
+            APRSTransmitError,
+            "recovery failed",
+        ):
+            recover_aprs_command_mode(kam)
+
+        self.assertNotIn(b"CONVERS\r", serial.written)
+
+    def test_recover_command_mode_stops_on_timeout(self):
+        serial = APRSTransactionFake()
+        kam = make_kam(serial)
+
+        def fail_recovery(timeout=5):
+            raise KAMTimeoutError("Simulated missing prompt")
+
+        kam.enter_command_mode = fail_recovery
+
+        with self.assertRaisesRegex(
+            APRSTransmitError,
+            "state remains uncertain",
+        ):
+            recover_aprs_command_mode(kam)
+
+        # No STATUS query is allowed after recovery fails.
+        self.assertEqual(serial.written, [])
+
+if __name__ == "__main__":
+    unittest.main()

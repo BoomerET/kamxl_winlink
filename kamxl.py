@@ -1,5 +1,6 @@
 import logging
 import re
+import os
 import serial
 import time
 
@@ -182,14 +183,21 @@ class KAMXL:
         if self.serial and self.serial.is_open:
             return
 
-        self.serial = serial.Serial(
-            port=self.port,
-            baudrate=self.baudrate,
-            bytesize=8,
-            parity="N",
-            stopbits=1,
-            timeout=self.timeout
-        )
+        serial_options = {
+            "port": self.port,
+            "baudrate": self.baudrate,
+            "bytesize": 8,
+            "parity": "N",
+            "stopbits": 1,
+            "timeout": self.timeout,
+        }
+
+        # PySerial exclusive mode is supported on POSIX systems.
+        # On Windows, omit this argument.
+        if os.name == "posix":
+            serial_options["exclusive"] = True
+
+        self.serial = serial.Serial(**serial_options)
 
         time.sleep(0.1)
 

@@ -97,6 +97,47 @@ class DescribeSerialOpenFailureTests(unittest.TestCase):
 
         self.assertEqual(result, str(exc))
 
+class ExclusiveSerialAccessTests(unittest.TestCase):
+    def test_posix_connect_requests_exclusive_access(self):
+        from unittest.mock import MagicMock, patch
+        from kamxl import KAMXL
+
+        fake_serial = MagicMock()
+        fake_serial.is_open = True
+
+        with patch("kamxl.os.name", "posix"):
+            with patch(
+                "kamxl.serial.Serial",
+                return_value=fake_serial,
+            ) as mock_serial:
+                with patch("kamxl.time.sleep"):
+                    kam = KAMXL("COM_FAKE")
+                    kam.connect()
+
+        kwargs = mock_serial.call_args.kwargs
+        self.assertEqual(kwargs["port"], "COM_FAKE")
+        self.assertEqual(kwargs["baudrate"], 19200)
+        self.assertIs(kwargs["exclusive"], True)
+
+    def test_windows_connect_omits_exclusive_option(self):
+        from unittest.mock import MagicMock, patch
+        from kamxl import KAMXL
+
+        fake_serial = MagicMock()
+        fake_serial.is_open = True
+
+        with patch("kamxl.os.name", "nt"):
+            with patch(
+                "kamxl.serial.Serial",
+                return_value=fake_serial,
+            ) as mock_serial:
+                with patch("kamxl.time.sleep"):
+                    kam = KAMXL("COM_FAKE")
+                    kam.connect()
+
+        kwargs = mock_serial.call_args.kwargs
+        self.assertEqual(kwargs["port"], "COM_FAKE")
+        self.assertNotIn("exclusive", kwargs)
 
 if __name__ == "__main__":
     unittest.main()

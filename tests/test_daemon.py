@@ -23,8 +23,9 @@ from pbbs import PBBSMessage, PBBSMessageSummary
 from pathlib import Path
 from packet import Packet
 from reception_history import ReceptionHistory
+from test_aprs_serial import APRSTransactionFake
 from winlink import OutgoingMessage, Proposal, WinlinkMessage
-
+from unittest.mock import patch
 
 class _Client:
     """
@@ -145,6 +146,603 @@ class DaemonTestCase(unittest.TestCase):
         self.addCleanup(client.close)
 
         return client
+
+class APRSPreviewTests(DaemonTestCase):
+    """APRS preview must validate input without accessing the TNC."""
+
+    def test_valid_message(self):
+        serial = ScriptedSerial({})
+        _, socket_path = self.start_daemon(serial)
+        client = self.connect(socket_path)
+
+        response = client.call(
+            "aprs.preview_message",
+            addressee="ANSRVR",
+            message="CQ #APRSTHURSDAY Howdy from Prosper TX",
+        )
+
+        self.assertTrue(response["ok"], response)
+        self.assertEqual(
+            response["result"]["payload"],
+            ":ANSRVR   :CQ #APRSTHURSDAY Howdy from Prosper TX",
+        )
+        self.assertEqual(response["result"]["length"], 49)
+        self.assertEqual(response["result"]["paclen"], 128)
+        self.assertEqual(response["result"]["port"], 2)
+        self.assertFalse(response["result"]["transmitted"])
+
+    def test_invalid_message(self):
+        serial = ScriptedSerial({})
+        _, socket_path = self.start_daemon(serial)
+        client = self.connect(socket_path)
+
+        response = client.call(
+            "aprs.preview_message",
+            addressee="INVALID-CALLSIGN",
+            message="Hello",
+        )
+
+        self.assertFalse(response["ok"])
+        self.assertEqual(response["error"]["type"], "ValueError")
+
+    def test_preview_does_not_write_to_serial(self):
+        serial = ScriptedSerial({})
+        _, socket_path = self.start_daemon(serial)
+        client = self.connect(socket_path)
+
+        response = client.call(
+            "aprs.preview_message",
+            addressee="ANSRVR",
+            message="Hello",
+        )
+
+        self.assertTrue(response["ok"], response)
+        self.assertEqual(serial.written, [])
+
+    def test_aprs_send_is_disabled(self):
+        serial = ScriptedSerial({})
+        daemon, socket_path = self.start_daemon(serial)
+
+        client = self.connect(socket_path)
+        response = client.call(
+            "aprs.send_message",
+            addressee="ANSRVR",
+            message="CQ #APRSTHURSDAY Howdy from Prosper TX",
+        )
+
+        self.assertIsNotNone(response.get("error"))
+        self.assertIn(
+            "disabled",
+            str(response["error"]).lower(),
+        )
+
+        self.assertEqual(serial.written, [])
+
+    def test_aprs_send_cannot_be_enabled_by_request(self):
+        serial = ScriptedSerial({})
+        daemon, socket_path = self.start_daemon(serial)
+
+        client = self.connect(socket_path)
+        response = client.call(
+            "aprs.send_message",
+            addressee="ANSRVR",
+            message="CQ #APRSTHURSDAY Howdy from Prosper TX",
+            enable_rf=True,
+            dry_run=False,
+        )
+
+        self.assertIsNotNone(response.get("error"))
+        self.assertEqual(serial.written, [])
+
+    def test_aprs_safety_starts_unknown(self):
+        serial = ScriptedSerial({})
+        _, socket_path = self.start_daemon(serial)
+        client = self.connect(socket_path)
+
+        response = client.call("aprs.tx_safety")
+
+        self.assertTrue(response["ok"], response)
+        self.assertEqual(response["result"]["state"], "unknown")
+        self.assertFalse(response["result"]["rf_enabled"])
+        self.assertEqual(serial.written, [])
+
+    def test_raw_terminal_command_marks_aprs_unsafe(self):
+        serial = ScriptedSerial({})
+        _, socket_path = self.start_daemon(serial)
+        client = self.connect(socket_path)
+
+        client.call("send_command", command="STATUS")
+
+        response = client.call("aprs.tx_safety")
+
+        self.assertTrue(response["ok"], response)
+        self.assertEqual(response["result"]["state"], "unsafe")
+        self.assertIn(
+            "Raw terminal command",
+            response["result"]["reason"],
+        )
+        self.assertFalse(response["result"]["rf_enabled"])
+
+    def test_set_invalidates_aprs_safety(self):
+        serial = ScriptedSerial({})
+        daemon, socket_path = self.start_daemon(serial)
+        client = self.connect(socket_path)
+        daemon._aprs_session_uncertain = False
+
+        client.call(
+            "set",
+            command="MYCALL",
+            value="N5BA",
+        )
+        self.assertTrue(daemon._aprs_session_uncertain)
+
+        response = client.call("aprs.tx_safety")
+
+        self.assertTrue(response["ok"], response)
+        self.assertEqual(response["result"]["state"], "unsafe")
+        self.assertEqual(
+            response["result"]["reason"],
+            "TNC configuration changed",
+        )
+
+    def test_invalidated_safety_cannot_enable_rf(self):
+        serial = ScriptedSerial({})
+        daemon, socket_path = self.start_daemon(serial)
+        client = self.connect(socket_path)
+
+        client.call("send_command", command="STATUS")
+
+        response = client.call(
+            "aprs.send_message",
+            addressee="ANSRVR",
+            message="CQ #APRSTHURSDAY Howdy from Prosper TX",
+            enable_rf=True,
+        )
+
+        self.assertFalse(response["ok"])
+
+        safety = client.call("aprs.tx_safety")
+        self.assertEqual(safety["result"]["state"], "unsafe")
+        self.assertFalse(safety["result"]["rf_enabled"])
+
+        # Only the STATUS command should have reached the TNC.
+        self.assertEqual(serial.written, [b"STATUS\r"])
+
+    def test_preflight_rejects_unsafe_state_without_serial_io(self):
+        serial = ScriptedSerial({})
+        daemon, socket_path = self.start_daemon(serial)
+        client = self.connect(socket_path)
+
+        with daemon._kam_lock:
+            daemon._invalidate_aprs_safety(
+                "Simulated uncertain TNC state"
+            )
+
+        response = client.call("aprs.tx_preflight")
+
+        self.assertTrue(response["ok"], response)
+        self.assertFalse(response["result"]["passed"])
+        self.assertEqual(response["result"]["state"], "unsafe")
+        self.assertFalse(response["result"]["rf_enabled"])
+        self.assertEqual(serial.written, [])
+
+    def test_preflight_blocked_on_uncertain_session(self):
+        serial = ScriptedSerial({})
+        daemon, socket_path = self.start_daemon(serial)
+        client = self.connect(socket_path)
+
+        self.assertTrue(daemon._aprs_session_uncertain)
+
+        response = client.call("aprs.tx_preflight")
+
+        self.assertTrue(response["ok"], response)
+        self.assertFalse(response["result"]["passed"])
+        self.assertEqual(response["result"]["state"], "unknown")
+        self.assertFalse(response["result"]["rf_enabled"])
+        self.assertFalse(response["result"]["transmitted"])
+        self.assertEqual(response["result"]["checks"], [])
+
+        self.assertIn(
+            "session state",
+            response["result"]["reason"].lower(),
+        )
+
+        # No STATUS or other TNC commands are permitted.
+        self.assertEqual(serial.written, [])
+
+        safety = client.call("aprs.tx_safety")
+        self.assertEqual(safety["result"]["state"], "unknown")
+        self.assertFalse(safety["result"]["rf_enabled"])
+
+    def test_preflight_failure_latches_unsafe(self):
+        serial = ScriptedSerial({})
+        daemon, socket_path = self.start_daemon(serial)
+        client = self.connect(socket_path)
+        # Offline simulation: the TNC session has already been
+        # independently verified. Never do this in production.
+        with daemon._kam_lock:
+            daemon._aprs_session_uncertain = False
+
+        response = client.call("aprs.tx_preflight")
+
+        self.assertFalse(response["ok"])
+
+        safety = client.call("aprs.tx_safety")
+
+        self.assertTrue(safety["ok"], safety)
+        self.assertEqual(safety["result"]["state"], "unsafe")
+        self.assertFalse(safety["result"]["rf_enabled"])
+
+    def test_aprs_recovery_requires_confirmation(self):
+        serial = ScriptedSerial({})
+        _, socket_path = self.start_daemon(serial)
+        client = self.connect(socket_path)
+
+        response = client.call("aprs.tx_recover")
+
+        self.assertFalse(response["ok"])
+        self.assertEqual(serial.written, [])
+
+    def test_aprs_recovery_failure_remains_unsafe(self):
+        serial = ScriptedSerial({})
+        daemon, socket_path = self.start_daemon(serial)
+        client = self.connect(socket_path)
+
+        # Simulate a previously verified session-clear state.
+        # This is offline test setup only, not a production
+        # procedure for clearing the uncertainty latch.
+        with daemon._kam_lock:
+            daemon._aprs_session_uncertain = False
+
+        response = client.call(
+            "aprs.tx_recover",
+            confirm_recovery=True,
+        )
+
+        # The fake cannot complete a valid recovery.
+        self.assertFalse(response["ok"])
+
+        safety = client.call("aprs.tx_safety")
+
+        self.assertTrue(safety["ok"], safety)
+        self.assertEqual(safety["result"]["state"], "unsafe")
+        self.assertFalse(safety["result"]["rf_enabled"])
+
+    def test_aprs_recovery_does_not_enable_transmission(self):
+        serial = ScriptedSerial({})
+        _, socket_path = self.start_daemon(serial)
+        client = self.connect(socket_path)
+
+        client.call(
+            "aprs.tx_recover",
+            confirm_recovery=True,
+        )
+
+        response = client.call(
+            "aprs.send_message",
+            addressee="ANSRVR",
+            message="CQ #APRSTHURSDAY Howdy from Prosper TX",
+            enable_rf=True,
+        )
+
+        self.assertFalse(response["ok"])
+        self.assertIn(
+            "disabled",
+            str(response["error"]).lower(),
+        )
+
+    def test_aprs_recovery_blocked_after_connection_attempt(self):
+        serial = ScriptedSerial({})
+        daemon, socket_path = self.start_daemon(serial)
+        client = self.connect(socket_path)
+
+        # Simulate a previous connection attempt whose final
+        # AX.25 state is not independently verified.
+        with daemon._kam_lock:
+            daemon._aprs_session_uncertain = True
+
+        response = client.call(
+            "aprs.tx_recover",
+            confirm_recovery=True,
+        )
+
+        self.assertFalse(response["ok"])
+        self.assertIn(
+            "recovery blocked",
+            str(response["error"]).lower(),
+        )
+
+        # No Ctrl-C or STATUS command may reach the TNC.
+        self.assertEqual(serial.written, [])
+
+        safety = client.call("aprs.tx_safety")
+        self.assertFalse(safety["result"]["rf_enabled"])
+
+    def test_aprs_recovery_blocked_after_raw_command(self):
+        serial = ScriptedSerial({})
+        _, socket_path = self.start_daemon(serial)
+        client = self.connect(socket_path)
+
+        # Even a read-only raw command must conservatively
+        # invalidate our knowledge of the TNC's session state.
+        client.call("send_command", command="STATUS")
+
+        written_before_recovery = list(serial.written)
+
+        response = client.call(
+            "aprs.tx_recover",
+            confirm_recovery=True,
+        )
+
+        self.assertFalse(response["ok"])
+        self.assertIn(
+            "recovery blocked",
+            str(response["error"]).lower(),
+        )
+
+        # Recovery must not add Ctrl-C or any other serial writes.
+        self.assertEqual(serial.written, written_before_recovery)
+
+        safety = client.call("aprs.tx_safety")
+        self.assertTrue(safety["ok"])
+        self.assertFalse(safety["result"]["rf_enabled"])
+
+    def test_aprs_recovery_blocked_on_fresh_daemon(self):
+        serial = ScriptedSerial({})
+        daemon, socket_path = self.start_daemon(serial)
+        client = self.connect(socket_path)
+
+        # A fresh daemon cannot know the previous TNC state.
+        self.assertTrue(daemon._aprs_session_uncertain)
+
+        response = client.call(
+            "aprs.tx_recover",
+            confirm_recovery=True,
+        )
+
+        self.assertFalse(response["ok"])
+        self.assertIn(
+            "recovery blocked",
+            str(response["error"]).lower(),
+        )
+
+        # Recovery must not send Ctrl-C or STATUS.
+        self.assertEqual(serial.written, [])
+
+        safety = client.call("aprs.tx_safety")
+        self.assertTrue(safety["ok"])
+        self.assertFalse(safety["result"]["rf_enabled"])
+
+    def test_aprs_diagnostics_startup_is_read_only(self):
+        serial = ScriptedSerial({})
+        _, socket_path = self.start_daemon(serial)
+        client = self.connect(socket_path)
+
+        response = client.call("aprs.tx_diagnostics")
+
+        self.assertTrue(response["ok"], response)
+
+        result = response["result"]
+
+        self.assertTrue(result["session_uncertain"])
+        self.assertEqual(result["safety_state"], "unknown")
+        self.assertFalse(result["command_mode_verified"])
+        self.assertFalse(result["rf_enabled"])
+        self.assertFalse(result["recovery_allowed"])
+
+        # Diagnostics must never write to the TNC.
+        self.assertEqual(serial.written, [])
+
+    def test_aprs_initialize_requires_confirmation(self):
+        serial = ScriptedSerial({})
+        _, socket_path = self.start_daemon(serial)
+        client = self.connect(socket_path)
+
+        response = client.call("aprs.tx_initialize")
+
+        self.assertFalse(response["ok"])
+        self.assertIn(
+            "confirmation",
+            str(response["error"]).lower(),
+        )
+        self.assertEqual(serial.written, [])
+
+    def test_aprs_initialize_failure_remains_unsafe(self):
+        serial = ScriptedSerial({})
+        daemon, socket_path = self.start_daemon(serial)
+        client = self.connect(socket_path)
+
+        # Fake serial cannot complete command-mode recovery.
+        response = client.call(
+            "aprs.tx_initialize",
+            confirm_radio_disconnected=True,
+        )
+
+        self.assertFalse(response["ok"])
+        self.assertTrue(daemon._aprs_session_uncertain)
+
+        safety = client.call("aprs.tx_safety")
+        self.assertEqual(safety["result"]["state"], "unsafe")
+        self.assertFalse(safety["result"]["rf_enabled"])
+
+    def test_aprs_initialize_failure_cannot_enable_rf(self):
+        serial = ScriptedSerial({})
+        _, socket_path = self.start_daemon(serial)
+        client = self.connect(socket_path)
+
+        client.call(
+            "aprs.tx_initialize",
+            confirm_radio_disconnected=True,
+        )
+
+        response = client.call(
+            "aprs.send_message",
+            addressee="ANSRVR",
+            message="CQ #APRSTHURSDAY Howdy from Prosper TX",
+            enable_rf=True,
+        )
+
+        self.assertFalse(response["ok"])
+        self.assertIn(
+            "disabled",
+            str(response["error"]).lower(),
+        )
+
+    def test_aprs_initialize_success_does_not_enable_rf(self):
+        serial = APRSTransactionFake()
+        serial.mode = "convers"
+
+        daemon, socket_path = self.start_daemon(serial)
+        client = self.connect(socket_path)
+
+        self.assertTrue(daemon._aprs_session_uncertain)
+
+        response = client.call(
+            "aprs.tx_initialize",
+            confirm_radio_disconnected=True,
+        )
+
+        self.assertTrue(response["ok"], response)
+
+        result = response["result"]
+        self.assertTrue(result["initialized"])
+        self.assertTrue(result["recovered"])
+        self.assertFalse(result["rf_enabled"])
+        self.assertFalse(result["transmitted"])
+        self.assertEqual(result["active_stream"], "A/2")
+        self.assertFalse(result["ax25_connected"])
+
+        self.assertFalse(daemon._aprs_session_uncertain)
+
+        self.assertEqual(
+            serial.written,
+            [b"\x03", b"STATUS\r"],
+        )
+
+        safety = client.call("aprs.tx_safety")
+        self.assertEqual(safety["result"]["state"], "unknown")
+        self.assertFalse(safety["result"]["rf_enabled"])
+
+        # Successful initialization must not unlock transmission.
+        send = client.call(
+            "aprs.send_message",
+            addressee="ANSRVR",
+            message="CQ #APRSTHURSDAY Howdy from Prosper TX",
+            enable_rf=True,
+        )
+
+        self.assertFalse(send["ok"])
+        self.assertIn(
+            "disabled",
+            str(send["error"]).lower(),
+        )
+
+    def test_aprs_initialize_rejects_stopped_monitor(self):
+        serial = APRSTransactionFake()
+        serial.mode = "convers"
+
+        daemon, socket_path = self.start_daemon(serial)
+        client = self.connect(socket_path)
+
+        # Stop monitoring without shutting down the RPC server.
+        daemon._monitor_stop.set()
+        daemon._monitor_thread.join(timeout=2)
+
+        self.assertFalse(daemon._monitor_thread.is_alive())
+
+        # Initialization must fail without touching the TNC.
+        response = client.call(
+            "aprs.tx_initialize",
+            confirm_radio_disconnected=True,
+        )
+
+        self.assertFalse(response["ok"])
+        self.assertIn(
+            "monitor thread",
+            str(response["error"]).lower(),
+        )
+
+        self.assertEqual(serial.written, [])
+        self.assertTrue(daemon._aprs_session_uncertain)
+        self.assertEqual(daemon._aprs_safety_state, "unsafe")
+
+    def test_aprs_initialize_rejects_connected_stream(self):
+        class ConnectedStreamFake(APRSTransactionFake):
+            def write(self, data):
+                if data == b"STATUS\r":
+                    self.written.append(data)
+                    self._out.extend(
+                        b"FREE BYTES 2685\r\n"
+                        b"A/2  stream - CONNECTED to N5BA-1\r\n"
+                        b"cmd:"
+                    )
+                    return len(data)
+
+                return super().write(data)
+
+        serial = ConnectedStreamFake()
+        serial.mode = "convers"
+
+        daemon, socket_path = self.start_daemon(serial)
+        client = self.connect(socket_path)
+
+        response = client.call(
+            "aprs.tx_initialize",
+            confirm_radio_disconnected=True,
+        )
+
+        self.assertFalse(response["ok"])
+        self.assertTrue(daemon._aprs_session_uncertain)
+
+        self.assertEqual(
+            serial.written,
+            [b"\x03", b"STATUS\r"],
+        )
+
+        diagnostics = client.call("aprs.tx_diagnostics")
+
+        self.assertTrue(
+            diagnostics["result"]["session_uncertain"]
+        )
+        self.assertEqual(
+            diagnostics["result"]["safety_state"],
+            "unsafe",
+        )
+        self.assertFalse(
+            diagnostics["result"]["rf_enabled"]
+        )
+
+    def test_tnc_queries_invalidate_aprs_session(self):
+        operations = [
+            ("get", {"command": "MYCALL"}),
+            ("get_typed", {"command": "MYCALL"}),
+            ("get_configuration", {}),
+            ("read_connected", {"timeout": 0.01}),
+        ]
+
+        for method, params in operations:
+            with self.subTest(method=method):
+                serial = ScriptedSerial({})
+                daemon, socket_path = self.start_daemon(serial)
+                client = self.connect(socket_path)
+
+                # Simulate previously verified session state.
+                daemon._aprs_session_uncertain = False
+                daemon._aprs_safety_state = "unknown"
+
+                # The operation may succeed or fail with this fake.
+                # Either way, it must invalidate session certainty.
+                client.call(method, **params)
+
+                self.assertTrue(
+                    daemon._aprs_session_uncertain,
+                    f"{method} did not invalidate session certainty",
+                )
+                self.assertEqual(
+                    daemon._aprs_safety_state,
+                    "unsafe",
+                    f"{method} did not invalidate APRS safety",
+                )
 
 class PingStatusTests(DaemonTestCase):
     def test_ping(self):
@@ -346,10 +944,11 @@ class TypedCommandTests(DaemonTestCase):
         self.assertEqual(response["result"], [0, 1200])
 
     def test_set_typed_multiport_bool_round_trip(self):
-        _, socket_path = self.start_daemon(ScriptedSerial({
+        daemon, socket_path = self.start_daemon(ScriptedSerial({
             "MONITOR": "MONITOR  ON/OFF",
         }))
         client = self.connect(socket_path)
+        daemon._aprs_session_uncertain = False
 
         # A JSON array in -> converted back to a tuple before it
         # reaches kamxl.py's isinstance(value, tuple) check.
@@ -361,6 +960,8 @@ class TypedCommandTests(DaemonTestCase):
 
         self.assertTrue(response["ok"])
         self.assertEqual(response["result"], [True, False])
+        self.assertTrue(daemon._aprs_session_uncertain)
+        self.assertEqual(daemon._aprs_safety_state, "unsafe")
 
     def test_get_configuration(self):
         _, socket_path = self.start_daemon(ScriptedSerial({
@@ -479,12 +1080,15 @@ class ConnectStationTests(DaemonTestCase):
 
 class ConnectedModePassthroughTests(DaemonTestCase):
     def test_send_and_read_connected(self):
-        _, socket_path = self.start_daemon(
+        daemon, socket_path = self.start_daemon(
             CannedSerial(["hello back!\r\n"])
         )
         client = self.connect(socket_path)
+        daemon._aprs_session_uncertain = False
 
         send_response = client.call("send_connected", text="hi there")
+        self.assertTrue(daemon._aprs_session_uncertain)
+        self.assertEqual(daemon._aprs_safety_state, "unsafe")
         self.assertTrue(send_response["ok"])
         self.assertIsNone(send_response["result"])
 
@@ -493,12 +1097,15 @@ class ConnectedModePassthroughTests(DaemonTestCase):
         self.assertEqual(read_response["result"], "hello back!\r\n")
 
     def test_disconnect_station(self):
-        _, socket_path = self.start_daemon(
+        daemon, socket_path = self.start_daemon(
             CannedSerial(["cmd:", "cmd:*** DISCONNECTED\r\n"])
         )
         client = self.connect(socket_path)
+        daemon._aprs_session_uncertain = False
 
         response = client.call("disconnect_station", timeout=1)
+        self.assertTrue(daemon._aprs_session_uncertain)
+        self.assertEqual(daemon._aprs_safety_state, "unsafe")
 
         self.assertTrue(response["ok"])
         self.assertIn("DISCONNECTED", response["result"])
@@ -1106,6 +1713,41 @@ class MonitorSubscribeTests(DaemonTestCase):
 
         self.assertFalse(daemon._monitor_thread.is_alive())
 
+    def test_monitor_failure_invalidates_aprs_session(self):
+        daemon, socket_path = self.start_daemon(ChunkSerial([]))
+        self.connect(socket_path)
+
+        # Simulate a previously verified APRS session.
+        with daemon._kam_lock:
+            daemon._aprs_session_uncertain = False
+            daemon._aprs_safety_state = "unknown"
+
+        # Arrange for the next monitor read to fail.
+        def fail_read():
+            raise RuntimeError("Simulated monitor failure")
+
+        with patch.object(daemon.kam, "read_available", side_effect=fail_read):
+            with patch("kamxl_daemon.os._exit") as mock_exit:
+                deadline = time.monotonic() + 2
+
+                while (
+                    not mock_exit.called
+                    and time.monotonic() < deadline
+                ):
+                    time.sleep(0.02)
+
+                self.assertTrue(
+                    mock_exit.called,
+                    "Monitor failure did not trigger process exit",
+                )
+                mock_exit.assert_called_once_with(1)
+
+                with daemon._kam_lock:
+                    self.assertTrue(daemon._aprs_session_uncertain)
+                    self.assertEqual(
+                        daemon._aprs_safety_state,
+                        "unsafe",
+                    )
 
 class StationsTests(DaemonTestCase):
     """
