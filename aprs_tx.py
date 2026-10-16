@@ -390,7 +390,7 @@ def execute_aprs_tx_transaction(kam, payload: str, path: str = "") -> dict:
 
         try:
             kam.set("UNPROTO", new_unproto)
-        except KAMTimeoutError as exc:
+        except (KAMTimeoutError, TimeoutError) as exc:
             # We cannot safely assume the TNC is still
             # interpreting input as commands.
             changed = False

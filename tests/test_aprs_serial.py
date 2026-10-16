@@ -396,7 +396,7 @@ class APRSSerialTests(unittest.TestCase):
             serial.written,
         )
 
-    def test_transaction_restores_after_lost_unproto_ack(self):
+    def test_transaction_stops_after_generic_unproto_timeout(self):
         serial = APRSTransactionFake()
         kam = make_kam(serial)
 
@@ -404,8 +404,8 @@ class APRSSerialTests(unittest.TestCase):
 
         def lost_ack(command, value):
             if command == "UNPROTO" and value == "APRS":
-                # Simulate hardware applying the change, but
-                # the acknowledgment being lost.
+                # Simulate the TNC accepting the configuration
+                # change but losing its acknowledgment.
                 serial.unproto = "APRS"
                 raise TimeoutError("Simulated lost acknowledgment")
 
@@ -415,23 +415,22 @@ class APRSSerialTests(unittest.TestCase):
 
         payload = ":ANSRVR   :CQ #APRSTHURSDAY Howdy from Prosper TX"
 
-        with self.assertRaises(TimeoutError):
+        with self.assertRaisesRegex(
+            APRSTransmitError,
+            "TNC state is uncertain",
+        ):
             execute_aprs_tx_transaction(kam, payload)
 
-        # Even though the initial command timed out, the
-        # original configuration must be restored.
-        self.assertEqual(serial.unproto, "CQ/CQ")
-        self.assertEqual(serial.mode, "command")
+        # The configuration may have changed.
+        self.assertEqual(serial.unproto, "APRS")
 
-        # No APRS payload should have been submitted.
+        # Do not attempt restoration while state is uncertain.
+        self.assertNotIn(b"UNPROTO CQ/CQ\r", serial.written)
+
+        # Never submit the APRS payload after a timeout.
+        self.assertNotIn(b"CONVERS\r", serial.written)
         self.assertNotIn(
             payload.encode("ascii") + b"\r",
-            serial.written,
-        )
-
-        # Verify that restoration was actually attempted.
-        self.assertIn(
-            b"UNPROTO CQ/CQ\r",
             serial.written,
         )
 
