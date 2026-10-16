@@ -303,6 +303,36 @@ class APRSSerialTests(unittest.TestCase):
             serial.written,
         )
 
+    def test_transaction_recovers_after_convers_flush_failure(self):
+        serial = APRSTransactionFake()
+        kam = make_kam(serial)
+
+        original_flush = serial.flush
+
+        def fail_convers_flush():
+            if serial.mode == "convers":
+                raise OSError("Simulated CONVERS flush failure")
+            return original_flush()
+
+        serial.flush = fail_convers_flush
+
+        payload = ":ANSRVR   :CQ #APRSTHURSDAY Howdy from Prosper TX"
+
+        with self.assertRaises(OSError):
+            execute_aprs_tx_transaction(kam, payload)
+
+        # CONVERS was accepted, but the payload was never sent.
+        self.assertIn(b"CONVERS\r", serial.written)
+        self.assertNotIn(
+            payload.encode("ascii") + b"\r",
+            serial.written,
+        )
+
+        # Command mode must be recovered before restoration.
+        self.assertIn(b"\x03", serial.written)
+        self.assertEqual(serial.mode, "command")
+        self.assertEqual(serial.unproto, "CQ/CQ")
+
     def test_transaction_submits_once_and_restores(self):
         serial = APRSTransactionFake()
         kam = make_kam(serial)

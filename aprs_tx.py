@@ -404,10 +404,11 @@ def execute_aprs_tx_transaction(kam, payload: str, path: str = "") -> dict:
             raise APRSTransmitError("UNPROTO change verification failed")
 
         # CONVERS does not return a command prompt.
+        # Once CONVERS is attempted, the TNC may have switched modes
+        # even if the serial write or flush subsequently fails.
+        in_convers = True
         kam.serial.write(b"CONVERS\r")
         kam.serial.flush()
-        in_convers = True
-
         kam.send_connected(payload)
         submitted = True
 
