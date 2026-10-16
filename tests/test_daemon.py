@@ -533,6 +533,20 @@ class APRSPreviewTests(DaemonTestCase):
         # Diagnostics must never write to the TNC.
         self.assertEqual(serial.written, [])
 
+    def test_aprs_exit_kiss_requires_confirmation(self):
+        serial = ScriptedSerial({})
+        _, socket_path = self.start_daemon(serial)
+        client = self.connect(socket_path)
+
+        response = client.call("aprs.tx_exit_kiss")
+
+        self.assertFalse(response["ok"])
+        self.assertIn(
+            "confirmation",
+            str(response["error"]).lower(),
+        )
+        self.assertEqual(serial.written, [])
+
     def test_aprs_initialize_requires_confirmation(self):
         serial = ScriptedSerial({})
         _, socket_path = self.start_daemon(serial)
@@ -546,6 +560,93 @@ class APRSPreviewTests(DaemonTestCase):
             str(response["error"]).lower(),
         )
         self.assertEqual(serial.written, [])
+
+    def test_aprs_exit_kiss_failure_remains_unsafe(self):
+        serial = ScriptedSerial({})
+        daemon, socket_path = self.start_daemon(serial)
+        client = self.connect(socket_path)
+
+        def fail_exit_kiss(timeout=5):
+            raise OSError("Simulated serial failure")
+
+        daemon.kam.exit_kiss_mode = fail_exit_kiss
+
+        response = client.call(
+            "aprs.tx_exit_kiss",
+            confirm_radio_disconnected=True,
+        )
+
+        self.assertFalse(response["ok"])
+        self.assertTrue(daemon._aprs_session_uncertain)
+
+        safety = client.call("aprs.tx_safety")
+        self.assertEqual(safety["result"]["state"], "unsafe")
+        self.assertFalse(safety["result"]["rf_enabled"])
+
+        self.assertEqual(serial.written, [])
+
+    def test_aprs_exit_kiss_response_remains_unverified(self):
+        serial = ScriptedSerial({})
+        daemon, socket_path = self.start_daemon(serial)
+        client = self.connect(socket_path)
+
+        banner = b"\r\nKANTRONICS KAM XL\r\ncmd:"
+
+        def fake_exit_kiss(timeout=5):
+            return banner
+
+        daemon.kam.exit_kiss_mode = fake_exit_kiss
+
+        response = client.call(
+            "aprs.tx_exit_kiss",
+            confirm_radio_disconnected=True,
+        )
+
+        self.assertTrue(response["ok"], response)
+
+        result = response["result"]
+        self.assertTrue(result["exit_sequence_sent"])
+        self.assertEqual(result["response_hex"], banner.hex())
+        self.assertIn("KANTRONICS", result["response_text"])
+
+        self.assertFalse(result["terminal_mode_verified"])
+        self.assertFalse(result["initialized"])
+        self.assertFalse(result["rf_enabled"])
+        self.assertFalse(result["transmitted"])
+
+        self.assertTrue(daemon._aprs_session_uncertain)
+
+        safety = client.call("aprs.tx_safety")
+        self.assertEqual(safety["result"]["state"], "unsafe")
+        self.assertFalse(safety["result"]["rf_enabled"])
+
+        self.assertEqual(serial.written, [])
+
+    def test_aprs_exit_kiss_rejects_stopped_monitor(self):
+        serial = ScriptedSerial({})
+        daemon, socket_path = self.start_daemon(serial)
+        client = self.connect(socket_path)
+
+        # Simulate a monitor that is shutting down.
+        daemon._monitor_stop.set()
+
+        response = client.call(
+            "aprs.tx_exit_kiss",
+            confirm_radio_disconnected=True,
+        )
+
+        self.assertFalse(response["ok"])
+        self.assertIn(
+            "monitor thread",
+            str(response["error"]).lower(),
+        )
+
+        self.assertEqual(serial.written, [])
+        self.assertTrue(daemon._aprs_session_uncertain)
+
+        safety = client.call("aprs.tx_safety")
+        self.assertEqual(safety["result"]["state"], "unsafe")
+        self.assertFalse(safety["result"]["rf_enabled"])
 
     def test_aprs_initialize_failure_remains_unsafe(self):
         serial = ScriptedSerial({})

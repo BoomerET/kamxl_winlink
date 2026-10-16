@@ -1365,6 +1365,25 @@ class KAMXL:
 
         return bytes(data)
 
+    def exit_kiss_mode(self, timeout: float = 5) -> bytes:
+        """
+        Send the documented KAM-XL KISS exit sequence.
+
+        Caller must hold exclusive serial access and confirm
+        that all radio interfaces are physically disconnected.
+
+        Returns raw response bytes for verification by caller.
+        Does not reset or reconfigure the TNC.
+        """
+        self._require_connection()
+
+        self._drain_input()
+
+        self.serial.write(bytes([0xC0, 0xFF, 0xC0]))
+        self.serial.flush()
+
+        return self.read_connected_bytes(timeout=timeout)
+
     def enter_command_mode(
         self,
         timeout: float = 5
@@ -1388,7 +1407,8 @@ class KAMXL:
 
         if marker is None:
             raise KAMTimeoutError(
-                "Timed out returning to Command mode"
+                "Timed out returning to Command mode; "
+                f"received={text[:200]!r}"
             )
 
         return text

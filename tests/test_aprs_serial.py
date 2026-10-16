@@ -68,6 +68,33 @@ class APRSSerialFake:
         del self._out[:count]
         return data
 
+class KISSExitTests(unittest.TestCase):
+    def test_exit_kiss_sends_exact_sequence(self):
+        serial = APRSSerialFake()
+        kam = make_kam(serial)
+
+        banner = b"\r\nKANTRONICS KAM XL\r\ncmd:"
+
+        original_write = serial.write
+
+        def fake_write(data):
+            if data == bytes([0xC0, 0xFF, 0xC0]):
+                serial.written.append(data)
+                serial._out.extend(banner)
+                return len(data)
+
+            return original_write(data)
+
+        serial.write = fake_write
+
+        response = kam.exit_kiss_mode(timeout=0.01)
+
+        self.assertEqual(
+            serial.written,
+            [bytes([0xC0, 0xFF, 0xC0])],
+        )
+        self.assertEqual(response, banner)
+
 class APRSTransactionFake(APRSSerialFake):
     """
     Simulate KAM-XL configuration and conversational mode.

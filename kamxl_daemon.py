@@ -168,6 +168,7 @@ class KAMDaemon:
             "aprs.tx_preflight": self._m_aprs_tx_preflight,
             "aprs.tx_recover": self._m_aprs_tx_recover,
             "aprs.tx_initialize": self._m_aprs_tx_initialize,
+            "aprs.tx_exit_kiss": self._m_aprs_tx_exit_kiss,
             "aprs.tx_diagnostics": self._m_aprs_tx_diagnostics,
         }
 
@@ -684,6 +685,10 @@ class KAMDaemon:
                 self._invalidate_aprs_safety(
                     "APRS initialization failed; TNC state uncertain"
                 )
+                logger.exception(
+                    "APRS initialization failed during "
+                    "command-mode recovery"
+                )
                 raise
 
             # Both command mode and disconnected A/2 were verified.
@@ -774,6 +779,56 @@ class KAMDaemon:
                 "command_mode_verified": False,
                 "rf_enabled": False,
                 "recovery_allowed": False,
+            }
+
+    def _m_aprs_tx_exit_kiss(
+        self, params: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        Explicit, fail-closed KISS exit attempt.
+
+        Does not initialize APRS or authorize RF transmission.
+        """
+        from aprs_tx import APRSTransmitError
+
+        if params.get("confirm_radio_disconnected") is not True:
+            raise APRSTransmitError(
+                "KISS exit requires explicit confirmation "
+                "that all radio interfaces are disconnected"
+            )
+
+        with self._kam_lock:
+            self._aprs_session_uncertain = True
+            self._invalidate_aprs_safety(
+                "KISS exit attempted; TNC state requires verification"
+            )
+
+            if (
+                self._monitor_stop.is_set()
+                or self._monitor_thread is None
+                or not self._monitor_thread.is_alive()
+            ):
+                raise APRSTransmitError(
+                    "KISS exit requires a healthy monitor thread"
+                )
+
+            try:
+                response = self.kam.exit_kiss_mode()
+            except Exception as exc:
+                logger.exception("KAM-XL KISS exit failed")
+                raise APRSTransmitError(
+                    "KISS exit failed; TNC state remains uncertain"
+                ) from exc
+            return {
+                "exit_sequence_sent": True,
+                "response_hex": response.hex(),
+                "response_text": response.decode(
+                    "latin-1", errors="replace"
+                )[:500],
+                "terminal_mode_verified": False,
+                "initialized": False,
+                "rf_enabled": False,
+                "transmitted": False,
             }
 
     # -----------------------------------------------------------------------
