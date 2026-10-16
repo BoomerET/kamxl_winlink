@@ -374,8 +374,9 @@ def execute_aprs_tx_transaction(kam, payload: str, path: str = "") -> dict:
     in_convers = False
 
     try:
-        status = kam.send_command("STATUS")
-        validate_aprs_active_stream(status)
+        # Verify all six APRS prerequisites immediately before
+        # changing configuration or entering conversational mode.
+        check_aprs_tx_preflight(kam)
 
         original = validate_unproto(kam.get("UNPROTO"))
 

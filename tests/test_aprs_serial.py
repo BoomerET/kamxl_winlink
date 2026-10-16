@@ -133,6 +133,21 @@ class APRSTransactionFake(APRSSerialFake):
                 b"A/2  stream - IO DISCONNECTED\r\ncmd:"
             )
 
+        elif command == "PORT":
+            self._out.extend(b"PORT 2\r\ncmd:")
+
+        elif command == "PACLEN":
+            self._out.extend(b"PACLEN 64/128\r\ncmd:")
+
+        elif command == "CPACTIME":
+            self._out.extend(b"CPACTIME OFF\r\ncmd:")
+
+        elif command == "SENDPAC":
+            self._out.extend(b"SENDPAC $0D (CTRL-M)\r\ncmd:")
+
+        elif command == "COMMAND":
+            self._out.extend(b"COMMAND $03 (CTRL-C)\r\ncmd:")
+
         elif command == "CONVERS":
             self.mode = "convers"
 
@@ -255,6 +270,38 @@ class APRSSerialTests(unittest.TestCase):
             kam.set("UNPROTO", "APRS")
 
         self.assertEqual(serial.unproto, "CQ/CQ")
+
+    def test_transaction_rejects_wrong_port_before_changes(self):
+        serial = APRSTransactionFake()
+        kam = make_kam(serial)
+
+        original_write = serial.write
+
+        def wrong_port(data):
+            if data == b"PORT\r":
+                serial.written.append(data)
+                serial._out.extend(b"PORT 1\r\ncmd:")
+                return len(data)
+
+            return original_write(data)
+
+        serial.write = wrong_port
+
+        payload = ":ANSRVR   :CQ #APRSTHURSDAY Howdy from Prosper TX"
+
+        with self.assertRaises(APRSTransmitError):
+            execute_aprs_tx_transaction(kam, payload)
+
+        self.assertEqual(serial.unproto, "CQ/CQ")
+        self.assertEqual(serial.mode, "command")
+        self.assertEqual(
+            serial.written,
+            [b"STATUS\r", b"PORT\r"],
+        )
+        self.assertNotIn(
+            payload.encode("ascii") + b"\r",
+            serial.written,
+        )
 
     def test_transaction_submits_once_and_restores(self):
         serial = APRSTransactionFake()
