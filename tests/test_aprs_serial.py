@@ -595,6 +595,42 @@ class APRSSerialTests(unittest.TestCase):
             serial.written,
         )
 
+    def test_transaction_stops_after_unproto_oserror(self):
+        serial = APRSTransactionFake()
+        kam = make_kam(serial)
+
+        original_set = kam.set
+
+        def failed_unproto_write(command, value):
+            if command == "UNPROTO" and value == "APRS":
+                # The TNC may have accepted the setting.
+                serial.unproto = "APRS"
+                raise OSError("Simulated serial write failure")
+
+            return original_set(command, value)
+
+        kam.set = failed_unproto_write
+
+        payload = ":ANSRVR   :CQ #APRSTHURSDAY Howdy from Prosper TX"
+
+        with self.assertRaisesRegex(
+            APRSTransmitError,
+            "TNC state is uncertain",
+        ):
+            execute_aprs_tx_transaction(kam, payload)
+
+        self.assertEqual(serial.unproto, "APRS")
+
+        # No automatic restoration when operating mode is uncertain.
+        self.assertNotIn(b"UNPROTO CQ/CQ\r", serial.written)
+
+        # Never proceed to conversational mode or submit the payload.
+        self.assertNotIn(b"CONVERS\r", serial.written)
+        self.assertNotIn(
+            payload.encode("ascii") + b"\r",
+            serial.written,
+        )
+
     def test_transaction_stops_after_generic_unproto_timeout(self):
         serial = APRSTransactionFake()
         kam = make_kam(serial)
