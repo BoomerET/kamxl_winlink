@@ -354,6 +354,11 @@ def execute_aprs_tx_transaction(kam, payload: str, path: str = "") -> dict:
         raise APRSTransmitError(
             "APRS transaction requires an offline simulation interface"
         )
+    return _execute_aprs_tx_transaction(kam, payload, path)
+
+
+def _execute_aprs_tx_transaction(kam, payload: str, path: str = "") -> dict:
+    """Shared single-submission transaction; caller enforces access policy."""
     from aprs import format_aprs_message
 
     if not isinstance(payload, str) or len(payload) < 11:
@@ -506,3 +511,14 @@ def execute_aprs_tx_transaction(kam, payload: str, path: str = "") -> dict:
         "delivered": False,
         "unproto_restored": True,
     }
+
+
+_LIVE_APRS_CAPABILITY = object()
+
+def execute_live_aprs_tx_transaction(
+    kam, payload: str, path: str = "", *, _capability=None
+) -> dict:
+    """Live hardware transaction, restricted to the daemon's guarded handler."""
+    if _capability is not _LIVE_APRS_CAPABILITY:
+        raise APRSTransmitError("Live APRS requires daemon authorization")
+    return _execute_aprs_tx_transaction(kam, payload, path)

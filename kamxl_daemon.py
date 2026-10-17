@@ -436,18 +436,74 @@ class KAMDaemon:
     def _m_aprs_send_message(
         self, params: Dict[str, Any]
     ) -> Dict[str, Any]:
-        """
-        Reserved APRS transmit endpoint.
+        """One operator-approved APRS submission on verified VHF Port 2.
 
-        RF transmission is deliberately disabled until serial
-        ownership and TNC operating-state safeguards are complete.
+        A successful result means submitted to the TNC, not RF delivery.
+        No automatic retry is performed.
         """
-        from aprs_tx import APRSTransmitError
-
-        raise APRSTransmitError(
-            "APRS RF transmission is disabled. "
-            "The daemon transmit safety checks are not yet complete."
+        from aprs_tx import (
+            APRSTransmitError, _LIVE_APRS_CAPABILITY,
+            execute_live_aprs_tx_transaction,
         )
+
+        # Require per-call, exact confirmation; never cache authorization.
+        if params.get("confirm_transmit") is not True:
+            raise APRSTransmitError("Explicit confirm_transmit=true required")
+        if params.get("confirm_vhf_port2_radio_ready") is not True:
+            raise APRSTransmitError(
+                "Confirm VHF Port 2 radio, audio, PTT, antenna and power "
+                "are ready before live transmission"
+            )
+        if params.get("confirm_hf_port1_disconnected") is not True:
+            raise APRSTransmitError("Confirm HF Port 1 radio disconnected")
+        if params.get("path", "") != "":
+            raise APRSTransmitError("First live APRS transmission must be direct")
+
+        # Validate payload before touching serial or changing session state.
+        payload = format_aprs_message(
+            addressee=params["addressee"],
+            message=params["message"],
+            paclen=128,
+        )
+
+        with self._kam_lock:
+            if self._aprs_session_uncertain or self._aprs_safety_state == "unsafe":
+                raise APRSTransmitError(
+                    "APRS session unverified; initialize with radios "
+                    "disconnected before attempting live transmission"
+                )
+            if not self.kam.is_connected or (
+                getattr(self.kam.serial, "exclusive", None) is not True
+            ):
+                raise APRSTransmitError("Exclusive serial connection required")
+            if (self._monitor_stop.is_set() or
+                self._monitor_thread is None or
+                not self._monitor_thread.is_alive()):
+                raise APRSTransmitError("APRS monitor thread not healthy")
+
+            # Mark unsafe before the first potentially state-changing write.
+            self._aprs_session_uncertain = True
+            self._invalidate_aprs_safety("APRS transmission in progress")
+            try:
+                result = execute_live_aprs_tx_transaction(
+                    self.kam, payload, _capability=_LIVE_APRS_CAPABILITY
+                )
+            except Exception:
+                self._invalidate_aprs_safety(
+                    "APRS transmission failed or state uncertain; "
+                    "do not retry automatically"
+                )
+                raise
+
+            # Executor verified command-mode recovery and UNPROTO restoration.
+            # Keep RF readiness unknown; never persist a transmit authorization.
+            self._aprs_session_uncertain = False
+            self._aprs_safety_state = "unknown"
+            self._aprs_safety_reason = (
+                "APRS submission completed; command mode and UNPROTO "
+                "restored; RF delivery not confirmed"
+            )
+            return {**result, "payload": payload, "state": "unknown"}
 
     def _m_aprs_tx_preflight(
         self, params: Dict[str, Any]
