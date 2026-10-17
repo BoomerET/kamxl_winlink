@@ -968,6 +968,26 @@ class APRSSerialTests(unittest.TestCase):
         self.assertFalse(result["ax25_connected"])
         self.assertFalse(result["rf_enabled"])
 
+    def test_recovery_status_rejects_unexpected_line(self):
+        response = (
+            "FREE BYTES 2685\r\n"
+            "A/2  stream - IO DISCONNECTED\r\n"
+            "UNEXPECTED DATA"
+        )
+
+        with self.assertRaises(APRSTransmitError):
+            validate_aprs_recovery_status(response)
+
+    def test_recovery_status_rejects_duplicate_stream(self):
+        response = (
+            "FREE BYTES 2685\r\n"
+            "A/2  stream - IO DISCONNECTED\r\n"
+            "A/2  stream - IO DISCONNECTED"
+        )
+
+        with self.assertRaises(APRSTransmitError):
+            validate_aprs_recovery_status(response)
+
     def test_recovery_status_rejects_connected_stream(self):
         response = (
             "FREE BYTES 2685\r\n"
