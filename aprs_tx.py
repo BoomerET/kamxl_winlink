@@ -429,7 +429,7 @@ def execute_aprs_tx_transaction(kam, payload: str, path: str = "") -> dict:
 
         if in_convers:
             try:
-                kam.enter_command_mode()
+                recover_aprs_command_mode(kam)
                 command_mode_confirmed = True
             except Exception as exc:
                 raise APRSTransmitError(

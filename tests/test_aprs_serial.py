@@ -396,6 +396,49 @@ class APRSSerialTests(unittest.TestCase):
         # Restoration failed; the modified configuration remains.
         self.assertEqual(serial.unproto, "APRS")
 
+    def test_transaction_rejects_connected_status_after_submission(self):
+        serial = APRSTransactionFake()
+        kam = make_kam(serial)
+
+        payload = ":ANSRVR   :CQ #APRSTHURSDAY Howdy from Prosper TX"
+        payload_bytes = payload.encode("ascii") + b"\r"
+
+        original_write = serial.write
+        status_count = 0
+
+        def connected_after_submission(data):
+            nonlocal status_count
+
+            if data == b"STATUS\r":
+                status_count += 1
+
+                if status_count == 2:
+                    serial.written.append(data)
+                    serial._out.extend(
+                        b"FREE BYTES 2685\r\n"
+                        b"A/2  stream - IO CONNECTED to N5XYZ\r\n"
+                        b"cmd:"
+                    )
+                    return len(data)
+
+            return original_write(data)
+
+        serial.write = connected_after_submission
+
+        with self.assertRaisesRegex(
+            APRSTransmitError,
+            "do not retry automatically",
+        ):
+            execute_aprs_tx_transaction(kam, payload)
+
+        self.assertEqual(status_count, 2)
+        self.assertEqual(serial.written.count(payload_bytes), 1)
+        self.assertEqual(serial.mode, "command")
+
+        # Recovery STATUS was unsafe; do not restore UNPROTO.
+        self.assertEqual(serial.unproto, "APRS")
+        self.assertNotIn(b"UNPROTO CQ/CQ\r", serial.written)
+
     def test_transaction_submits_once_and_restores(self):
         serial = APRSTransactionFake()
         kam = make_kam(serial)
