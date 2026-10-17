@@ -368,6 +368,37 @@ class APRSSerialTests(unittest.TestCase):
         self.assertEqual(serial.mode, "command")
         self.assertEqual(serial.unproto, "CQ/CQ")
 
+    def test_transaction_reports_uncertain_short_payload_write(self):
+        serial = APRSTransactionFake()
+        kam = make_kam(serial)
+
+        payload = ":ANSRVR   :CQ #APRSTHURSDAY Howdy from Prosper TX"
+        payload_bytes = payload.encode("ascii") + b"\r"
+
+        original_write = serial.write
+        payload_write_count = 0
+
+        def short_payload_write(data):
+            nonlocal payload_write_count
+
+            if data == payload_bytes:
+                payload_write_count += 1
+                return len(data) - 1
+
+            return original_write(data)
+
+        serial.write = short_payload_write
+
+        with self.assertRaisesRegex(
+            APRSTransmitError,
+            "submission is uncertain",
+        ):
+            execute_aprs_tx_transaction(kam, payload)
+
+        self.assertEqual(payload_write_count, 1)
+        self.assertEqual(serial.mode, "command")
+        self.assertEqual(serial.unproto, "CQ/CQ")
+
     def test_transaction_restoration_failure_warns_payload_submitted(self):
         serial = APRSTransactionFake()
         kam = make_kam(serial)

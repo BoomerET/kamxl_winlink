@@ -414,7 +414,16 @@ def execute_aprs_tx_transaction(kam, payload: str, path: str = "") -> dict:
         kam.serial.write(b"CONVERS\r")
         kam.serial.flush()
         try:
-            kam.send_connected(payload)
+            payload_bytes = payload.encode("ascii") + b"\r"
+            written = kam.serial.write(payload_bytes)
+
+            if written != len(payload_bytes):
+                raise APRSTransmitError(
+                    "Short APRS payload write: "
+                    f"{written!r} of {len(payload_bytes)} bytes"
+                )
+
+            kam.serial.flush()
         except Exception as exc:
             raise APRSTransmitError(
                 "APRS payload submission is uncertain; the TNC may "
