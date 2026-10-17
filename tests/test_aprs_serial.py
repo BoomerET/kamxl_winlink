@@ -304,6 +304,38 @@ class APRSSerialTests(unittest.TestCase):
             serial.written,
         )
 
+    def test_transaction_rejects_short_convers_write(self):
+        serial = APRSTransactionFake()
+        kam = make_kam(serial)
+
+        payload = ":ANSRVR   :CQ #APRSTHURSDAY Howdy from Prosper TX"
+        payload_bytes = payload.encode("ascii") + b"\r"
+
+        original_write = serial.write
+        convers_write_count = 0
+
+        def short_convers_write(data):
+            nonlocal convers_write_count
+
+            if data == b"CONVERS\r":
+                convers_write_count += 1
+                return len(data) - 1
+
+            return original_write(data)
+
+        serial.write = short_convers_write
+
+        with self.assertRaises(APRSTransmitError):
+            execute_aprs_tx_transaction(kam, payload)
+
+        self.assertEqual(convers_write_count, 1)
+        self.assertNotIn(payload_bytes, serial.written)
+
+        # Recovery must succeed before restoring UNPROTO.
+        self.assertIn(b"\x03", serial.written)
+        self.assertEqual(serial.mode, "command")
+        self.assertEqual(serial.unproto, "CQ/CQ")
+
     def test_transaction_recovers_after_convers_flush_failure(self):
         serial = APRSTransactionFake()
         kam = make_kam(serial)

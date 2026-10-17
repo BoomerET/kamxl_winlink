@@ -411,7 +411,16 @@ def execute_aprs_tx_transaction(kam, payload: str, path: str = "") -> dict:
         # Once CONVERS is attempted, the TNC may have switched modes
         # even if the serial write or flush subsequently fails.
         in_convers = True
-        kam.serial.write(b"CONVERS\r")
+        convers_bytes = b"CONVERS\r"
+        written = kam.serial.write(convers_bytes)
+
+        if written != len(convers_bytes):
+            raise APRSTransmitError(
+                "Short CONVERS command write: "
+                f"{written!r} of {len(convers_bytes)} bytes. "
+                "TNC operating mode is uncertain."
+            )
+
         kam.serial.flush()
         try:
             payload_bytes = payload.encode("ascii") + b"\r"
