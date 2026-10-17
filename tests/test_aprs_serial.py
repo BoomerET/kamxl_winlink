@@ -631,6 +631,46 @@ class APRSSerialTests(unittest.TestCase):
             serial.written,
         )
 
+    def test_transaction_stops_after_malformed_unproto_readback(self):
+        serial = APRSTransactionFake()
+        kam = make_kam(serial)
+
+        original_get = kam.get
+        unproto_reads = 0
+
+        def malformed_readback(command):
+            nonlocal unproto_reads
+
+            if command == "UNPROTO":
+                unproto_reads += 1
+
+                if unproto_reads == 2:
+                    return "APRS\r\nPORT 1"
+
+            return original_get(command)
+
+        kam.get = malformed_readback
+
+        payload = ":ANSRVR   :CQ #APRSTHURSDAY Howdy from Prosper TX"
+
+        with self.assertRaisesRegex(
+            APRSTransmitError,
+            "TNC state is uncertain",
+        ):
+            execute_aprs_tx_transaction(kam, payload)
+
+        self.assertEqual(serial.unproto, "APRS")
+
+        # Do not restore configuration after an untrusted response.
+        self.assertNotIn(b"UNPROTO CQ/CQ\r", serial.written)
+
+        # Never enter CONVERS or submit the APRS payload.
+        self.assertNotIn(b"CONVERS\r", serial.written)
+        self.assertNotIn(
+            payload.encode("ascii") + b"\r",
+            serial.written,
+        )
+
     def test_transaction_stops_after_unproto_readback_timeout(self):
         serial = APRSTransactionFake()
         kam = make_kam(serial)

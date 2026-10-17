@@ -406,7 +406,7 @@ def execute_aprs_tx_transaction(kam, payload: str, path: str = "") -> dict:
             ) from exc
         try:
             verified_unproto = validate_unproto(kam.get("UNPROTO"))
-        except (KAMTimeoutError, TimeoutError, OSError) as exc:
+        except (KAMTimeoutError, TimeoutError, OSError, APRSTransmitError) as exc:
             # A failed read-back leaves command mode uncertain.
             # Do not attempt automatic configuration restoration.
             changed = False
