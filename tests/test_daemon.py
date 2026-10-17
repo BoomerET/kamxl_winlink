@@ -150,6 +150,111 @@ class DaemonTestCase(unittest.TestCase):
 class APRSPreviewTests(DaemonTestCase):
     """APRS preview must validate input without accessing the TNC."""
 
+    def test_aprs_get_unproto_reads_without_modifying_configuration(self):
+        serial = APRSTransactionFake()
+        daemon, socket_path = self.start_daemon(serial)
+        client = self.connect(socket_path)
+
+        # Offline simulation of a previously verified session.
+        # Never clear this latch directly in production.
+        with daemon._kam_lock:
+            daemon._aprs_session_uncertain = False
+
+        response = client.call("aprs.tx_get_unproto")
+
+        self.assertTrue(response["ok"], response)
+        self.assertEqual(response["result"]["unproto"], "CQ/CQ")
+        self.assertFalse(response["result"]["rf_enabled"])
+        self.assertFalse(response["result"]["transmitted"])
+
+        # Exactly one read-only query; no configuration changes.
+        self.assertEqual(serial.written, [b"UNPROTO\r"])
+        self.assertEqual(serial.unproto, "CQ/CQ")
+
+        # The diagnostic must not unlock APRS transmission.
+        safety = client.call("aprs.tx_safety")
+        self.assertEqual(safety["result"]["state"], "unknown")
+        self.assertFalse(safety["result"]["rf_enabled"])
+
+    def test_aprs_get_unproto_rejects_uncertain_session(self):
+        serial = APRSTransactionFake()
+        daemon, socket_path = self.start_daemon(serial)
+        client = self.connect(socket_path)
+
+        # A fresh daemon starts with an uncertain APRS session.
+        self.assertTrue(daemon._aprs_session_uncertain)
+
+        response = client.call("aprs.tx_get_unproto")
+
+        self.assertFalse(response["ok"])
+        self.assertEqual(
+            response["error"]["type"],
+            "APRSTransmitError",
+        )
+
+        # Rejection must occur before any TNC access.
+        self.assertEqual(serial.written, [])
+        self.assertEqual(serial.unproto, "CQ/CQ")
+
+        safety = client.call("aprs.tx_safety")
+        self.assertFalse(safety["result"]["rf_enabled"])
+
+    def test_aprs_get_unproto_rejects_unsafe_state(self):
+        serial = APRSTransactionFake()
+        daemon, socket_path = self.start_daemon(serial)
+        client = self.connect(socket_path)
+
+        # Simulate a session with a cleared uncertainty latch
+        # but an explicitly unsafe APRS safety state.
+        with daemon._kam_lock:
+            daemon._aprs_session_uncertain = False
+            daemon._invalidate_aprs_safety(
+                "Simulated unsafe APRS state"
+            )
+
+        response = client.call("aprs.tx_get_unproto")
+
+        self.assertFalse(response["ok"])
+        self.assertEqual(
+            response["error"]["type"],
+            "APRSTransmitError",
+        )
+
+        # No serial access or configuration changes permitted.
+        self.assertEqual(serial.written, [])
+        self.assertEqual(serial.unproto, "CQ/CQ")
+
+        safety = client.call("aprs.tx_safety")
+        self.assertEqual(safety["result"]["state"], "unsafe")
+        self.assertFalse(safety["result"]["rf_enabled"])
+
+    def test_aprs_get_unproto_failure_latches_unsafe(self):
+        serial = APRSTransactionFake()
+        serial.fail_command = "UNPROTO"
+
+        daemon, socket_path = self.start_daemon(serial)
+        client = self.connect(socket_path)
+
+        # Offline simulation of a previously verified session.
+        with daemon._kam_lock:
+            daemon._aprs_session_uncertain = False
+
+        response = client.call("aprs.tx_get_unproto")
+
+        self.assertFalse(response["ok"])
+
+        # The failed query must latch session uncertainty.
+        with daemon._kam_lock:
+            self.assertTrue(daemon._aprs_session_uncertain)
+
+        safety = client.call("aprs.tx_safety")
+        self.assertEqual(safety["result"]["state"], "unsafe")
+        self.assertFalse(safety["result"]["rf_enabled"])
+
+        # Exactly one query, with no configuration modification.
+        self.assertEqual(serial.written, [b"UNPROTO\r"])
+        self.assertEqual(serial.unproto, "CQ/CQ")
+
     def test_valid_message(self):
         serial = ScriptedSerial({})
         _, socket_path = self.start_daemon(serial)

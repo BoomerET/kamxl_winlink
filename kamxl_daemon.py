@@ -166,6 +166,7 @@ class KAMDaemon:
             "aprs.send_message": self._m_aprs_send_message,
             "aprs.tx_safety": self._m_aprs_tx_safety,
             "aprs.tx_preflight": self._m_aprs_tx_preflight,
+            "aprs.tx_get_unproto": self._m_aprs_tx_get_unproto,
             "aprs.tx_recover": self._m_aprs_tx_recover,
             "aprs.tx_initialize": self._m_aprs_tx_initialize,
             "aprs.tx_exit_kiss": self._m_aprs_tx_exit_kiss,
@@ -494,6 +495,41 @@ class KAMDaemon:
                 **result,
                 "state": self._aprs_safety_state,
                 "reason": self._aprs_safety_reason,
+            }
+
+    def _m_aprs_tx_get_unproto(
+        self, params: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        Read the current UNPROTO setting without modifying it.
+
+        Requires a previously verified APRS session.
+        Does not authorize RF transmission.
+        """
+        from aprs_tx import APRSTransmitError, validate_unproto
+
+        with self._kam_lock:
+            if (
+                self._aprs_session_uncertain
+                or self._aprs_safety_state == "unsafe"
+            ):
+                raise APRSTransmitError(
+                    "UNPROTO query blocked: APRS session is not verified"
+                )
+
+            try:
+                original = validate_unproto(self.kam.get("UNPROTO"))
+            except Exception:
+                self._aprs_session_uncertain = True
+                self._invalidate_aprs_safety(
+                    "UNPROTO query failed; TNC state uncertain"
+                )
+                raise
+
+            return {
+                "unproto": original,
+                "rf_enabled": False,
+                "transmitted": False,
             }
 
     def _require_winlink_api_key(self) -> str:
