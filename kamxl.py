@@ -1,5 +1,6 @@
 import logging
 import re
+import os
 import serial
 import time
 
@@ -182,14 +183,21 @@ class KAMXL:
         if self.serial and self.serial.is_open:
             return
 
-        self.serial = serial.Serial(
-            port=self.port,
-            baudrate=self.baudrate,
-            bytesize=8,
-            parity="N",
-            stopbits=1,
-            timeout=self.timeout
-        )
+        serial_options = {
+            "port": self.port,
+            "baudrate": self.baudrate,
+            "bytesize": 8,
+            "parity": "N",
+            "stopbits": 1,
+            "timeout": self.timeout,
+        }
+
+        # PySerial exclusive mode is supported on POSIX systems.
+        # On Windows, omit this argument.
+        if os.name == "posix":
+            serial_options["exclusive"] = True
+
+        self.serial = serial.Serial(**serial_options)
 
         time.sleep(0.1)
 
@@ -1357,6 +1365,25 @@ class KAMXL:
 
         return bytes(data)
 
+    def exit_kiss_mode(self, timeout: float = 5) -> bytes:
+        """
+        Send the documented KAM-XL KISS exit sequence.
+
+        Caller must hold exclusive serial access and confirm
+        that all radio interfaces are physically disconnected.
+
+        Returns raw response bytes for verification by caller.
+        Does not reset or reconfigure the TNC.
+        """
+        self._require_connection()
+
+        self._drain_input()
+
+        self.serial.write(bytes([0xC0, 0xFF, 0xC0]))
+        self.serial.flush()
+
+        return self.read_connected_bytes(timeout=timeout)
+
     def enter_command_mode(
         self,
         timeout: float = 5
@@ -1379,9 +1406,25 @@ class KAMXL:
         )
 
         if marker is None:
-            raise KAMTimeoutError(
-                "Timed out returning to Command mode"
+            # KAM-XL manual: Ctrl-C may produce no prompt when
+            # the TNC is already in Command mode. A carriage
+            # return should produce cmd: in that mode.
+            # Transparent mode will not produce the prompt.
+            self._drain_input()
+            self.serial.write(b"\r")
+            self.serial.flush()
+
+            text, marker = self._read_until_any(
+                {"prompt": self.PROMPT},
+                timeout=timeout,
             )
+
+            if marker is None:
+                raise KAMTimeoutError(
+                    "Timed out verifying Command mode after "
+                    "Ctrl-C and carriage return; "
+                    f"received={text[:200]!r}"
+                )
 
         return text
 

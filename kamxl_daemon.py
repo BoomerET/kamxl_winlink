@@ -56,6 +56,7 @@ from winlink import OutgoingMessage
 from collections import deque
 from reception_stats import ReceptionStats
 from reception_writer import ReceptionWriter
+from aprs import format_aprs_message
 
 DEFAULT_SOCKET_PATH = "/tmp/kamxl.sock"
 DEFAULT_BAUDRATE = 19200  # matches KAMXL's own constructor default
@@ -91,6 +92,18 @@ class KAMDaemon:
             self._reception_writer = ReceptionWriter(history_db)
             self._reception_writer.start()
         self._kam_lock = threading.RLock()
+        # APRS RF safety latch. Never assume command mode merely
+        # because the serial device is open or the daemon started.
+        self._aprs_safety_state = "unknown"
+        self._aprs_safety_reason = "TNC operating mode not verified"
+
+        # Conservative persistent-session guard.
+        # A connection attempt may leave an AX.25 session active
+        # even after its RPC handler has returned.
+        # A daemon restart does not reset the physical TNC.
+        # Its previous AX.25 session and terminal mode are unknown.
+        # Never infer a safe state merely from opening serial.
+        self._aprs_session_uncertain = True
 
         self._subscribers: Set["DaemonRequestHandler"] = set()
         self._subscribers_lock = threading.Lock()
@@ -149,6 +162,15 @@ class KAMDaemon:
             "stations.get": self._m_stations_get,
             "aprs.stats": self._m_aprs_stats,
             "aprs.history": self._m_aprs_history,
+            "aprs.preview_message": self._m_aprs_preview_message,
+            "aprs.send_message": self._m_aprs_send_message,
+            "aprs.tx_safety": self._m_aprs_tx_safety,
+            "aprs.tx_preflight": self._m_aprs_tx_preflight,
+            "aprs.tx_get_unproto": self._m_aprs_tx_get_unproto,
+            "aprs.tx_recover": self._m_aprs_tx_recover,
+            "aprs.tx_initialize": self._m_aprs_tx_initialize,
+            "aprs.tx_exit_kiss": self._m_aprs_tx_exit_kiss,
+            "aprs.tx_diagnostics": self._m_aprs_tx_diagnostics,
         }
 
         self._server: Optional["_ThreadingUnixStreamServer"] = None
@@ -222,27 +244,48 @@ class KAMDaemon:
 
     def _m_get(self, params: Dict[str, Any]) -> str:
         with self._kam_lock:
+            self._aprs_session_uncertain = True
+            self._invalidate_aprs_safety(
+                "TNC query or read may have changed session state"
+            )
             return self.kam.get(params["command"])
 
     def _m_set(self, params: Dict[str, Any]) -> str:
         with self._kam_lock:
+            self._aprs_session_uncertain = True
+            self._invalidate_aprs_safety("TNC configuration changed")
             return self.kam.set(params["command"], params["value"])
 
+    def _invalidate_aprs_safety(self, reason: str) -> None:
+        """
+        Mark APRS transmission unsafe.
+
+        Caller must hold _kam_lock.
+        Only an explicit future verification procedure may
+        establish a ready state.
+        """
+        self._aprs_safety_state = "unsafe"
+        self._aprs_safety_reason = reason
+
     def _m_send_command(self, params: Dict[str, Any]) -> str:
-        # Raw pass-through for the web terminal (milestone 4): whatever
-        # text the user typed, sent verbatim, whatever text came back
-        # before the next "cmd:" prompt -- unlike get/get_typed, this
-        # doesn't assume a "COMMAND value" response shape, so it works
-        # for commands kamxl.py has no typed knowledge of (BEACON,
-        # HEARD, MHEARD, ...).
+        # Raw terminal commands may change the TNC's operating mode.
+        # Mark the APRS safety state unsafe before touching serial.
         with self._kam_lock:
+            self._aprs_session_uncertain = True
+            self._invalidate_aprs_safety(
+                "Raw terminal command may have changed TNC state"
+            )
             return self.kam.send_command(
                 params["command"],
-                command_timeout=params.get("timeout", 10)
+                command_timeout=params.get("timeout", 10),
             )
 
     def _m_get_typed(self, params: Dict[str, Any]) -> Any:
         with self._kam_lock:
+            self._aprs_session_uncertain = True
+            self._invalidate_aprs_safety(
+                "TNC query or read may have changed session state"
+            )
             return self.kam.get_typed(params["command"])
 
     def _m_set_typed(self, params: Dict[str, Any]) -> Any:
@@ -255,14 +298,22 @@ class KAMDaemon:
             value = tuple(value)
 
         with self._kam_lock:
+            self._aprs_session_uncertain = True
+            self._invalidate_aprs_safety("TNC typed configuration changed")
             return self.kam.set_typed(params["command"], value)
 
     def _m_get_configuration(self, params: Dict[str, Any]) -> Dict[str, str]:
         with self._kam_lock:
+            self._aprs_session_uncertain = True
+            self._invalidate_aprs_safety(
+                "TNC query or read may have changed session state"
+            )
             return self.kam.get_configuration()
 
     def _m_connect_station(self, params: Dict[str, Any]) -> str:
         with self._kam_lock:
+            self._aprs_session_uncertain = True
+            self._invalidate_aprs_safety("AX.25 connection attempted")
             return self.kam.connect_station(
                 params["callsign"],
                 via=params.get("via"),
@@ -271,6 +322,8 @@ class KAMDaemon:
 
     def _m_send_connected(self, params: Dict[str, Any]) -> None:
         with self._kam_lock:
+            self._aprs_session_uncertain = True
+            self._invalidate_aprs_safety("Connected data operation attempted")
             self.kam.send_connected(
                 params["text"],
                 add_cr=params.get("add_cr", True),
@@ -280,10 +333,16 @@ class KAMDaemon:
 
     def _m_read_connected(self, params: Dict[str, Any]) -> str:
         with self._kam_lock:
+            self._aprs_session_uncertain = True
+            self._invalidate_aprs_safety(
+                "TNC query or read may have changed session state"
+            )
             return self.kam.read_connected(params.get("timeout", 5))
 
     def _m_disconnect_station(self, params: Dict[str, Any]) -> str:
         with self._kam_lock:
+            self._aprs_session_uncertain = True
+            self._invalidate_aprs_safety("AX.25 disconnect attempted")
             return self.kam.disconnect_station(
                 params.get("timeout", 30),
                 command_mode_timeout=params.get("command_mode_timeout", 5)
@@ -293,6 +352,8 @@ class KAMDaemon:
         self, params: Dict[str, Any]
     ) -> List[Dict[str, Any]]:
         with self._kam_lock:
+            self._aprs_session_uncertain = True
+            self._invalidate_aprs_safety("PBBS operation attempted")
             messages = self.kam.list_pbbs_messages(
                 mypbbs=params.get("mypbbs"),
                 connect_timeout=params.get("connect_timeout", 15),
@@ -305,6 +366,8 @@ class KAMDaemon:
         self, params: Dict[str, Any]
     ) -> Optional[Dict[str, Any]]:
         with self._kam_lock:
+            self._aprs_session_uncertain = True
+            self._invalidate_aprs_safety("PBBS operation attempted")
             message = self.kam.read_pbbs_message(
                 int(params["number"]),
                 mypbbs=params.get("mypbbs"),
@@ -323,6 +386,8 @@ class KAMDaemon:
         # its params) -- params["password"] is a real Winlink account
         # password.
         with self._kam_lock:
+            self._aprs_session_uncertain = True
+            self._invalidate_aprs_safety("Winlink operation attempted")
             messages = self.kam.check_winlink_mail(
                 gateway=params["gateway"],
                 password=params["password"],
@@ -355,6 +420,8 @@ class KAMDaemon:
         ]
 
         with self._kam_lock:
+            self._aprs_session_uncertain = True
+            self._invalidate_aprs_safety("Winlink operation attempted")
             accepted_mids = self.kam.send_winlink_message(
                 gateway=params["gateway"],
                 password=params["password"],
@@ -365,6 +432,106 @@ class KAMDaemon:
             )
 
         return accepted_mids
+
+    def _m_aprs_send_message(
+        self, params: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        Reserved APRS transmit endpoint.
+
+        RF transmission is deliberately disabled until serial
+        ownership and TNC operating-state safeguards are complete.
+        """
+        from aprs_tx import APRSTransmitError
+
+        raise APRSTransmitError(
+            "APRS RF transmission is disabled. "
+            "The daemon transmit safety checks are not yet complete."
+        )
+
+    def _m_aprs_tx_preflight(
+        self, params: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        Query APRS transmit prerequisites under exclusive daemon access.
+
+        A successful preflight is diagnostic only. It does not establish
+        command-mode certainty or authorize RF transmission.
+        """
+        from aprs_tx import check_aprs_tx_preflight
+
+        with self._kam_lock:
+            if self._aprs_session_uncertain:
+                return {
+                    "passed": False,
+                    "state": self._aprs_safety_state,
+                    "reason": (
+                        "APRS preflight blocked: TNC session state "
+                        "has not been independently verified"
+                    ),
+                    "rf_enabled": False,
+                    "transmitted": False,
+                    "checks": [],
+                }
+            if self._aprs_safety_state == "unsafe":
+                return {
+                    "passed": False,
+                    "state": "unsafe",
+                    "reason": self._aprs_safety_reason,
+                    "rf_enabled": False,
+                    "transmitted": False,
+                    "checks": [],
+                }
+
+            try:
+                result = check_aprs_tx_preflight(self.kam)
+            except Exception:
+                self._aprs_session_uncertain = True
+                self._invalidate_aprs_safety(
+                    "APRS preflight failed or TNC response is uncertain"
+                )
+                raise
+
+            return {
+                **result,
+                "state": self._aprs_safety_state,
+                "reason": self._aprs_safety_reason,
+            }
+
+    def _m_aprs_tx_get_unproto(
+        self, params: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        Read the current UNPROTO setting without modifying it.
+
+        Requires a previously verified APRS session.
+        Does not authorize RF transmission.
+        """
+        from aprs_tx import APRSTransmitError, validate_unproto
+
+        with self._kam_lock:
+            if (
+                self._aprs_session_uncertain
+                or self._aprs_safety_state == "unsafe"
+            ):
+                raise APRSTransmitError(
+                    "UNPROTO query blocked: APRS session is not verified"
+                )
+
+            try:
+                original = validate_unproto(self.kam.get("UNPROTO"))
+            except Exception:
+                self._aprs_session_uncertain = True
+                self._invalidate_aprs_safety(
+                    "UNPROTO query failed; TNC state uncertain"
+                )
+                raise
+
+            return {
+                "unproto": original,
+                "rf_enabled": False,
+                "transmitted": False,
+            }
 
     def _require_winlink_api_key(self) -> str:
         # Deliberately an env var only, read fresh on every call --
@@ -441,6 +608,28 @@ class KAMDaemon:
     def _m_monitor_unsubscribe(self, params: Dict[str, Any]) -> None:
         return None
 
+    def _m_aprs_preview_message(
+        self, params: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        Format an outgoing APRS message without touching the TNC.
+
+        This method performs no serial I/O and cannot transmit RF.
+        """
+        payload = format_aprs_message(
+            addressee=params["addressee"],
+            message=params["message"],
+            paclen=128,
+        )
+
+        return {
+            "payload": payload,
+            "length": len(payload.encode("ascii")),
+            "paclen": 128,
+            "port": 2,
+            "transmitted": False,
+        }
+
     def _m_aprs_stats(self, params: Dict[str, Any]) -> Dict[str, Any]:
         with self._stats_lock:
             return self._reception_stats.snapshot()
@@ -465,6 +654,17 @@ class KAMDaemon:
         result["enabled"] = True
         return result
 
+    def _m_aprs_tx_safety(
+        self, params: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Report APRS transmit safety without accessing the TNC."""
+        with self._kam_lock:
+            return {
+                "state": self._aprs_safety_state,
+                "reason": self._aprs_safety_reason,
+                "rf_enabled": False,
+            }
+
     def _m_stations_list(self, params: Dict[str, Any]) -> List[Dict[str, Any]]:
         with self._stations_lock:
             self._stations.expire_stale(max_age_seconds=3600)
@@ -478,6 +678,197 @@ class KAMDaemon:
             station = self._stations.get_station(params["callsign"])
 
         return dataclasses.asdict(station) if station is not None else None
+
+    def _m_aprs_tx_initialize(
+        self, params: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        Explicit operator-authorized APRS session initialization.
+
+        Requires external confirmation that radio interfaces are
+        disconnected. Never authorizes RF transmission.
+        """
+        from aprs_tx import APRSTransmitError, recover_aprs_command_mode
+
+        if params.get("confirm_radio_disconnected") is not True:
+            raise APRSTransmitError(
+                "Initialization requires explicit confirmation "
+                "that all radio interfaces are disconnected"
+            )
+
+        with self._kam_lock:
+            # Assume uncertainty until verification completes.
+            self._aprs_session_uncertain = True
+            self._invalidate_aprs_safety(
+                "APRS initialization in progress"
+            )
+
+            if (
+                self._monitor_stop.is_set()
+                or self._monitor_thread is None
+                or not self._monitor_thread.is_alive()
+            ):
+                self._invalidate_aprs_safety(
+                    "APRS initialization blocked: monitor thread not healthy"
+                )
+                raise APRSTransmitError(
+                    "APRS initialization requires a running monitor thread"
+                )
+
+            try:
+                result = recover_aprs_command_mode(self.kam)
+            except Exception:
+                self._aprs_session_uncertain = True
+                self._invalidate_aprs_safety(
+                    "APRS initialization failed; TNC state uncertain"
+                )
+                logger.exception(
+                    "APRS initialization failed during "
+                    "command-mode recovery"
+                )
+                raise
+
+            # Both command mode and disconnected A/2 were verified.
+            self._aprs_session_uncertain = False
+            self._aprs_safety_state = "unknown"
+            self._aprs_safety_reason = (
+                "Command mode and disconnected A/2 verified; "
+                "RF prerequisites not fully established"
+            )
+
+            return {
+                **result,
+                "initialized": True,
+                "state": self._aprs_safety_state,
+                "reason": self._aprs_safety_reason,
+                "rf_enabled": False,
+                "transmitted": False,
+            }
+
+    def _m_aprs_tx_recover(
+        self, params: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        Explicit operator-requested command-mode recovery.
+
+        Recovery changes TNC operating mode but does not transmit
+        APRS data or authorize RF transmission.
+        """
+        from aprs_tx import APRSTransmitError, recover_aprs_command_mode
+
+        if params.get("confirm_recovery") is not True:
+            raise APRSTransmitError(
+                "Explicit confirm_recovery=true is required"
+            )
+
+        with self._kam_lock:
+            if self._aprs_session_uncertain:
+                raise APRSTransmitError(
+                    "APRS recovery blocked: an AX.25 connection "
+                    "was attempted and its final state has not "
+                    "been independently verified."
+                )
+            self._invalidate_aprs_safety(
+                "APRS command-mode recovery in progress"
+            )
+
+            try:
+                result = recover_aprs_command_mode(self.kam)
+            except Exception:
+                self._aprs_session_uncertain = True
+                self._invalidate_aprs_safety(
+                    "APRS command-mode recovery failed; TNC state uncertain"
+                )
+                raise
+
+            # Recovery verifies command mode and disconnected A/2
+            # at this instant, but does not establish RF readiness.
+            self._aprs_safety_state = "unknown"
+            self._aprs_safety_reason = (
+                "Command mode and disconnected A/2 verified; "
+                "RF prerequisites not fully established"
+            )
+
+            return {
+                **result,
+                "state": self._aprs_safety_state,
+                "reason": self._aprs_safety_reason,
+            }
+
+    def _m_aprs_tx_diagnostics(
+        self, params: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        Report APRS safety prerequisites without touching serial.
+
+        This is a diagnostic snapshot, not authorization
+        to transmit or recover the TNC.
+        """
+        with self._kam_lock:
+            return {
+                "serial_open": self.kam.is_connected,
+                "serial_exclusive_requested": (
+                    self.kam.is_connected
+                    and getattr(self.kam.serial, "exclusive", None) is True
+                ),
+                "session_uncertain": self._aprs_session_uncertain,
+                "safety_state": self._aprs_safety_state,
+                "safety_reason": self._aprs_safety_reason,
+                "command_mode_verified": False,
+                "rf_enabled": False,
+                "recovery_allowed": False,
+            }
+
+    def _m_aprs_tx_exit_kiss(
+        self, params: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        Explicit, fail-closed KISS exit attempt.
+
+        Does not initialize APRS or authorize RF transmission.
+        """
+        from aprs_tx import APRSTransmitError
+
+        if params.get("confirm_radio_disconnected") is not True:
+            raise APRSTransmitError(
+                "KISS exit requires explicit confirmation "
+                "that all radio interfaces are disconnected"
+            )
+
+        with self._kam_lock:
+            self._aprs_session_uncertain = True
+            self._invalidate_aprs_safety(
+                "KISS exit attempted; TNC state requires verification"
+            )
+
+            if (
+                self._monitor_stop.is_set()
+                or self._monitor_thread is None
+                or not self._monitor_thread.is_alive()
+            ):
+                raise APRSTransmitError(
+                    "KISS exit requires a healthy monitor thread"
+                )
+
+            try:
+                response = self.kam.exit_kiss_mode()
+            except Exception as exc:
+                logger.exception("KAM-XL KISS exit failed")
+                raise APRSTransmitError(
+                    "KISS exit failed; TNC state remains uncertain"
+                ) from exc
+            return {
+                "exit_sequence_sent": True,
+                "response_hex": response.hex(),
+                "response_text": response.decode(
+                    "latin-1", errors="replace"
+                )[:500],
+                "terminal_mode_verified": False,
+                "initialized": False,
+                "rf_enabled": False,
+                "transmitted": False,
+            }
+
     # -----------------------------------------------------------------------
     # Monitor broadcast
     # -----------------------------------------------------------------------
@@ -524,9 +915,15 @@ class KAMDaemon:
             try:
                 with self._kam_lock:
                     text = self.kam.read_available()
-            except (OSError, serial.SerialException):
+            except Exception:
+                with self._kam_lock:
+                    self._aprs_session_uncertain = True
+                    self._invalidate_aprs_safety(
+                        "Monitor thread failed; TNC state uncertain"
+                    )
+
                 logger.exception(
-                    "KAM-XL serial connection lost; "
+                    "KAM-XL monitor thread failed; "
                     "exiting so systemd can restart the daemon"
                 )
                 os._exit(1)

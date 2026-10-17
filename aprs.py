@@ -530,3 +530,44 @@ def parse_position(
         timestamp,
         payload,
     )
+def format_aprs_message(
+    addressee: str,
+    message: str,
+    paclen: int = 128,
+) -> str:
+    """
+    Format an APRS message information field for an AX.25 UI frame.
+
+    Does not include AX.25 source, destination, digipeater path,
+    or the TNC's SENDPAC carriage return.
+
+    This function performs no hardware I/O.
+    """
+    if not isinstance(addressee, str):
+        raise ValueError("Addressee must be a string")
+
+    addressee = addressee.strip().upper()
+
+    if not re.fullmatch(r"[A-Z0-9]{1,6}(?:-[0-9]{1,2})?", addressee):
+        raise ValueError("Invalid APRS addressee")
+
+    if len(addressee) > 9:
+        raise ValueError("APRS addressee exceeds 9 characters")
+
+    if not isinstance(message, str) or not message:
+        raise ValueError("APRS message must be a nonempty string")
+
+    if not all(0x20 <= ord(char) <= 0x7E for char in message):
+        raise ValueError("APRS message must contain printable ASCII only")
+
+    if any(char in message for char in ("|", "~", "{")):
+        raise ValueError("APRS message contains reserved characters")
+
+    payload = f":{addressee:<9}:{message}"
+
+    if len(payload.encode("ascii")) > paclen:
+        raise ValueError(
+            f"APRS payload exceeds PACLEN ({paclen} bytes)"
+        )
+
+    return payload
