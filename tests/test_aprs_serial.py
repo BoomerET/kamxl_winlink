@@ -631,6 +631,49 @@ class APRSSerialTests(unittest.TestCase):
             serial.written,
         )
 
+    def test_transaction_stops_after_unproto_readback_timeout(self):
+        serial = APRSTransactionFake()
+        kam = make_kam(serial)
+
+        original_get = kam.get
+        unproto_reads = 0
+
+        def timeout_on_readback(command):
+            nonlocal unproto_reads
+
+            if command == "UNPROTO":
+                unproto_reads += 1
+
+                if unproto_reads == 2:
+                    raise TimeoutError(
+                        "Simulated UNPROTO read-back timeout"
+                    )
+
+            return original_get(command)
+
+        kam.get = timeout_on_readback
+
+        payload = ":ANSRVR   :CQ #APRSTHURSDAY Howdy from Prosper TX"
+
+        with self.assertRaisesRegex(
+            APRSTransmitError,
+            "TNC state is uncertain",
+        ):
+            execute_aprs_tx_transaction(kam, payload)
+
+        # The configuration change succeeded before read-back failed.
+        self.assertEqual(serial.unproto, "APRS")
+
+        # Never attempt restoration while command mode is uncertain.
+        self.assertNotIn(b"UNPROTO CQ/CQ\r", serial.written)
+
+        # No conversational mode or APRS payload submission.
+        self.assertNotIn(b"CONVERS\r", serial.written)
+        self.assertNotIn(
+            payload.encode("ascii") + b"\r",
+            serial.written,
+        )
+
     def test_transaction_stops_after_generic_unproto_timeout(self):
         serial = APRSTransactionFake()
         kam = make_kam(serial)

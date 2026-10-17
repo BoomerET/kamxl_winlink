@@ -404,7 +404,20 @@ def execute_aprs_tx_transaction(kam, payload: str, path: str = "") -> dict:
                 "automatic restoration was not attempted. "
                 "Manual verification required."
             ) from exc
-        if validate_unproto(kam.get("UNPROTO")) != new_unproto:
+        try:
+            verified_unproto = validate_unproto(kam.get("UNPROTO"))
+        except (KAMTimeoutError, TimeoutError, OSError) as exc:
+            # A failed read-back leaves command mode uncertain.
+            # Do not attempt automatic configuration restoration.
+            changed = False
+
+            raise APRSTransmitError(
+                "UNPROTO read-back failed. TNC state is uncertain; "
+                "automatic restoration was not attempted. "
+                "Manual verification required."
+            ) from exc
+
+        if verified_unproto != new_unproto:
             raise APRSTransmitError("UNPROTO change verification failed")
 
         # CONVERS does not return a command prompt.
