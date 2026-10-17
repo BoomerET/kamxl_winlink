@@ -317,7 +317,7 @@ class APRSPreviewTests(DaemonTestCase):
 
         self.assertIsNotNone(response.get("error"))
         self.assertIn(
-            "disabled",
+            "confirm_transmit",
             str(response["error"]).lower(),
         )
 
@@ -539,7 +539,7 @@ class APRSPreviewTests(DaemonTestCase):
 
         self.assertFalse(response["ok"])
         self.assertIn(
-            "disabled",
+            "confirm_transmit",
             str(response["error"]).lower(),
         )
 
@@ -797,7 +797,7 @@ class APRSPreviewTests(DaemonTestCase):
 
         self.assertFalse(response["ok"])
         self.assertIn(
-            "disabled",
+            "confirm_transmit",
             str(response["error"]).lower(),
         )
 
@@ -846,7 +846,7 @@ class APRSPreviewTests(DaemonTestCase):
 
         self.assertFalse(send["ok"])
         self.assertIn(
-            "disabled",
+            "confirm_transmit",
             str(send["error"]).lower(),
         )
         # The rejected send request must not touch the TNC.
