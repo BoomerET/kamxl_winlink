@@ -42,7 +42,7 @@ HEADER_RE: re.Pattern = re.compile(
     r"(?:,(?P<digipeaters>[A-Za-z0-9\-\*,]+))?"
     r"/(?P<port>\d+):"
     r"(?:\s*<{1,2}(?P<frame_type>[^<>]*)>{1,2}:)?"
-    r"\s*$"
+    r"(?P<inline_payload>.*)$"
 )
 
 
@@ -127,29 +127,33 @@ class PacketParser:
 
     def feed(self, text: str) -> List[Packet]:
         """
-        Feed newly-received text into the parser.
-
-        Returns a list of Packet objects completed as a result of
-        this call. Usually 0 or 1, but could be more if a single
-        chunk happens to contain several complete lines.
+        Feed serial text, accepting CR, LF, and CRLF line endings.
         """
         self._buffer += text
-
         completed: List[Packet] = []
 
         while True:
-            newline_index = self._buffer.find("\n")
+            cr = self._buffer.find("\r")
+            lf = self._buffer.find("\n")
 
-            if newline_index == -1:
+            positions = [p for p in (cr, lf) if p >= 0]
+            if not positions:
                 break
 
-            line = self._buffer[:newline_index]
-            self._buffer = self._buffer[newline_index + 1:]
+            index = min(positions)
+            line = self._buffer[:index]
 
-            packet = self._process_line(
-                line.rstrip("\r")
-            )
+            consume = 1
+            if (
+                self._buffer[index] == "\r"
+                and len(self._buffer) > index + 1
+                and self._buffer[index + 1] == "\n"
+            ):
+                consume = 2
 
+            self._buffer = self._buffer[index + consume:]
+
+            packet = self._process_line(line)
             if packet is not None:
                 completed.append(packet)
 
@@ -216,7 +220,11 @@ class PacketParser:
             "port": int(match.group("port")),
             "frame_type": match.group("frame_type"),
             "header_line": line,
-            "payload_lines": [],
+            "payload_lines": (
+                [match.group("inline_payload")]
+                if match.group("inline_payload")
+                else []
+            ),
         }
 
         return completed
@@ -225,13 +233,33 @@ class PacketParser:
         if self._pending is None:
             return None
 
-        payload = "\n".join(
-            self._pending["payload_lines"]
-        )
+        payload_lines = self._pending["payload_lines"].copy()
+
+        # Inline APRS packets can end with CR CR. Remove the
+        # resulting empty line, but preserve trailing newlines
+        # in the original multiline KAM-XL format.
+        if (
+            self._pending["header_line"].endswith(
+                self._pending["payload_lines"][0]
+            )
+            if self._pending["payload_lines"]
+            else False
+        ):
+            while payload_lines and payload_lines[-1] == "":
+                payload_lines.pop()
+
+        payload = "\n".join(payload_lines)
 
         raw = "\n".join(
             [self._pending["header_line"]]
-            + self._pending["payload_lines"]
+            + (
+                self._pending["payload_lines"][1:]
+                if self._pending["payload_lines"]
+                and self._pending["header_line"].endswith(
+                    self._pending["payload_lines"][0]
+                )
+                else self._pending["payload_lines"]
+            )
         )
 
         packet = Packet(
