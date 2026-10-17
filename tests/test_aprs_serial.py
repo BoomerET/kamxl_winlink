@@ -272,6 +272,34 @@ class APRSSerialTests(unittest.TestCase):
 
         self.assertEqual(serial.unproto, "CQ/CQ")
 
+    def test_transaction_stops_after_initial_unproto_timeout(self):
+        serial = APRSTransactionFake()
+        kam = make_kam(serial)
+
+        original_get = kam.get
+
+        def failed_initial_read(command):
+            if command == "UNPROTO":
+                raise KAMTimeoutError("Simulated initial read timeout")
+            return original_get(command)
+
+        kam.get = failed_initial_read
+
+        payload = ":ANSRVR   :CQ #APRSTHURSDAY Howdy from Prosper TX"
+
+        with self.assertRaises((KAMTimeoutError, APRSTransmitError)):
+            execute_aprs_tx_transaction(kam, payload)
+
+        self.assertEqual(serial.unproto, "CQ/CQ")
+        self.assertEqual(serial.mode, "command")
+        self.assertNotIn(b"UNPROTO APRS\r", serial.written)
+        self.assertNotIn(b"UNPROTO CQ/CQ\r", serial.written)
+        self.assertNotIn(b"CONVERS\r", serial.written)
+        self.assertNotIn(
+            payload.encode("ascii") + b"\r",
+            serial.written,
+        )
+
     def test_transaction_rejects_wrong_port_before_changes(self):
         serial = APRSTransactionFake()
         kam = make_kam(serial)
@@ -449,7 +477,7 @@ class APRSSerialTests(unittest.TestCase):
 
         with self.assertRaisesRegex(
             APRSTransmitError,
-            "may already have been transmitted",
+            "do not retry automatically",
         ):
             execute_aprs_tx_transaction(kam, payload)
 
@@ -625,6 +653,43 @@ class APRSSerialTests(unittest.TestCase):
         self.assertNotIn(b"UNPROTO CQ/CQ\r", serial.written)
 
         # Never proceed to conversational mode or submit the payload.
+        self.assertNotIn(b"CONVERS\r", serial.written)
+        self.assertNotIn(
+            payload.encode("ascii") + b"\r",
+            serial.written,
+        )
+
+    def test_transaction_restores_after_mismatched_unproto_readback(self):
+        serial = APRSTransactionFake()
+        kam = make_kam(serial)
+
+        original_get = kam.get
+        unproto_reads = 0
+
+        def mismatched_readback(command):
+            nonlocal unproto_reads
+
+            if command == "UNPROTO":
+                unproto_reads += 1
+
+                if unproto_reads == 2:
+                    return "APRS VIA WIDE1-1"
+
+            return original_get(command)
+
+        kam.get = mismatched_readback
+
+        payload = ":ANSRVR   :CQ #APRSTHURSDAY Howdy from Prosper TX"
+
+        with self.assertRaisesRegex(
+            APRSTransmitError,
+            "UNPROTO change verification failed",
+        ):
+            execute_aprs_tx_transaction(kam, payload)
+
+        self.assertEqual(serial.unproto, "CQ/CQ")
+        self.assertEqual(serial.mode, "command")
+        self.assertIn(b"UNPROTO CQ/CQ\r", serial.written)
         self.assertNotIn(b"CONVERS\r", serial.written)
         self.assertNotIn(
             payload.encode("ascii") + b"\r",
@@ -902,6 +967,26 @@ class APRSSerialTests(unittest.TestCase):
         self.assertEqual(result["active_stream"], "A/2")
         self.assertFalse(result["ax25_connected"])
         self.assertFalse(result["rf_enabled"])
+
+    def test_recovery_status_rejects_unexpected_line(self):
+        response = (
+            "FREE BYTES 2685\r\n"
+            "A/2  stream - IO DISCONNECTED\r\n"
+            "UNEXPECTED DATA"
+        )
+
+        with self.assertRaises(APRSTransmitError):
+            validate_aprs_recovery_status(response)
+
+    def test_recovery_status_rejects_duplicate_stream(self):
+        response = (
+            "FREE BYTES 2685\r\n"
+            "A/2  stream - IO DISCONNECTED\r\n"
+            "A/2  stream - IO DISCONNECTED"
+        )
+
+        with self.assertRaises(APRSTransmitError):
+            validate_aprs_recovery_status(response)
 
     def test_recovery_status_rejects_connected_stream(self):
         response = (
