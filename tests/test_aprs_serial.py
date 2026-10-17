@@ -125,7 +125,8 @@ class APRSTransactionFake(APRSSerialFake):
             )
 
         elif command.startswith("UNPROTO "):
-            self.unproto = command[len("UNPROTO "):]
+            value = command[len("UNPROTO "):]
+            self.unproto = f"{value}/{value}" if "/" not in value else value
             self._out.extend(b"cmd:")
 
         elif command == "STATUS":
@@ -251,8 +252,8 @@ class APRSSerialTests(unittest.TestCase):
 
         kam.set("UNPROTO", "APRS")
 
-        self.assertEqual(serial.unproto, "APRS")
-        self.assertEqual(kam.get("UNPROTO"), "APRS")
+        self.assertEqual(serial.unproto, "APRS/APRS")
+        self.assertEqual(kam.get("UNPROTO"), "APRS/APRS")
 
     def test_transaction_fake_reports_active_stream(self):
         serial = APRSTransactionFake()
@@ -485,7 +486,7 @@ class APRSSerialTests(unittest.TestCase):
         self.assertEqual(serial.mode, "command")
 
         # Restoration failed; the modified configuration remains.
-        self.assertEqual(serial.unproto, "APRS")
+        self.assertEqual(serial.unproto, "APRS/APRS")
 
     def test_transaction_rejects_connected_status_after_submission(self):
         serial = APRSTransactionFake()
@@ -527,7 +528,7 @@ class APRSSerialTests(unittest.TestCase):
         self.assertEqual(serial.mode, "command")
 
         # Recovery STATUS was unsafe; do not restore UNPROTO.
-        self.assertEqual(serial.unproto, "APRS")
+        self.assertEqual(serial.unproto, "APRS/APRS")
         self.assertNotIn(b"UNPROTO CQ/CQ\r", serial.written)
 
     def test_transaction_submits_once_and_restores(self):
@@ -724,7 +725,7 @@ class APRSSerialTests(unittest.TestCase):
         ):
             execute_aprs_tx_transaction(kam, payload)
 
-        self.assertEqual(serial.unproto, "APRS")
+        self.assertEqual(serial.unproto, "APRS/APRS")
 
         # Do not restore configuration after an untrusted response.
         self.assertNotIn(b"UNPROTO CQ/CQ\r", serial.written)
@@ -767,7 +768,7 @@ class APRSSerialTests(unittest.TestCase):
             execute_aprs_tx_transaction(kam, payload)
 
         # The configuration change succeeded before read-back failed.
-        self.assertEqual(serial.unproto, "APRS")
+        self.assertEqual(serial.unproto, "APRS/APRS")
 
         # Never attempt restoration while command mode is uncertain.
         self.assertNotIn(b"UNPROTO CQ/CQ\r", serial.written)

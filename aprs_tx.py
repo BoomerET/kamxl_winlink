@@ -1,6 +1,7 @@
 """Safety checks for outgoing APRS messages."""
 
 import re
+import time
 from kamxl import KAMTimeoutError
 
 class APRSTransmitError(ValueError):
@@ -422,7 +423,7 @@ def _execute_aprs_tx_transaction(kam, payload: str, path: str = "") -> dict:
                 "Manual verification required."
             ) from exc
 
-        if verified_unproto != new_unproto:
+        if verified_unproto != f"{new_unproto}/{new_unproto}":
             raise APRSTransmitError("UNPROTO change verification failed")
 
         # CONVERS does not return a command prompt.
@@ -459,6 +460,11 @@ def _execute_aprs_tx_transaction(kam, payload: str, path: str = "") -> dict:
             ) from exc
 
         submitted = True
+
+        # Allow the KAM-XL time to key and transmit the queued
+        # APRS packet before returning to command mode.
+        # Confirmed necessary during over-the-air testing.
+        time.sleep(2.0)
 
     finally:
         command_mode_confirmed = not in_convers

@@ -304,6 +304,40 @@ class APRSPreviewTests(DaemonTestCase):
         self.assertTrue(response["ok"], response)
         self.assertEqual(serial.written, [])
 
+    def test_aprs_send_requires_all_confirmations(self):
+        serial = ScriptedSerial({})
+        _, socket_path = self.start_daemon(serial)
+        client = self.connect(socket_path)
+
+        base = {
+            "addressee": "N5BA-7",
+            "message": "Hello from KAM-XL! 73 de N5BA",
+        }
+
+        confirmations = {
+            "confirm_transmit": True,
+            "confirm_vhf_port2_radio_ready": True,
+            "confirm_hf_port1_disconnected": True,
+        }
+
+        for missing in confirmations:
+            with self.subTest(missing=missing):
+                params = {
+                    **base,
+                    **{
+                        key: value
+                        for key, value in confirmations.items()
+                        if key != missing
+                    },
+                }
+
+                response = client.call("aprs.send_message", **params)
+
+                self.assertFalse(response["ok"], response)
+                self.assertIn("error", response)
+
+        self.assertEqual(serial.written, [])
+
     def test_aprs_send_is_disabled(self):
         serial = ScriptedSerial({})
         daemon, socket_path = self.start_daemon(serial)
