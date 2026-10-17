@@ -472,6 +472,10 @@ class APRSPreviewTests(DaemonTestCase):
 
         self.assertFalse(response["ok"])
 
+        # A failed preflight must also latch session uncertainty.
+        with daemon._kam_lock:
+            self.assertTrue(daemon._aprs_session_uncertain)
+
         safety = client.call("aprs.tx_safety")
 
         self.assertTrue(safety["ok"], safety)

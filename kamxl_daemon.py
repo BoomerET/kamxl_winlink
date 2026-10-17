@@ -485,7 +485,8 @@ class KAMDaemon:
 
             try:
                 result = check_aprs_tx_preflight(self.kam)
-            except Exception as exc:
+            except Exception:
+                self._aprs_session_uncertain = True
                 self._invalidate_aprs_safety(
                     "APRS preflight failed or TNC response is uncertain"
                 )
