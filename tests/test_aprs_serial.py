@@ -272,6 +272,34 @@ class APRSSerialTests(unittest.TestCase):
 
         self.assertEqual(serial.unproto, "CQ/CQ")
 
+    def test_transaction_stops_after_initial_unproto_timeout(self):
+        serial = APRSTransactionFake()
+        kam = make_kam(serial)
+
+        original_get = kam.get
+
+        def failed_initial_read(command):
+            if command == "UNPROTO":
+                raise KAMTimeoutError("Simulated initial read timeout")
+            return original_get(command)
+
+        kam.get = failed_initial_read
+
+        payload = ":ANSRVR   :CQ #APRSTHURSDAY Howdy from Prosper TX"
+
+        with self.assertRaises((KAMTimeoutError, APRSTransmitError)):
+            execute_aprs_tx_transaction(kam, payload)
+
+        self.assertEqual(serial.unproto, "CQ/CQ")
+        self.assertEqual(serial.mode, "command")
+        self.assertNotIn(b"UNPROTO APRS\r", serial.written)
+        self.assertNotIn(b"UNPROTO CQ/CQ\r", serial.written)
+        self.assertNotIn(b"CONVERS\r", serial.written)
+        self.assertNotIn(
+            payload.encode("ascii") + b"\r",
+            serial.written,
+        )
+
     def test_transaction_rejects_wrong_port_before_changes(self):
         serial = APRSTransactionFake()
         kam = make_kam(serial)
