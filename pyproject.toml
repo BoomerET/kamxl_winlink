@@ -70,3 +70,9 @@ py-modules = [
     "reception_writer",
     "reception_stats",
 ]
+# The web pages kamxl_rest.py serves (HTML/CSS/JS files, not Python
+# strings) ship as a small package with its files as package data.
+packages = ["kamxl_web"]
+
+[tool.setuptools.package-data]
+kamxl_web = ["*/index.html", "*/style.css", "*/app.js"]

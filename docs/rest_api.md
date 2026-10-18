@@ -210,6 +210,16 @@ const source = new EventSource(
 curl -N -H "Authorization: Bearer $TOKEN" http://kam-host:8080/monitor/stream
 ```
 
+## Where the pages live
+
+Each web page is three ordinary files under `kamxl_web/<page>/`
+(`dashboard`, `terminal`, `pbbs`, `winlink`, `map`): `index.html`,
+`style.css` and `app.js`. `kamxl_web.load_page()` inlines the CSS and
+JS into the HTML when `kamxl_rest.py` starts, so each page is still
+served as one self-contained response from its usual authenticated
+route. Restart the web service after editing them. CI runs
+`node --check` on every `app.js`.
+
 ## Web terminal
 
 `GET /terminal` serves a single self-contained HTML page (no build
@@ -344,8 +354,8 @@ to a specific commit:
   by the browser via jsdelivr's GitHub-raw CDN, not vendored into this
   repo.
 - **Symbol lookup logic:** the ~15-line translation-table and
-  sprite-grid-position math is ported inline into `MAP_HTML`'s own
-  `<script>` from [OK-DMR/aprs-symbols](https://github.com/OK-DMR/aprs-symbols)'
+  sprite-grid-position math is ported inline into the map page's
+  script (`kamxl_web/map/app.js`) from [OK-DMR/aprs-symbols](https://github.com/OK-DMR/aprs-symbols)'
   `aprs-symbols.js`/`aprs-symbols.css` (MIT License, Copyright (c)
   2019 Marek Sebera) -- not loaded from a CDN, just the logic reused
   with attribution.

@@ -1895,3 +1895,33 @@ Also: `requires-python` corrected to `>=3.9` (the code uses
 
 Tests: `tests/test_history_retention.py` (7).
 
+### Web pages moved out of kamxl_rest.py
+
+The five pages (`DASHBOARD_HTML`, `TERMINAL_HTML`, `PBBS_HTML`,
+`WINLINK_HTML`, `MAP_HTML`) were ~4,000 lines of HTML/CSS/JS inside
+Python string literals, which made them hard to edit (no syntax
+highlighting, Python string escaping such as `"\\25CF"` in CSS) and
+made `kamxl_rest.py` 5,400 lines long. They now live as real files in
+a small `kamxl_web` package:
+
+    kamxl_web/<page>/index.html  style.css  app.js
+
+`index.html` refers to the other two with
+`<link rel="stylesheet" href="style.css">` and
+`<script src="app.js"></script>`; `kamxl_web.load_page()` replaces
+those two tags with the files' contents. The constants keep their
+names (`DASHBOARD_HTML = load_page("dashboard")`), so routes and tests
+are unchanged, and pages are still single authenticated responses --
+separate `/static/` requests wouldn't carry the `?token=`.
+
+The extraction was mechanical and checked byte-for-byte: every
+reassembled page was identical to the original string before the
+literals were removed. Then all 679 existing tests passed unchanged,
+all five pages loaded in headless Chromium with no script errors (the
+map's "L is not defined" is only because the sandbox can't reach the
+Leaflet CDN), and a real `pip install .` into a fresh venv shipped and
+loaded the pages (`packages = ["kamxl_web"]` + package-data in
+pyproject). `kamxl_rest.py` is now ~1,400 lines.
+
+Tests: `tests/test_web_pages.py` (6).
+

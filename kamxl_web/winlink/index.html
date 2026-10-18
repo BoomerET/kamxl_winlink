@@ -1,0 +1,77 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>kamxl Winlink</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="paneHeader">
+  <span>WINLINK</span>
+  <span>
+    <a href="#" id="homeLink">home</a>
+    <a href="#" id="terminalLink">terminal</a>
+    <a href="#" id="pbbsLink">pbbs</a>
+    <a href="#" id="mapLink">map</a>
+  </span>
+</div>
+<div id="content">
+  <div class="tabs">
+    <button id="checkTabBtn" type="button" class="active">Check mail</button>
+    <button id="sendTabBtn" type="button">Send mail</button>
+  </div>
+  <form id="checkForm">
+    <div>
+      <label for="gateway">RMS gateway callsign</label>
+      <input id="gateway" required placeholder="e.g. KD5EOC-10" />
+    </div>
+    <div>
+      <label for="password">Winlink account password</label>
+      <input id="password" type="password" autocomplete="off" required />
+    </div>
+    <div>
+      <label for="mycall">My callsign (optional -- defaults to the KAM-XL's MYCALL)</label>
+      <input id="mycall" placeholder="e.g. N5BA-10" />
+    </div>
+    <button id="submitBtn" type="submit">Check mail</button>
+  </form>
+  <form id="sendForm" class="hidden">
+    <div>
+      <label for="sendGateway">RMS gateway callsign</label>
+      <input id="sendGateway" required placeholder="e.g. KD5EOC-10" />
+    </div>
+    <div>
+      <label for="sendPassword">Winlink account password</label>
+      <input id="sendPassword" type="password" autocomplete="off" required />
+    </div>
+    <div>
+      <label for="sendMycall">My callsign (optional -- defaults to the KAM-XL's MYCALL)</label>
+      <input id="sendMycall" placeholder="e.g. N5BA-10" />
+    </div>
+    <div>
+      <label for="sendTo">To (comma-separated)</label>
+      <input id="sendTo" required placeholder="e.g. N0CALL, W1AW" />
+    </div>
+    <div>
+      <label for="sendCc">Cc (comma-separated, optional)</label>
+      <input id="sendCc" placeholder="e.g. N1CALL" />
+    </div>
+    <div>
+      <label for="sendSubject">Subject</label>
+      <input id="sendSubject" required maxlength="128" />
+    </div>
+    <div>
+      <label for="sendBody">Message body (text only -- no attachments)</label>
+      <textarea id="sendBody" required></textarea>
+    </div>
+    <button id="sendBtn" type="submit">Send message</button>
+  </form>
+  <div id="results" class="notice">
+    Connects, logs in, and downloads whatever mail is waiting (up to
+    one block, 5 messages). Can take a while (AX.25 connect + login +
+    proposal exchange), so don't worry if it sits for a bit.
+  </div>
+</div>
+<script src="app.js"></script>
+</body>
+</html>

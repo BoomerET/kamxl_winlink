@@ -1,0 +1,50 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>kamxl station map</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="paneHeader">
+  <span>STATION MAP <span id="stationCount"></span></span>
+  <form id="stationSearchForm" role="search">
+    <input
+      id="stationSearch"
+      type="search"
+      placeholder="Find callsign..."
+      aria-label="Find station on map"
+      autocomplete="off"
+      list="stationSearchOptions"
+    >
+    <datalist id="stationSearchOptions"></datalist>
+    <button type="submit">Find</button>
+  </form>
+
+  <span>
+    <label class="digiToggle">
+      <input type="checkbox" id="showDigiPaths">
+      Show Digipeater Paths
+    </label>
+    <select id="digiStationFilter" aria-label="Filter digipeater paths by station">
+      <option value="">All stations</option>
+    </select>
+    <a href="#" id="homeLink">home</a>
+    <a href="#" id="terminalLink">terminal</a>
+    <a href="#" id="pbbsLink">pbbs</a>
+    <a href="#" id="winlinkLink">winlink</a>
+  </span>
+</div>
+<div id="empty" style="display:none;">No stations heard yet.</div>
+<div id="stationSelectionStatus" role="status" hidden></div>
+<div id="map"></div>
+<aside id="stationDetails" hidden aria-label="APRS station details">
+  <button id="closeStationDetails" type="button">Close</button>
+  <h2 id="detailCallsign">Station Details</h2>
+  <div id="stationDetailsBody">Loading...</div>
+</aside>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
