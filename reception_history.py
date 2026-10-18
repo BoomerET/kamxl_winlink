@@ -58,6 +58,19 @@ class ReceptionHistory:
 
             CREATE INDEX IF NOT EXISTS idx_aprs_messages_addressee_time
                 ON aprs_messages(addressee, received_at);
+
+            -- Messages this station sent, with ack/resend state, so the
+            -- dashboard's conversations survive a daemon restart. One
+            -- row per message ID (updated in place); the record itself
+            -- is stored as JSON so new fields don't need migrations.
+            CREATE TABLE IF NOT EXISTS aprs_outbound (
+                message_id TEXT PRIMARY KEY,
+                sent_at REAL NOT NULL,
+                record TEXT NOT NULL
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_aprs_outbound_sent_at
+                ON aprs_outbound(sent_at);
         """)
 
         self._connection.commit()
@@ -218,6 +231,38 @@ class ReceptionHistory:
             }
             for row in rows
         ]
+
+    def save_outbound(self, record: dict) -> None:
+        """Insert or update one sent-message record."""
+        with self._connection:
+            self._connection.execute(
+                """
+                INSERT INTO aprs_outbound (message_id, sent_at, record)
+                VALUES (?, ?, ?)
+                ON CONFLICT(message_id) DO UPDATE SET
+                    sent_at = excluded.sent_at,
+                    record = excluded.record
+                """,
+                (
+                    record["message_id"],
+                    float(record["sent_at"]),
+                    json.dumps(record),
+                ),
+            )
+
+    def list_outbound(self, limit: int = 200):
+        """Most recent sent-message records, newest first."""
+        rows = self._connection.execute(
+            "SELECT record FROM aprs_outbound "
+            "ORDER BY sent_at DESC LIMIT ?",
+            (int(limit),),
+        ).fetchall()
+        return [json.loads(row[0]) for row in rows]
+
+    def clear_outbound(self) -> int:
+        with self._connection:
+            cursor = self._connection.execute("DELETE FROM aprs_outbound")
+        return cursor.rowcount
 
     def clear_aprs_messages(self, addressee: str) -> int:
         """Delete stored APRS messages addressed to a callsign."""

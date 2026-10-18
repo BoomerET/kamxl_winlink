@@ -144,7 +144,71 @@ DASHBOARD_HTML = """<!doctype html>
   /* APRS Messaging */
   #aprsMessagingCard {
     min-width: 300px;
+    flex: 2 1 520px;
   }
+  #aprsConversations { margin-top: 16px; }
+  #aprsConversations .autoAckToggle { margin-top: 10px; }
+  #aprsConversations h3 { font-size: 13px; color: #9ab; margin: 0 0 6px; }
+  #convUnreadBadge {
+    background: #f1c40f; color: #0b0f10; border-radius: 8px;
+    padding: 0 6px; font-size: 11px; margin-left: 4px;
+  }
+  .convLayout {
+    display: grid;
+    grid-template-columns: minmax(130px, 34%) 1fr;
+    gap: 10px;
+    margin-top: 8px;
+    min-height: 160px;
+  }
+  @media (max-width: 700px) {
+    .convLayout { grid-template-columns: 1fr; }
+  }
+  #convList {
+    border: 1px solid #234; border-radius: 4px;
+    max-height: 340px; overflow-y: auto;
+  }
+  .convRow {
+    display: block; width: 100%; text-align: left;
+    background: none; border: 0; border-bottom: 1px solid #1a2a2e;
+    color: #d4f7d4; font: inherit; font-size: 12px;
+    padding: 7px 8px; cursor: pointer;
+  }
+  .convRow:hover, .convRow:focus-visible { background: #15211f; outline: none; }
+  .convRow.selected { background: #1a2d26; }
+  .convRow .convCall { font-weight: bold; }
+  .convRow .convUnread {
+    float: right; background: #f1c40f; color: #0b0f10;
+    border-radius: 8px; padding: 0 6px; font-size: 11px;
+  }
+  .convRow .convPreview {
+    display: block; color: #9ab; margin-top: 2px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  #convThread {
+    border: 1px solid #234; border-radius: 4px;
+    display: flex; flex-direction: column; min-width: 0;
+  }
+  .convThreadHead {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 6px 8px; border-bottom: 1px solid #234; gap: 8px;
+  }
+  .convThreadHead button.action { margin-top: 0; padding: 2px 10px; }
+  #convMessages {
+    padding: 8px; max-height: 340px; overflow-y: auto;
+    display: flex; flex-direction: column; gap: 6px; font-size: 12px;
+  }
+  .bubble {
+    max-width: 85%; padding: 6px 9px; border-radius: 8px;
+    overflow-wrap: anywhere; line-height: 1.4;
+  }
+  .bubble.in { align-self: flex-start; background: #17242a; border: 1px solid #2a3d44; }
+  .bubble.out { align-self: flex-end; background: #16291f; border: 1px solid #2c5a3c; }
+  .bubble .bubbleMeta {
+    display: flex; gap: 6px; flex-wrap: wrap; align-items: center;
+    color: #9ab; font-size: 11px; margin-top: 4px;
+  }
+  .bubble .bubbleMeta button.action { margin-top: 0; padding: 1px 7px; font-size: 11px; }
+  .ackBadge.gaveup { color: #f77; border-color: #844; }
 
   #aprsMessageForm {
     display: flex;
@@ -558,17 +622,8 @@ DASHBOARD_HTML = """<!doctype html>
          role="status" aria-live="polite">
       No message submitted.
     </div>
-    <div id="aprsOutbox">
-      <h3>Sent Messages</h3>
-      <div class="sub" id="aprsOutboxStatus"
-           role="status" aria-live="polite">
-        Nothing sent this session.
-      </div>
-      <div id="aprsOutboxMessages"></div>
-    </div>
-
-    <div id="aprsInbox">
-      <h3>Received Messages</h3>
+    <div id="aprsConversations">
+      <h3>Conversations <span id="convUnreadBadge" hidden></span></h3>
 
       <label class="autoAckToggle">
         <input id="aprsAutoAck" type="checkbox">
@@ -580,23 +635,41 @@ DASHBOARD_HTML = """<!doctype html>
         Checking auto-ACK...
       </div>
 
-      <div class="inboxButtons">
-        <button class="action" id="aprsRefreshInbox"
-                type="button">
-          Refresh Inbox
-        </button>
-        <button class="action" id="aprsClearInbox"
-                type="button">
-          Clear Inbox
-        </button>
-      </div>
-
-      <div class="sub" id="aprsInboxStatus"
+      <label class="autoAckToggle">
+        <input id="aprsAutoRetry" type="checkbox">
+        Automatically resend unacknowledged messages
+        (transmits on VHF Port 2)
+      </label>
+      <div class="sub" id="aprsAutoRetryStatus"
            role="status" aria-live="polite">
-        Inbox not loaded.
+        Checking auto-resend...
       </div>
 
-      <div id="aprsInboxMessages"></div>
+      <div class="inboxButtons">
+        <button class="action" id="convAlertsBtn" type="button">
+          Enable alerts
+        </button>
+        <button class="action" id="aprsClearInbox" type="button">
+          Clear all messages
+        </button>
+      </div>
+
+      <div class="sub" id="convStatus" role="status" aria-live="polite">
+        Loading conversations...
+      </div>
+
+      <div class="convLayout">
+        <div id="convList" role="listbox"
+             aria-label="Stations you have messaged with"></div>
+        <div id="convThread">
+          <div class="convThreadHead">
+            <strong id="convThreadTitle">Select a station</strong>
+            <button class="action" id="convReplyBtn" type="button"
+                    hidden>Reply</button>
+          </div>
+          <div id="convMessages"></div>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -817,6 +890,8 @@ DASHBOARD_HTML = """<!doctype html>
           " submitted to TNC. Waiting for " + recipient +
           " to acknowledge it.";
         document.getElementById("aprsMessageText").value = "";
+        convState.selected = recipient;
+        convState.userSelected = true;
         refreshAprsOutbox();
       } else {
         aprsSendStatus.textContent =
@@ -832,15 +907,50 @@ DASHBOARD_HTML = """<!doctype html>
     }
   });
 
-  // -- Sent messages / acknowledgments --------------------------------
+  // -- Conversations ---------------------------------------------------
   //
-  // Each sent message carries an APRS message ID; the daemon matches
-  // incoming ackID/rejID replies to it. Polled only while something is
-  // still awaiting an ack -- this never touches the TNC.
+  // Threads per station built from received messages (/aprs/messages,
+  // from the history database) and sent ones (/aprs/outbox, which now
+  // also survive restarts). Neither touches the TNC. "Read" state is a
+  // per-browser convenience kept in localStorage.
 
-  var aprsOutboxStatus = document.getElementById("aprsOutboxStatus");
-  var aprsOutboxMessages = document.getElementById("aprsOutboxMessages");
-  var aprsOutboxTimer = null;
+  var convList = document.getElementById("convList");
+  var convMessages = document.getElementById("convMessages");
+  var convThreadTitle = document.getElementById("convThreadTitle");
+  var convReplyBtn = document.getElementById("convReplyBtn");
+  var convStatus = document.getElementById("convStatus");
+  var convUnreadBadge = document.getElementById("convUnreadBadge");
+  var convAlertsBtn = document.getElementById("convAlertsBtn");
+  var baseTitle = document.title;
+
+  var convState = {
+    selected: null,
+    // Only mark a thread read once the user has picked it themselves
+    // (the auto-selected newest thread on page load doesn't count).
+    userSelected: false,
+    received: [],
+    sent: [],
+    outbox: null,
+    maxSeenId: null,      // highest received-message id already alerted on
+    loadedOnce: false
+  };
+
+  function storageGet(key, fallback) {
+    try {
+      var raw = window.localStorage.getItem(key);
+      return raw === null ? fallback : JSON.parse(raw);
+    } catch (e) {
+      return fallback;
+    }
+  }
+
+  function storageSet(key, value) {
+    try { window.localStorage.setItem(key, JSON.stringify(value)); }
+    catch (e) { /* private mode etc. -- read state just won't persist */ }
+  }
+
+  // station -> received_at of the newest message read in that thread
+  var readUpTo = storageGet("kamxl.readUpTo", {});
 
   function aprsConfirmationsChecked() {
     return document.getElementById("aprsConfirmTransmit").checked;
@@ -882,213 +992,437 @@ DASHBOARD_HTML = """<!doctype html>
       aprsSendStatus.textContent = "Resend request failed: " + String(err);
     } finally {
       clearAprsConfirmations();
-      refreshAprsOutbox();
+      refreshConversations();
     }
   }
 
-  function renderOutboxEntry(msg) {
-    var entry = document.createElement("div");
-    entry.className = "outboxEntry";
+  function buildThreads() {
+    var threads = {};
 
-    var head = document.createElement("div");
-    head.className = "outboxHead";
-    var to = document.createElement("span");
-    to.textContent = "To " + msg.addressee;
-    var when = document.createElement("span");
-    when.textContent = new Date(msg.sent_at * 1000).toLocaleString();
-    var id = document.createElement("span");
-    id.textContent = "#" + msg.message_id;
-    head.appendChild(to);
-    head.appendChild(when);
-    head.appendChild(id);
+    function thread(call) {
+      if (!threads[call]) {
+        threads[call] = { call: call, items: [], last: 0, unread: 0 };
+      }
+      return threads[call];
+    }
 
-    var text = document.createElement("div");
-    text.className = "outboxText";
-    text.textContent = msg.text;
+    convState.received.forEach(function (msg) {
+      var t = thread(msg.source);
+      t.items.push({ dir: "in", at: msg.received_at, msg: msg });
+      t.last = Math.max(t.last, msg.received_at);
+      if (msg.received_at > (readUpTo[msg.source] || 0)) t.unread++;
+    });
 
-    var status = document.createElement("div");
-    status.className = "outboxStatus";
+    convState.sent.forEach(function (msg) {
+      var t = thread(msg.addressee);
+      t.items.push({ dir: "out", at: msg.sent_at, msg: msg });
+      t.last = Math.max(t.last, msg.sent_at);
+    });
+
+    return Object.keys(threads).map(function (k) {
+      var t = threads[k];
+      t.items.sort(function (a, b) { return a.at - b.at; });
+      return t;
+    }).sort(function (a, b) { return b.last - a.last; });
+  }
+
+  function ackBadgeFor(msg) {
     var badge = document.createElement("span");
-    badge.className = "ackBadge " + msg.status;
-
     if (msg.status === "acked") {
+      badge.className = "ackBadge acked";
       badge.textContent = "Acknowledged";
     } else if (msg.status === "rejected") {
+      badge.className = "ackBadge rejected";
       badge.textContent = "Rejected";
+    } else if (msg.gave_up) {
+      badge.className = "ackBadge gaveup";
+      badge.textContent = "No ack";
     } else {
+      badge.className = "ackBadge pending";
       badge.textContent = "Awaiting ack";
     }
-    status.appendChild(badge);
-
-    var detail = document.createElement("span");
-    if (msg.status === "pending") {
-      detail.textContent = "sent " +
-        relativeTime(msg.last_sent_at || msg.sent_at) +
-        (msg.attempts > 1 ? " (" + msg.attempts + " attempts)" : "");
-    } else {
-      detail.textContent = "by " + msg.acked_by + ", " +
-        relativeTime(msg.acked_at);
-    }
-    status.appendChild(detail);
-
-    if (msg.status === "pending") {
-      var resend = document.createElement("button");
-      resend.type = "button";
-      resend.className = "action";
-      resend.textContent = "Resend";
-      resend.addEventListener("click", function () {
-        resendAprsMessage(msg.message_id, resend);
-      });
-      status.appendChild(resend);
-    }
-
-    entry.appendChild(head);
-    entry.appendChild(text);
-    entry.appendChild(status);
-    return entry;
+    return badge;
   }
 
-  async function refreshAprsOutbox() {
-    var pending = 0;
+  function renderBubble(item) {
+    var msg = item.msg;
+    var bubble = document.createElement("div");
+    bubble.className = "bubble " + item.dir;
 
-    try {
-      var result = await apiGet("/aprs/outbox");
-      var messages = result.messages || [];
+    var text = document.createElement("div");
+    text.textContent = item.dir === "in" ? msg.message : msg.text;
+    bubble.appendChild(text);
 
-      aprsOutboxMessages.replaceChildren();
-      messages.forEach(function (msg) {
-        if (msg.status === "pending") pending++;
-        aprsOutboxMessages.appendChild(renderOutboxEntry(msg));
-      });
+    var meta = document.createElement("div");
+    meta.className = "bubbleMeta";
+    var when = document.createElement("span");
+    when.textContent = new Date(item.at * 1000).toLocaleString();
+    when.title = relativeTime(item.at);
+    meta.appendChild(when);
 
-      if (!messages.length) {
-        aprsOutboxStatus.textContent = "Nothing sent this session.";
-      } else {
-        aprsOutboxStatus.textContent = messages.length +
-          " sent, " + pending + " awaiting acknowledgment." +
-          " Path: " + (result.path || "direct") + ".";
+    if (item.dir === "out") {
+      meta.appendChild(ackBadgeFor(msg));
+      var extra = [];
+      extra.push("#" + msg.message_id);
+      if (msg.attempts > 1) extra.push(msg.attempts + " attempts");
+      if (msg.status === "pending" && !msg.gave_up && msg.next_retry_at &&
+          convState.outbox && convState.outbox.auto_retry) {
+        var secs = Math.max(0, Math.round(
+          msg.next_retry_at - Date.now() / 1000));
+        extra.push(msg.retries_left > 0
+          ? "auto-resend in " + secs + "s"
+          : "waiting " + secs + "s for a final ack");
       }
-    } catch (err) {
-      aprsOutboxStatus.textContent =
-        "Unable to load sent messages: " + String(err);
+      if (msg.status !== "pending" && msg.acked_at) {
+        extra.push(relativeTime(msg.acked_at));
+      }
+      var info = document.createElement("span");
+      info.textContent = extra.join(" · ");
+      meta.appendChild(info);
+
+      if (msg.status === "pending") {
+        var resend = document.createElement("button");
+        resend.type = "button";
+        resend.className = "action";
+        resend.textContent = "Resend";
+        resend.addEventListener("click", function () {
+          resendAprsMessage(msg.message_id, resend);
+        });
+        meta.appendChild(resend);
+      }
     }
 
-    // Keep checking only while something is still unacknowledged.
-    if (aprsOutboxTimer !== null) {
-      clearTimeout(aprsOutboxTimer);
-      aprsOutboxTimer = null;
-    }
-    if (pending > 0) {
-      aprsOutboxTimer = setTimeout(refreshAprsOutbox, 10000);
+    bubble.appendChild(meta);
+    return bubble;
+  }
+
+  function markRead(call, threads) {
+    var t = threads.find(function (x) { return x.call === call; });
+    if (!t) return;
+    var newest = 0;
+    t.items.forEach(function (i) {
+      if (i.dir === "in") newest = Math.max(newest, i.at);
+    });
+    if (newest > (readUpTo[call] || 0)) {
+      readUpTo[call] = newest;
+      storageSet("kamxl.readUpTo", readUpTo);
     }
   }
 
-  var aprsInboxBtn = document.getElementById("aprsRefreshInbox");
-  var aprsInboxStatus = document.getElementById("aprsInboxStatus");
-  var aprsInboxMessages = document.getElementById("aprsInboxMessages");
+  function renderConversations() {
+    var threads = buildThreads();
 
-  async function refreshAprsInbox() {
-    aprsInboxBtn.disabled = true;
-    aprsInboxStatus.textContent = "Loading received messages...";
+    if (convState.selected && convState.userSelected) {
+      markRead(convState.selected, threads);
+    }
+    threads = buildThreads();
+
+    var totalUnread = threads.reduce(function (n, t) { return n + t.unread; }, 0);
+    convUnreadBadge.hidden = totalUnread === 0;
+    convUnreadBadge.textContent = totalUnread + " new";
+    document.title = totalUnread ? "(" + totalUnread + ") " + baseTitle : baseTitle;
+
+    convList.replaceChildren();
+    if (!threads.length) {
+      convList.textContent = "No messages yet.";
+    }
+    threads.forEach(function (t) {
+      var row = document.createElement("button");
+      row.type = "button";
+      row.className = "convRow" + (t.call === convState.selected ? " selected" : "");
+      row.setAttribute("role", "option");
+      row.setAttribute("aria-selected", t.call === convState.selected);
+
+      var call = document.createElement("span");
+      call.className = "convCall";
+      call.textContent = t.call;
+      row.appendChild(call);
+
+      if (t.unread) {
+        var badge = document.createElement("span");
+        badge.className = "convUnread";
+        badge.textContent = t.unread;
+        row.appendChild(badge);
+      }
+
+      var last = t.items[t.items.length - 1];
+      var preview = document.createElement("span");
+      preview.className = "convPreview";
+      preview.textContent = (last.dir === "out" ? "You: " : "") +
+        (last.dir === "in" ? last.msg.message : last.msg.text);
+      row.appendChild(preview);
+
+      row.addEventListener("click", function () {
+        convState.selected = t.call;
+        convState.userSelected = true;
+        renderConversations();
+      });
+      convList.appendChild(row);
+    });
+
+    var current = threads.find(function (t) { return t.call === convState.selected; });
+    convMessages.replaceChildren();
+    if (!current) {
+      convThreadTitle.textContent = threads.length ? "Select a station" : "";
+      convReplyBtn.hidden = true;
+      return;
+    }
+    convThreadTitle.textContent = current.call;
+    convReplyBtn.hidden = false;
+    current.items.forEach(function (item) {
+      convMessages.appendChild(renderBubble(item));
+    });
+    convMessages.scrollTop = convMessages.scrollHeight;
+  }
+
+  convReplyBtn.addEventListener("click", function () {
+    if (!convState.selected) return;
+    document.getElementById("aprsRecipient").value = convState.selected;
+    var box = document.getElementById("aprsMessageText");
+    box.focus();
+    box.scrollIntoView({ block: "center", behavior: "smooth" });
+  });
+
+  // -- New-message alerts --------------------------------------------
+
+  function playChime() {
+    try {
+      var Ctx = window.AudioContext || window.webkitAudioContext;
+      if (!Ctx) return;
+      var ctx = new Ctx();
+      [880, 1320].forEach(function (freq, i) {
+        var osc = ctx.createOscillator();
+        var gain = ctx.createGain();
+        osc.frequency.value = freq;
+        osc.type = "sine";
+        var t0 = ctx.currentTime + i * 0.18;
+        gain.gain.setValueAtTime(0.0001, t0);
+        gain.gain.exponentialRampToValueAtTime(0.25, t0 + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.16);
+        osc.connect(gain).connect(ctx.destination);
+        osc.start(t0);
+        osc.stop(t0 + 0.18);
+      });
+      setTimeout(function () { ctx.close(); }, 800);
+    } catch (e) { /* audio blocked until the page has been clicked */ }
+  }
+
+  function alertsAllowed() {
+    return storageGet("kamxl.alerts", false) === true;
+  }
+
+  function updateAlertsButton() {
+    var on = alertsAllowed();
+    convAlertsBtn.textContent = on ? "Alerts on" : "Enable alerts";
+    convAlertsBtn.title = on
+      ? "Chime and desktop notification for new messages. Click to turn off."
+      : "Chime and desktop notification when a message arrives";
+  }
+
+  convAlertsBtn.addEventListener("click", async function () {
+    if (alertsAllowed()) {
+      storageSet("kamxl.alerts", false);
+      updateAlertsButton();
+      return;
+    }
+    storageSet("kamxl.alerts", true);
+    if ("Notification" in window && Notification.permission === "default") {
+      try { await Notification.requestPermission(); } catch (e) {}
+    }
+    playChime();
+    updateAlertsButton();
+  });
+
+  function announceNew(messages) {
+    if (!messages.length || !alertsAllowed()) return;
+    playChime();
+    if ("Notification" in window && Notification.permission === "granted") {
+      var first = messages[messages.length - 1];
+      try {
+        var note = new Notification("APRS message from " + first.source, {
+          body: first.message +
+            (messages.length > 1 ? " (+" + (messages.length - 1) + " more)" : ""),
+          tag: "kamxl-aprs"
+        });
+        note.onclick = function () {
+          window.focus();
+          convState.selected = first.source;
+          convState.userSelected = true;
+          renderConversations();
+        };
+      } catch (e) {}
+    }
+  }
+
+  // -- Loading -------------------------------------------------------
+
+  var convTimer = null;
+
+  async function refreshConversations() {
+    var problems = [];
 
     try {
-      var result = await apiGet(
-        "/aprs/messages?limit=100"
-      );
+      var inbox = await apiGet("/aprs/messages?limit=200");
+      if (inbox.enabled) {
+        var received = (inbox.messages || []).filter(function (m) {
+          return m.kind !== "ack" && m.kind !== "rej";
+        });
 
-      if (!result.enabled) {
-        aprsInboxStatus.textContent = "APRS message storage unavailable.";
-        aprsInboxMessages.replaceChildren();
-        return;
-      }
-
-      // Acks/rejects for our own messages are shown under Sent
-      // Messages instead; the inbox is just real messages.
-      var messages = (result.messages || []).filter(function (msg) {
-        return msg.kind !== "ack" && msg.kind !== "rej";
-      });
-      aprsInboxStatus.textContent =
-        messages.length + " received message(s).";
-
-      aprsInboxMessages.replaceChildren();
-
-      if (!messages.length) {
-        aprsInboxMessages.textContent = "No messages received yet.";
-        return;
-      }
-
-      messages.forEach(function (msg) {
-        var entry = document.createElement("div");
-        entry.style.padding = "8px 0";
-        entry.style.borderBottom = "1px solid #234";
-        entry.style.fontSize = "12px";
-
-        var heading = document.createElement("div");
-        heading.style.color = "#9ab";
-
-        var timestamp = new Date(msg.received_at * 1000);
-        heading.textContent =
-          msg.source + " — " + timestamp.toLocaleString();
-
-        var body = document.createElement("div");
-        body.style.marginTop = "4px";
-        body.style.overflowWrap = "anywhere";
-
-        if (msg.kind === "ack") {
-          body.textContent = "ACK: " + msg.message_id;
-        } else if (msg.kind === "rej") {
-          body.textContent = "REJ: " + msg.message_id;
-        } else {
-          body.textContent = msg.message;
+        var maxId = received.reduce(function (n, m) { return Math.max(n, m.id); }, 0);
+        if (convState.maxSeenId !== null) {
+          var fresh = received.filter(function (m) {
+            return m.id > convState.maxSeenId;
+          }).sort(function (a, b) { return a.id - b.id; });
+          announceNew(fresh);
         }
-
-        entry.appendChild(heading);
-        entry.appendChild(body);
-        aprsInboxMessages.appendChild(entry);
-      });
-
+        convState.maxSeenId = Math.max(convState.maxSeenId || 0, maxId);
+        convState.received = received;
+      } else {
+        convState.received = [];
+        problems.push("received messages aren't stored (no --history-db)");
+      }
     } catch (err) {
-      aprsInboxStatus.textContent =
-        "Unable to load inbox: " + String(err);
-    } finally {
-      aprsInboxBtn.disabled = false;
+      problems.push("couldn't load received messages: " + String(err));
     }
+
+    var pending = 0;
+    try {
+      var outbox = await apiGet("/aprs/outbox");
+      convState.outbox = outbox;
+      convState.sent = outbox.messages || [];
+      pending = convState.sent.filter(function (m) {
+        return m.status === "pending" && !m.gave_up;
+      }).length;
+    } catch (err) {
+      problems.push("couldn't load sent messages: " + String(err));
+    }
+
+    if (!convState.selected) {
+      var threads = buildThreads();
+      if (threads.length) convState.selected = threads[0].call;
+    }
+
+    renderConversations();
+
+    var parts = [];
+    parts.push(convState.received.length + " received, " +
+      convState.sent.length + " sent" +
+      (pending ? " (" + pending + " awaiting ack)" : ""));
+    if (convState.outbox) {
+      parts.push("path " + (convState.outbox.path || "direct"));
+    }
+    convStatus.textContent = parts.join(" · ") +
+      (problems.length ? " — " + problems.join("; ") : "");
+    convStatus.className = problems.length ? "sub err" : "sub";
+
+    // Poll faster while something is awaiting an ack.
+    if (convTimer !== null) clearTimeout(convTimer);
+    convTimer = setTimeout(refreshConversations, pending ? 5000 : 10000);
   }
 
-  aprsInboxBtn.addEventListener("click", refreshAprsInbox);
+  // Older name, still used by the send form.
+  var refreshAprsOutbox = refreshConversations;
 
   var aprsClearBtn = document.getElementById("aprsClearInbox");
 
   aprsClearBtn.addEventListener("click", async function () {
-    if (!window.confirm("Delete all received APRS messages?")) {
+    if (!window.confirm(
+        "Delete all received and sent APRS messages? " +
+        "Any automatic resends still scheduled are cancelled.")) {
       return;
     }
 
     aprsClearBtn.disabled = true;
-    aprsInboxStatus.textContent = "Clearing inbox...";
+    convStatus.textContent = "Clearing messages...";
 
     try {
-      var res = await fetch(authedUrl("/aprs/messages/clear"), {
+      for (var path of ["/aprs/messages/clear", "/aprs/outbox/clear"]) {
+        var res = await fetch(authedUrl(path), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: "{}"
+        });
+        var payload = await res.json();
+        if (!payload.ok) {
+          throw new Error(
+            (payload.error && payload.error.message) || "Request failed"
+          );
+        }
+      }
+      readUpTo = {};
+      storageSet("kamxl.readUpTo", readUpTo);
+      convState.selected = null;
+    } catch (err) {
+      convStatus.textContent = "Unable to clear messages: " + String(err);
+    } finally {
+      aprsClearBtn.disabled = false;
+      refreshConversations();
+    }
+  });
+
+  // -- Automatic resend ---------------------------------------------
+
+  var aprsAutoRetry = document.getElementById("aprsAutoRetry");
+  var aprsAutoRetryStatus = document.getElementById("aprsAutoRetryStatus");
+
+  function showRetryStatus(st) {
+    aprsAutoRetry.checked = !!st.enabled;
+    var plan = "up to " + st.retry_count + " resends, first after " +
+      Math.round(st.interval_seconds) + "s, then doubling";
+    if (st.enabled && st.paused) {
+      aprsAutoRetryStatus.className = "sub paused";
+      aprsAutoRetryStatus.textContent = "Auto-resend paused: a terminal " +
+        "or connected session may be open; resumes after the next APRS send.";
+    } else if (st.enabled) {
+      aprsAutoRetryStatus.className = "sub on";
+      aprsAutoRetryStatus.textContent = "Auto-resend on (" + plan + ")" +
+        (st.retries_sent ? ", " + st.retries_sent + " resent" : "") +
+        ". Applies to messages sent from now on.";
+    } else {
+      aprsAutoRetryStatus.className = "sub off";
+      aprsAutoRetryStatus.textContent = "Auto-resend off" +
+        (st.disabled_reason ? " (" + st.disabled_reason + ")" : "") +
+        ". Use Resend on a message to retry it by hand.";
+    }
+  }
+
+  async function refreshAutoRetry() {
+    try {
+      showRetryStatus(await apiGet("/aprs/retry"));
+    } catch (err) {
+      aprsAutoRetryStatus.className = "sub";
+      aprsAutoRetryStatus.textContent =
+        "Unable to read auto-resend status: " + String(err);
+    }
+  }
+
+  aprsAutoRetry.addEventListener("change", async function () {
+    var wanted = aprsAutoRetry.checked;
+    aprsAutoRetry.disabled = true;
+    try {
+      var res = await fetch(authedUrl("/aprs/retry"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: "{}"
+        body: JSON.stringify({ enabled: wanted })
       });
       var payload = await res.json();
-
       if (!payload.ok) {
-        throw new Error(
-          (payload.error && payload.error.message) || "Request failed"
-        );
+        aprsAutoRetryStatus.textContent = "Could not change auto-resend: " +
+          ((payload.error && payload.error.message) || "Unknown error");
+        aprsAutoRetry.checked = !wanted;
+        return;
       }
+      showRetryStatus(payload.result);
     } catch (err) {
-      aprsInboxStatus.textContent = "Unable to clear inbox: " + String(err);
-      aprsClearBtn.disabled = false;
-      return;
+      aprsAutoRetryStatus.textContent =
+        "Auto-resend request failed: " + String(err);
+      aprsAutoRetry.checked = !wanted;
+    } finally {
+      aprsAutoRetry.disabled = false;
     }
-
-    aprsClearBtn.disabled = false;
-    refreshAprsInbox();
   });
+
+  updateAlertsButton();
 
   // -- Position beacon -----------------------------------------------
 
@@ -1992,14 +2326,14 @@ DASHBOARD_HTML = """<!doctype html>
   refreshStations();
   refreshReceptionStats();
   refreshPersistentHistory();
-  refreshAprsOutbox();
-  refreshAprsInbox();
+  refreshConversations();
   refreshAutoAck();
+  refreshAutoRetry();
   refreshBeacon();
 
   setInterval(refreshStatus, 15000);
   setInterval(refreshBeacon, 15000);
-  setInterval(refreshAprsInbox, 15000);
+  setInterval(refreshAutoRetry, 15000);
   setInterval(refreshAutoAck, 15000);
   setInterval(refreshStations, 15000);
   setInterval(refreshReceptionStats, 15000);
@@ -4048,6 +4382,9 @@ ROUTES: Tuple[Tuple[str, "re.Pattern", str], ...] = (
     ("POST", re.compile(r"^/aprs/ack$"), "_h_aprs_ack_set"),
     ("POST", re.compile(r"^/aprs/messages/clear$"), "_h_aprs_clear_messages"),
     ("GET", re.compile(r"^/aprs/beacon$"), "_h_aprs_beacon_status"),
+    ("GET", re.compile(r"^/aprs/retry$"), "_h_aprs_retry_status"),
+    ("POST", re.compile(r"^/aprs/retry$"), "_h_aprs_retry_set"),
+    ("POST", re.compile(r"^/aprs/outbox/clear$"), "_h_aprs_outbox_clear"),
     ("POST", re.compile(r"^/aprs/beacon$"), "_h_aprs_beacon_set"),
     ("POST", re.compile(r"^/aprs/beacon/now$"), "_h_aprs_beacon_now"),
 )
@@ -4674,6 +5011,56 @@ class RESTRequestHandler(BaseHTTPRequestHandler):
             confirm_hf_port1_disconnected=True,
             _socket_timeout=30,
         )
+
+    def _h_aprs_retry_status(
+        self,
+        params: Dict[str, str],
+        query: Dict[str, Any],
+    ) -> None:
+        """Automatic-resend status (no TNC access)."""
+        self._relay("aprs.retry_status")
+
+    def _h_aprs_retry_set(
+        self,
+        params: Dict[str, str],
+        query: Dict[str, Any],
+    ) -> None:
+        """Automatic resend on/off: body {"enabled": true|false}.
+
+        Turning it on is the operator's authorization for resend
+        transmissions, so it supplies the daemon's confirmations.
+        """
+        body = self._read_json_body()
+        enabled = body.get("enabled")
+
+        if not isinstance(enabled, bool):
+            self._send_json(400, {
+                "ok": False,
+                "error": {
+                    "type": "InvalidParam",
+                    "message": "'enabled' must be true or false",
+                },
+            })
+            return
+
+        if not enabled:
+            self._relay("aprs.retry_disable")
+            return
+
+        self._relay(
+            "aprs.retry_enable",
+            confirm_transmit=True,
+            confirm_vhf_port2_radio_ready=True,
+            confirm_hf_port1_disconnected=True,
+        )
+
+    def _h_aprs_outbox_clear(
+        self,
+        params: Dict[str, str],
+        query: Dict[str, Any],
+    ) -> None:
+        """Forget all sent messages (no TNC access)."""
+        self._relay("aprs.clear_outbox")
 
     def _h_aprs_beacon_status(
         self,

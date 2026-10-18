@@ -32,6 +32,9 @@ defaults:
 | `--beacon-interval` | `KAMXL_BEACON_INTERVAL` | `30` minutes (min 10) |
 | `--beacon` | `KAMXL_BEACON=1` | *(off)* |
 | `--watchdog-minutes` | `KAMXL_WATCHDOG_MINUTES` | `30` (`0` = off, min 5) |
+| `--auto-retry` | `KAMXL_AUTO_RETRY=1` | *(off)* |
+| `--retry-count` | `KAMXL_RETRY_COUNT` | `3` (1-5) |
+| `--retry-interval` | `KAMXL_RETRY_INTERVAL` | `60` seconds (min 30), doubling |
 
 `--callsign` is this station's APRS callsign, exactly as the KAM-XL's
 MYCALL (SSID included, e.g. `N5BA` or `N5BA-10`). It decides which
@@ -59,6 +62,16 @@ when only this station's own callsigns (any SSID of `--callsign`,
 e.g. a handheld) have been heard -- the symptom of a desensed
 receiver or a digipeater outage. It logs once on entering the alert
 and once on recovery.
+
+Automatic resend (`--auto-retry`, or the dashboard toggle) resends a
+message that hasn't been acknowledged, reusing its message ID: first
+after `--retry-interval` seconds, then waiting twice as long after
+each resend, up to `--retry-count` resends. After the last one it
+waits once more and then marks the message "No ack". It follows the
+same pause rule as auto-ACK and beacons and turns itself off if a
+resend transmission fails. With `--history-db`, sent messages are
+saved and restored after a restart, but resends are never resumed
+after a restart.
 
 `--port` has no hardcoded default on purpose: a wrong or missing
 serial device should fail immediately with a clear error, not

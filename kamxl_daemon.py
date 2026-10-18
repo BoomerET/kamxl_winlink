@@ -76,8 +76,12 @@ logger = logging.getLogger("kamxl_daemon")
 _CALLSIGN_RE = re.compile(r"[A-Z0-9]{1,6}(?:-[0-9]{1,2})?")
 
 
-class _BeaconPaused(Exception):
-    """Automatic beacon skipped for now; will retry shortly."""
+class _AutoTxPaused(Exception):
+    """An automatic transmission was skipped for now; retried later."""
+
+
+# Older name, kept for anything that still refers to it.
+_BeaconPaused = _AutoTxPaused
 
 
 def normalize_station_callsign(callsign: str) -> str:
@@ -110,6 +114,8 @@ class KAMDaemon:
         beacon: Optional[Dict[str, Any]] = None,
         beacon_interval_minutes: float = 30,
         watchdog_minutes: float = 30,
+        retry_count: int = 3,
+        retry_interval_seconds: float = 60,
     ) -> None:
         from aprs_tx import validate_aprs_path
 
@@ -150,6 +156,14 @@ class KAMDaemon:
         if watchdog_minutes and watchdog_minutes < 5:
             raise ValueError("Watchdog threshold must be 0 or >= 5 minutes")
         self._watchdog_seconds = float(watchdog_minutes or 0) * 60
+
+        # Automatic resend of unacknowledged messages (off by default).
+        if not 1 <= int(retry_count) <= 5:
+            raise ValueError("Retry count must be between 1 and 5")
+        if retry_interval_seconds < 30:
+            raise ValueError("Retry interval must be at least 30 seconds")
+        self._retry_count = int(retry_count)
+        self._retry_interval = float(retry_interval_seconds)
 
         if beacon_interval_minutes < 10:
             raise ValueError("Beacon interval must be at least 10 minutes")
@@ -205,7 +219,30 @@ class KAMDaemon:
 
         # Messages we sent, keyed by the {ID we appended, so incoming
         # ackID/rejID replies can be matched back to them.
-        self._outbox = OutboundAprsTracker(self.station_callsign or "")
+        self._outbox = OutboundAprsTracker(
+            self.station_callsign or "",
+            on_change=self._persist_outbound,
+        )
+
+        # Restore sent messages from the history database, if any.
+        if self._reception_writer is not None:
+            try:
+                restored = self._outbox.load(
+                    self._reception_writer.load_outbound(200)
+                )
+                if restored:
+                    logger.info("Restored %d sent APRS message(s)", restored)
+            except Exception:
+                logger.exception("Could not restore sent APRS messages")
+
+        # Automatic resend state. Off by default; Lock order:
+        # _kam_lock -> _retry_lock.
+        self._retry_lock = threading.Lock()
+        self._retry_enabled = False
+        self._retry_disabled_reason: Optional[str] = None
+        self._retry_paused_until = 0.0
+        self._retries_sent = 0
+        self._retry_stop = threading.Event()
 
         # True after anything that may have left an AX.25 link or
         # conversational session open (terminal, connect, PBBS, ...).
@@ -307,6 +344,10 @@ class KAMDaemon:
             "aprs.beacon_enable": self._m_aprs_beacon_enable,
             "aprs.beacon_disable": self._m_aprs_beacon_disable,
             "aprs.beacon_now": self._m_aprs_beacon_now,
+            "aprs.retry_status": self._m_aprs_retry_status,
+            "aprs.retry_enable": self._m_aprs_retry_enable,
+            "aprs.retry_disable": self._m_aprs_retry_disable,
+            "aprs.clear_outbox": self._m_aprs_clear_outbox,
             "aprs.tx_safety": self._m_aprs_tx_safety,
             "aprs.tx_preflight": self._m_aprs_tx_preflight,
             "aprs.tx_get_unproto": self._m_aprs_tx_get_unproto,
@@ -330,6 +371,10 @@ class KAMDaemon:
 
         threading.Thread(
             target=self._watchdog_loop, name="kamxl-watchdog", daemon=True
+        ).start()
+
+        threading.Thread(
+            target=self._retry_loop, name="kamxl-aprs-retry", daemon=True
         ).start()
 
         # Same for the beacon scheduler: running, but off.
@@ -811,7 +856,16 @@ class KAMDaemon:
                 addressee=addressee,
                 text=text,
                 payload=payload,
+                path=path,
             )
+
+            if resend_id is None:
+                with self._retry_lock:
+                    retry_on = self._retry_enabled
+                if retry_on:
+                    record = self._outbox.schedule_retries(
+                        message_id, self._retry_count, self._retry_interval
+                    ) or record
 
             return {
                 **result,
@@ -827,11 +881,33 @@ class KAMDaemon:
 
         Never touches the TNC.
         """
+        with self._retry_lock:
+            retry_enabled = self._retry_enabled
+
         return {
             "station": self.station_callsign,
             "path": self.aprs_path,
+            "persistent": self._reception_writer is not None,
+            "auto_retry": retry_enabled,
             "messages": self._outbox.list(),
         }
+
+    def _persist_outbound(self, record: Dict[str, Any]) -> None:
+        """Tracker on_change hook: save the record if history is on."""
+        if self._reception_writer is None:
+            return
+        try:
+            self._reception_writer.save_outbound(record)
+        except Exception:
+            logger.exception("Could not save sent APRS message")
+
+    def _m_aprs_clear_outbox(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """Forget all sent messages (and any scheduled resends)."""
+        deleted = self._outbox.clear()
+        if self._reception_writer is not None:
+            deleted = max(deleted, self._reception_writer.clear_outbound())
+        logger.info("Cleared %d sent APRS message(s)", deleted)
+        return {"deleted": deleted}
 
     def _m_aprs_tx_preflight(
         self, params: Dict[str, Any]
@@ -1136,21 +1212,27 @@ class KAMDaemon:
         result = self._beacon_transmit(operator_initiated=True)
         return {**result, "status": self._m_aprs_beacon_status({})}
 
-    def _beacon_transmit(self, operator_initiated: bool) -> Dict[str, Any]:
+    def _guarded_transmit(
+        self,
+        payload: str,
+        path: str,
+        what: str,
+        operator_initiated: bool,
+    ) -> Dict[str, Any]:
         """
-        Submit the beacon through the guarded TX path.
+        Submit one payload through the guarded live TX path.
 
-        Raises _BeaconPaused when the TNC can't be verified without
-        risking an open session (automatic beacons only).
+        Shared by beacons and automatic resends. When the TNC state is
+        unknown it is re-verified first -- except for automatic
+        transmissions while a terminal/connected session may be open,
+        which raise _AutoTxPaused instead of Ctrl-C'ing into it.
+        Any failure after the TNC was touched leaves APRS latched
+        unsafe and is re-raised for the caller to fail closed.
         """
         from aprs_tx import (
             APRSTransmitError, _LIVE_APRS_CAPABILITY,
             execute_live_aprs_tx_transaction,
         )
-
-        payload = self._beacon_payload
-        if payload is None:
-            raise APRSTransmitError("No beacon position configured")
 
         with self._kam_lock:
             if not self.kam.is_connected or (
@@ -1170,7 +1252,7 @@ class KAMDaemon:
                 or self._aprs_safety_state == "unsafe"
             ):
                 if self._aprs_link_may_be_active and not operator_initiated:
-                    raise _BeaconPaused(
+                    raise _AutoTxPaused(
                         "a terminal, connected-mode, PBBS or Winlink "
                         "session may be open"
                     )
@@ -1179,49 +1261,78 @@ class KAMDaemon:
                 except APRSTransmitError as exc:
                     if operator_initiated:
                         raise
-                    raise _BeaconPaused(str(exc)) from exc
+                    raise _AutoTxPaused(str(exc)) from exc
 
             self._aprs_session_uncertain = True
-            self._invalidate_aprs_safety("APRS beacon transmission in progress")
+            self._invalidate_aprs_safety(f"APRS {what} transmission in progress")
 
             try:
                 result = execute_live_aprs_tx_transaction(
-                    self.kam, payload, self.aprs_path,
+                    self.kam, payload, path,
                     _capability=_LIVE_APRS_CAPABILITY,
                 )
-            except Exception:
+            except Exception as exc:
                 self._invalidate_aprs_safety(
-                    "APRS beacon failed or state uncertain"
+                    f"APRS {what} failed or state uncertain"
                 )
-                with self._beacon_lock:
-                    self._beacon_enabled = False
-                    self._beacon_next_at = None
-                    self._beacon_disabled_reason = (
-                        "Turned off after a beacon transmission failed; "
-                        "TNC state needs checking"
-                    )
-                    self._beacon_last_result = "failed"
+                # Tell callers this failed *after* touching the TNC,
+                # so they fail closed (vs. a refusal beforehand).
+                exc.tx_attempted = True
                 raise
 
             self._aprs_session_uncertain = False
             self._aprs_safety_state = "unknown"
             self._aprs_safety_reason = (
-                "APRS beacon submitted; RF delivery not confirmed"
+                f"APRS {what} submitted; RF delivery not confirmed"
             )
 
-            now = time.time()
-            with self._beacon_lock:
-                self._beacons_sent += 1
-                self._beacon_last_at = now
-                self._beacon_last_result = "sent"
-                if self._beacon_enabled:
-                    self._beacon_next_at = now + self._beacon_interval
+        return result
+
+    def _beacon_transmit(self, operator_initiated: bool) -> Dict[str, Any]:
+        """
+        Submit the beacon through the guarded TX path.
+
+        Raises _AutoTxPaused when the TNC can't be verified without
+        risking an open session (automatic beacons only).
+        """
+        from aprs_tx import APRSTransmitError
+
+        payload = self._beacon_payload
+        if payload is None:
+            raise APRSTransmitError("No beacon position configured")
+
+        try:
+            result = self._guarded_transmit(
+                payload, self.aprs_path, "beacon", operator_initiated
+            )
+        except Exception as exc:
+            if getattr(exc, "tx_attempted", False):
+                self._beacon_failed()
+            raise
+
+        now = time.time()
+        with self._beacon_lock:
+            self._beacons_sent += 1
+            self._beacon_last_at = now
+            self._beacon_last_result = "sent"
+            if self._beacon_enabled:
+                self._beacon_next_at = now + self._beacon_interval
 
         logger.info(
             "APRS position beacon submitted via %s: %s",
             self.aprs_path or "direct", payload,
         )
         return {**result, "payload": payload, "path": self.aprs_path}
+
+    def _beacon_failed(self) -> None:
+        with self._beacon_lock:
+            self._beacon_enabled = False
+            self._beacon_next_at = None
+            self._beacon_disabled_reason = (
+                "Turned off after a beacon transmission failed; "
+                "TNC state needs checking"
+            )
+            self._beacon_last_result = "failed"
 
     def _beacon_loop(self) -> None:
         """Send the beacon on schedule while enabled."""
@@ -1238,7 +1349,7 @@ class KAMDaemon:
 
             try:
                 self._beacon_transmit(operator_initiated=False)
-            except _BeaconPaused as exc:
+            except _AutoTxPaused as exc:
                 logger.warning("APRS beacon skipped (paused): %s", exc)
                 with self._beacon_lock:
                     self._beacon_last_result = "paused"
@@ -1246,6 +1357,130 @@ class KAMDaemon:
                         self._beacon_next_at = time.time() + 60
             except Exception:
                 logger.exception("APRS beacon failed; beacon turned off")
+
+    # -- Automatic resend of unacknowledged messages -------------------
+
+    def _m_aprs_retry_status(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        with self._retry_lock:
+            enabled = self._retry_enabled
+            result = {
+                "enabled": enabled,
+                "disabled_reason": None if enabled else self._retry_disabled_reason,
+                "retry_count": self._retry_count,
+                "interval_seconds": self._retry_interval,
+                "retries_sent": self._retries_sent,
+            }
+        result["paused"] = enabled and time.time() < self._retry_paused_until
+        return result
+
+    def _m_aprs_retry_enable(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """Turn on automatic resends (operator authorization required).
+
+        Applies to messages sent from now on.
+        """
+        self._require_transmit_confirmations(params)
+        with self._retry_lock:
+            self._retry_enabled = True
+            self._retry_disabled_reason = None
+        logger.info(
+            "Automatic APRS resend enabled: up to %d resends, first after %gs",
+            self._retry_count, self._retry_interval,
+        )
+        return self._m_aprs_retry_status({})
+
+    def _m_aprs_retry_disable(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        with self._retry_lock:
+            self._retry_enabled = False
+            self._retry_disabled_reason = "Turned off by operator"
+        logger.info("Automatic APRS resend disabled")
+        return self._m_aprs_retry_status({})
+
+    def _require_transmit_confirmations(self, params: Dict[str, Any]) -> None:
+        from aprs_tx import APRSTransmitError
+
+        if params.get("confirm_transmit") is not True:
+            raise APRSTransmitError("Explicit confirm_transmit=true required")
+        if params.get("confirm_vhf_port2_radio_ready") is not True:
+            raise APRSTransmitError(
+                "Confirm VHF Port 2 radio, audio, PTT, antenna and power "
+                "are ready"
+            )
+        if params.get("confirm_hf_port1_disconnected") is not True:
+            raise APRSTransmitError("Confirm HF Port 1 radio disconnected")
+
+    def _retry_loop(self) -> None:
+        while not self._retry_stop.wait(1.0):
+            try:
+                self._retry_tick()
+            except Exception:
+                logger.exception("APRS resend worker failed")
+
+    def _retry_tick(self, now: Optional[float] = None) -> None:
+        """Send any due automatic resends (one pass)."""
+        now = time.time() if now is None else now
+
+        with self._retry_lock:
+            if not self._retry_enabled or now < self._retry_paused_until:
+                return
+
+        for record in self._outbox.expire_retries(now):
+            logger.info(
+                "APRS message %s to %s: no ack after %d attempts; giving up",
+                record.message_id, record.addressee, record.attempts,
+            )
+
+        for record in self._outbox.due_retries(now):
+            with self._retry_lock:
+                if not self._retry_enabled:
+                    return
+
+            try:
+                self._guarded_transmit(
+                    record.payload, record.path, "resend",
+                    operator_initiated=False,
+                )
+            except _AutoTxPaused as exc:
+                logger.warning("APRS resend postponed (paused): %s", exc)
+                with self._retry_lock:
+                    self._retry_paused_until = time.time() + 60
+                return
+            except Exception as exc:
+                if getattr(exc, "tx_attempted", False):
+                    with self._retry_lock:
+                        self._retry_enabled = False
+                        self._retry_disabled_reason = (
+                            "Turned off after a resend failed; TNC state "
+                            "needs checking"
+                        )
+                    logger.error(
+                        "APRS resend of %s failed; automatic resend turned "
+                        "off", record.message_id,
+                    )
+                else:
+                    logger.warning(
+                        "APRS resend of %s not sent: %s",
+                        record.message_id, exc,
+                    )
+                    with self._retry_lock:
+                        self._retry_paused_until = time.time() + 60
+                return
+
+            # Re-check: an ack may have arrived while we transmitted.
+            current = self._outbox.get(record.message_id)
+            self._outbox.register(
+                record.message_id, record.addressee, record.text,
+                record.payload, record.path,
+            )
+            if current is not None and current.status == "pending":
+                self._outbox.retry_sent(record.message_id, self._retry_interval)
+
+            with self._retry_lock:
+                self._retries_sent += 1
+
+            logger.info(
+                "APRS message %s to %s resent automatically (attempt %d)",
+                record.message_id, record.addressee, record.attempts + 1,
+            )
 
     def _m_aprs_clear_messages(
         self, params: Dict[str, Any]
@@ -2174,6 +2409,7 @@ class KAMDaemon:
             self._aprs_ack_stop.set()
             self._beacon_stop.set()
             self._watchdog_stop.set()
+            self._retry_stop.set()
 
             # Discard ACKs waiting in the queue. An ACK already
             # being processed remains the worker's responsibility.
@@ -2533,6 +2769,34 @@ def main(argv: Optional[list] = None) -> None:
     )
 
     parser.add_argument(
+        "--auto-retry",
+        action="store_true",
+        default=os.environ.get("KAMXL_AUTO_RETRY", "").strip().lower()
+        in ("1", "true", "yes", "on"),
+        help=(
+            "Start with automatic resend of unacknowledged messages on "
+            "(default: $KAMXL_AUTO_RETRY). Can also be toggled from "
+            "the dashboard."
+        ),
+    )
+
+    parser.add_argument(
+        "--retry-count",
+        type=int,
+        default=int(os.environ.get("KAMXL_RETRY_COUNT", "3")),
+        help="Automatic resends per message, 1-5 (default: "
+             "$KAMXL_RETRY_COUNT, or 3)",
+    )
+
+    parser.add_argument(
+        "--retry-interval",
+        type=float,
+        default=float(os.environ.get("KAMXL_RETRY_INTERVAL", "60")),
+        help="Seconds before the first resend, doubling after each; "
+             "at least 30 (default: $KAMXL_RETRY_INTERVAL, or 60)",
+    )
+
+    parser.add_argument(
         "--auto-ack",
         action="store_true",
         default=os.environ.get("KAMXL_AUTO_ACK", "").strip().lower()
@@ -2589,6 +2853,10 @@ def main(argv: Optional[list] = None) -> None:
             parser.error(f"Invalid beacon settings: {exc}")
     if args.watchdog_minutes and args.watchdog_minutes < 5:
         parser.error("--watchdog-minutes must be 0 (off) or at least 5")
+    if not 1 <= args.retry_count <= 5:
+        parser.error("--retry-count must be between 1 and 5")
+    if args.retry_interval < 30:
+        parser.error("--retry-interval must be at least 30 seconds")
     if args.beacon_interval < 10:
         parser.error("--beacon-interval must be at least 10 minutes")
 
@@ -2610,7 +2878,21 @@ def main(argv: Optional[list] = None) -> None:
         beacon=beacon_config,
         beacon_interval_minutes=args.beacon_interval,
         watchdog_minutes=args.watchdog_minutes,
+        retry_count=args.retry_count,
+        retry_interval_seconds=args.retry_interval,
     )
+
+    if args.auto_retry:
+        try:
+            daemon.dispatch("aprs.retry_enable", {
+                "confirm_transmit": True,
+                "confirm_vhf_port2_radio_ready": True,
+                "confirm_hf_port1_disconnected": True,
+            })
+        except Exception as exc:
+            logger.warning(
+                "Automatic resend could not be enabled at startup: %s", exc
+            )
 
     if args.beacon:
         try:

@@ -645,6 +645,27 @@ everything else (including digipeaters and iGates) counts as the
 network. Only Port 2 is considered. The dashboard shows a banner
 above the cards while the state is `only_own` or `silent`.
 
+### Conversations, saved sent messages, automatic resend
+
+- With `--history-db`, `GET /aprs/outbox` messages are saved to the
+  database (`aprs_outbound` table) and restored when the daemon
+  starts (`"persistent": true`). Records now also carry `path`,
+  `next_retry_at`, `retries_left` and `gave_up`.
+- `POST /aprs/outbox/clear` forgets all sent messages and any
+  scheduled resends.
+- `GET /aprs/retry` -- `enabled`, `paused`, `disabled_reason`,
+  `retry_count`, `interval_seconds`, `retries_sent`.
+  `POST /aprs/retry` `{"enabled": true|false}` turns automatic resend
+  on/off (turning it on is the operator's authorization; applies to
+  messages sent afterwards).
+- The dashboard's messaging card shows **Conversations**: one thread
+  per station built from received and sent messages, unread counts,
+  a Reply button that fills the send form, Resend on unacknowledged
+  messages, "Clear all messages" (received + sent), and "Enable
+  alerts" (a chime and, if the browser allows, a desktop notification
+  when a message arrives). Read state and the alerts setting are kept
+  per browser in `localStorage`.
+
 ## Testing
 
 `tests/test_rest.py` runs a real `KAMDaemon` (wired to the same
