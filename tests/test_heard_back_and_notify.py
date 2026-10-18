@@ -129,7 +129,7 @@ class NotifierTests(unittest.TestCase):
                 Notifier(opener=FakeOpener(), **kw)
 
     def test_parse_events(self):
-        self.assertEqual(parse_events(None), {"messages", "watchdog"})
+        self.assertEqual(parse_events(None), {"messages", "watchdog", "backup"})
         self.assertEqual(parse_events("Messages, bulletins"), {"messages", "bulletins"})
         with self.assertRaises(ValueError):
             parse_events("messages,spam")

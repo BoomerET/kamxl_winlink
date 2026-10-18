@@ -38,6 +38,11 @@ class LoadPageTests(unittest.TestCase):
                        'params.get("coverage")'):
             self.assertIn(marker, page)
 
+    def test_backup_card_present(self):
+        dashboard = kamxl_web.load_page("dashboard")
+        for marker in ('id="backupCard"', "refreshBackup", "/backup/now"):
+            self.assertIn(marker, dashboard)
+
     def test_every_page_has_a_phone_viewport(self):
         # Without it phones draw the page at desktop width and shrink it.
         for name in kamxl_web.PAGE_NAMES:

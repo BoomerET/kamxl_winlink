@@ -123,6 +123,7 @@ class KAMDaemon:
         retry_interval_seconds: float = 60,
         history_retention_days: float = 0,
         notifier: Optional[Any] = None,
+        backup: Optional[Any] = None,
     ) -> None:
         from aprs_tx import validate_aprs_path
 
@@ -295,6 +296,19 @@ class KAMDaemon:
         # Optional phone notifications (notify.Notifier); None = off.
         self._notifier = notifier
 
+        # Optional daily history backups (db_backup.BackupManager).
+        self._backup = backup
+        self._backup_stop = threading.Event()
+        if backup is not None:
+            backup._on_failure = lambda message: self._push(
+                "backup", "KAM-XL backup failed", message,
+                tags=["warning"], priority=4,
+            )
+            backup._on_recovery = lambda result: self._push(
+                "backup", "KAM-XL backup working again",
+                f"Saved {result['file']}.", tags=["white_check_mark"],
+            )
+
         # Track recently handled message IDs for duplicate detection.
         self._aprs_ack_recent = {}
         self._aprs_ack_lock = threading.Lock()
@@ -360,6 +374,8 @@ class KAMDaemon:
             "stations.list": self._m_stations_list,
             "coverage.status": self._m_coverage_status,
             "packets.search": self._m_packets_search,
+            "backup.status": self._m_backup_status,
+            "backup.now": self._m_backup_now,
             "coverage.set_setup": self._m_coverage_set_setup,
             "coverage.report": self._m_coverage_report,
             "objects.list": self._m_objects_list,
@@ -414,6 +430,11 @@ class KAMDaemon:
         threading.Thread(
             target=self._retry_loop, name="kamxl-aprs-retry", daemon=True
         ).start()
+
+        if self._backup is not None:
+            threading.Thread(
+                target=self._backup_loop, name="kamxl-backup", daemon=True
+            ).start()
 
         # Same for the beacon scheduler: running, but off.
         self._beacon_thread = threading.Thread(
@@ -552,6 +573,28 @@ class KAMDaemon:
                 "audio cable, and nearby noise sources."
             ),
         }
+
+    def _backup_loop(self) -> None:
+        """Check once a minute whether a history backup is due."""
+        while not self._backup_stop.wait(60.0):
+            try:
+                self._backup.tick()
+            except Exception:
+                logger.exception("Backup scheduler error")
+
+    def _m_backup_status(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        if self._backup is None:
+            return {"enabled": False}
+        return self._backup.status()
+
+    def _m_backup_now(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """Back up the history database now (waits for it to finish)."""
+        if self._backup is None:
+            raise ValueError(
+                "Backups are off; set KAMXL_BACKUP_DIR to turn them on"
+            )
+        result = self._backup.run()
+        return {**result, "status": self._backup.status()}
 
     def _watchdog_loop(self) -> None:
         """Log when reception goes quiet and when it recovers."""
@@ -2803,6 +2846,7 @@ class KAMDaemon:
             self._beacon_stop.set()
             self._watchdog_stop.set()
             self._retry_stop.set()
+            self._backup_stop.set()
             if self._notifier is not None:
                 self._notifier.stop()
 
@@ -3050,6 +3094,36 @@ def main(argv: Optional[list] = None) -> None:
     )
 
     parser.add_argument(
+        "--backup-dir",
+        default=os.environ.get("KAMXL_BACKUP_DIR") or None,
+        help=(
+            "Back up the history database daily into this folder, e.g. a "
+            "mounted network share (default: $KAMXL_BACKUP_DIR; off)"
+        ),
+    )
+    parser.add_argument(
+        "--backup-keep",
+        type=int,
+        default=int(os.environ.get("KAMXL_BACKUP_KEEP", "7")),
+        help="How many daily backups to keep (default: $KAMXL_BACKUP_KEEP, or 7)",
+    )
+    parser.add_argument(
+        "--backup-time",
+        default=os.environ.get("KAMXL_BACKUP_TIME") or "03:30",
+        help="Daily backup time, HH:MM local (default: $KAMXL_BACKUP_TIME, or 03:30)",
+    )
+    parser.add_argument(
+        "--backup-allow-same-disk",
+        action="store_true",
+        default=os.environ.get("KAMXL_BACKUP_ALLOW_SAME_DISK", "").strip().lower()
+        in ("1", "true", "yes", "on"),
+        help=(
+            "Allow a backup folder on the same disk as the database "
+            "(normally refused: it usually means the share isn't mounted)"
+        ),
+    )
+
+    parser.add_argument(
         "--history-days",
         type=float,
         default=float(os.environ.get("KAMXL_HISTORY_DAYS", "90")),
@@ -3176,8 +3250,8 @@ def main(argv: Optional[list] = None) -> None:
     parser.add_argument(
         "--ntfy-events",
         default=os.environ.get("KAMXL_NTFY_EVENTS"),
-        help="What to notify: messages, bulletins, watchdog (comma list; "
-             "default: $KAMXL_NTFY_EVENTS, or messages,watchdog)",
+        help="What to notify: messages, bulletins, watchdog, backup (comma list; "
+             "default: $KAMXL_NTFY_EVENTS, or messages,watchdog,backup)",
     )
 
     parser.add_argument(
@@ -3243,6 +3317,23 @@ def main(argv: Optional[list] = None) -> None:
         parser.error("--retry-interval must be at least 30 seconds")
     if args.history_days and args.history_days < 31:
         parser.error("--history-days must be 0 (keep all) or at least 31")
+    backup = None
+    if args.backup_dir:
+        if not args.history_db:
+            parser.error("--backup-dir needs --history-db (KAMXL_HISTORY_DB)")
+        from db_backup import BackupManager, parse_backup_time
+        try:
+            # Validated before the serial port is opened. The folder
+            # itself may not be mounted yet; that's checked per backup.
+            backup = BackupManager(
+                args.history_db,
+                args.backup_dir,
+                keep=args.backup_keep,
+                at=parse_backup_time(args.backup_time),
+                allow_same_disk=args.backup_allow_same_disk,
+            )
+        except ValueError as exc:
+            parser.error(str(exc))
     notifier = None
     if args.ntfy_url or args.ntfy_topic:
         if not (args.ntfy_url and args.ntfy_topic):
@@ -3289,7 +3380,14 @@ def main(argv: Optional[list] = None) -> None:
         retry_interval_seconds=args.retry_interval,
         history_retention_days=args.history_days,
         notifier=notifier,
+        backup=backup,
     )
+
+    if backup is not None:
+        logger.info(
+            "History backups: daily at %02d:%02d to %s, keeping %d",
+            backup.at[0], backup.at[1], backup.backup_dir, backup.keep,
+        )
 
     if notifier is not None:
         logger.info(
