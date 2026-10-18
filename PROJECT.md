@@ -2053,9 +2053,15 @@ only from the environment/.env, are never logged or returned by
 iGate; repeated bulletins) are suppressed for 15 minutes. HTTP
 401/403 errors mention the Cloudflare token as the likely cause.
 `notify.status` / `GET /notify`, `notify.test` / `POST /notify/test`,
-and a dashboard card with a "Send test notification" button. Not yet
-tried against the real server (needs Dave's Cloudflare service
-token); tested with a fake HTTP opener.
+and a dashboard card with a "Send test notification" button.
+
+**Verified 2026-10-18** against Dave's self-hosted ntfy server
+(notify.n5ba.net) behind Cloudflare Access, using a Cloudflare Access
+service token (`KAMXL_NTFY_CF_ACCESS_CLIENT_ID` / `_SECRET` in
+`.env`): the dashboard's "Send test notification" was delivered to his
+phone. Still to confirm on the air: a real APRS message from the
+TH-D75A producing exactly one notification when the same message also
+comes back through an iGate.
 
 Tests: `tests/test_heard_back_and_notify.py` (20).
 
