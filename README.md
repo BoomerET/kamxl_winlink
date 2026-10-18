@@ -207,7 +207,7 @@ The web dashboard provides three reception-history display periods:
 
 The 7-day and 30-day views aggregate hourly records into calendar days using the browser's local timezone. Day boundaries account for daylight-saving transitions, including 23-hour and 25-hour days.
 
-Persistent reception history is separate from the live reception statistics and the in-memory APRS station database. It does not store a historical trail of station positions.
+Persistent reception history is separate from the live reception statistics. It also stores each packet's payload, so when the daemon restarts it replays the last hour into the APRS station map: stations, trails, weather and objects reappear immediately instead of the map starting empty. Without `KAMXL_HISTORY_DB` the map starts empty after a restart.
 
 ## Testing
 

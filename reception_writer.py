@@ -251,6 +251,9 @@ class ReceptionWriter:
         """Persist one sent-message record (insert or update)."""
         return self._with_history(lambda h: h.save_outbound(record))
 
+    def packets_since(self, since, limit=20000):
+        return self._with_history(lambda h: h.packets_since(since, limit))
+
     def load_outbound(self, limit=200):
         return self._with_history(lambda h: h.list_outbound(limit))
 

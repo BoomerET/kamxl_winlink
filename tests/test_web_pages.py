@@ -28,6 +28,16 @@ class LoadPageTests(unittest.TestCase):
                 self.assertEqual(len(re.findall(r"<style>", html)), 1)
                 self.assertEqual(len(re.findall(r"<script>", html)), 1)
 
+    def test_every_page_has_a_phone_viewport(self):
+        # Without it phones draw the page at desktop width and shrink it.
+        for name in kamxl_web.PAGE_NAMES:
+            with self.subTest(page=name):
+                self.assertIn(
+                    '<meta name="viewport" content="width=device-width, '
+                    'initial-scale=1">',
+                    kamxl_web.load_page(name),
+                )
+
     def test_files_are_inlined_verbatim(self):
         folder = kamxl_web.PAGES_DIR / "dashboard"
         html = kamxl_web.load_page("dashboard")

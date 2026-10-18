@@ -61,6 +61,10 @@ from reception_writer import ReceptionWriter
 from aprs import format_aprs_message, parse_aprs_message, unwrap_third_party
 from aprs_outbox import OutboundAprsTracker
 
+# Stations and objects not heard for this long drop off the map. Also
+# how much stored history is replayed into the map at startup.
+STATION_MAX_AGE = 3600
+
 DEFAULT_SOCKET_PATH = "/tmp/kamxl.sock"
 DEFAULT_BAUDRATE = 19200  # matches KAMXL's own constructor default
 
@@ -290,6 +294,7 @@ class KAMDaemon:
         # via stations.list/stations.get.
         self._stations = StationTracker()
         self._stations_lock = threading.Lock()
+        self._restore_stations()
 
         # APRS diagnostics — counters are maintained independently
         # of serial access and station tracking.
@@ -1726,24 +1731,49 @@ class KAMDaemon:
                 "rf_enabled": False,
             }
 
+    def _restore_stations(self) -> None:
+        """
+        Rebuild the map after a restart by replaying the last hour of
+        stored packets (the same window stations stay on the map) into
+        the station tracker. Only the map is rebuilt -- replayed
+        packets never trigger ACKs, notifications or other actions.
+        """
+        if self._reception_writer is None:
+            return
+        try:
+            packets = self._reception_writer.packets_since(
+                int(time.time() - STATION_MAX_AGE)
+            )
+            with self._stations_lock:
+                for packet, received_at in packets:
+                    self._stations.update(packet, now=received_at)
+                count = len(self._stations.list_stations())
+            if count:
+                logger.info(
+                    "Restored %d station(s) on the map from %d stored "
+                    "packet(s)", count, len(packets),
+                )
+        except Exception:
+            logger.exception("Could not restore stations from history")
+
     def _m_objects_list(self, params: Dict[str, Any]) -> List[Dict[str, Any]]:
         """APRS objects/items (repeaters, nets, events) heard recently."""
         with self._stations_lock:
-            self._stations.expire_stale(max_age_seconds=3600)
+            self._stations.expire_stale(max_age_seconds=STATION_MAX_AGE)
             objects = self._stations.list_objects()
 
         return [dataclasses.asdict(obj) for obj in objects]
 
     def _m_stations_list(self, params: Dict[str, Any]) -> List[Dict[str, Any]]:
         with self._stations_lock:
-            self._stations.expire_stale(max_age_seconds=3600)
+            self._stations.expire_stale(max_age_seconds=STATION_MAX_AGE)
             stations = self._stations.list_stations()
 
         return [dataclasses.asdict(station) for station in stations]
 
     def _m_stations_get(self, params: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         with self._stations_lock:
-            self._stations.expire_stale(max_age_seconds=3600)
+            self._stations.expire_stale(max_age_seconds=STATION_MAX_AGE)
             station = self._stations.get_station(params["callsign"])
 
         return dataclasses.asdict(station) if station is not None else None

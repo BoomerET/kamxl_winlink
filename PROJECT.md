@@ -2064,7 +2064,39 @@ TH-D75A (N5BA-7) triggered the incoming-message alert on his phone
 within seconds: the complete RF -> KAM-XL -> daemon -> ntfy ->
 phone path works, with exactly one alert. (Duplicate copies of a message, such as a digipeated
 or iGated repeat, are suppressed by the 15-minute dedupe; covered by
-unit tests.)
+unit tests.) Heard-back also confirmed on the air the same day: the
+beacon card showed "Heard back: repeated by W5NGU-3" after an
+automatic beacon.
 
 Tests: `tests/test_heard_back_and_notify.py` (20).
+
+### Map survives a restart; phone-sized pages
+
+**Map restore.** The history database now stores each packet's payload
+(new nullable `payload` column on `received_packets`, added to
+existing databases automatically at startup; older rows stay NULL).
+When the daemon starts with a history database it replays the last
+hour of stored packets -- the same `STATION_MAX_AGE` (3600 s) after
+which stations and objects drop off the map -- through
+`StationTracker.update()` with their original receive times. Stations,
+trails, weather, objects and recent-packet lists come back as they
+were, and still expire on schedule. Only the map is rebuilt: replayed
+packets never queue ACKs, send notifications, count toward reception
+stats, or touch sent-message state. `raw` isn't stored (nothing shows
+it), so replayed packets have it empty. A failure here is logged and
+startup continues with an empty map. Storage cost: roughly one
+payload (typically under 100 bytes) per stored packet, pruned with the
+rest by `KAMXL_HISTORY_DAYS`. This supersedes the "in-memory only"
+choice from milestone 7.
+
+**Phone-sized pages.** No page had a viewport tag, so phones drew them
+at desktop width and shrank them. All five pages now have one; the
+dashboard gets full-width cards and tighter margins under 600 px, the
+map shows station details as a sheet along the bottom of the screen,
+and form fields use 16 px text so iOS doesn't zoom in on tap. Checked
+in headless Chromium at 390 px: no sideways scrolling on any page.
+Kept deliberately small (no installable app/PWA); Dave prefers RF.
+
+Tests: `tests/test_station_restore.py` (8), viewport check in
+`tests/test_web_pages.py`.
 
