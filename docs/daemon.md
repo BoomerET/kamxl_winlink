@@ -34,6 +34,10 @@ defaults:
 | `--beacon` | `KAMXL_BEACON=1` | *(off)* |
 | `--watchdog-minutes` | `KAMXL_WATCHDOG_MINUTES` | `30` (`0` = off, min 5) |
 | `--auto-retry` | `KAMXL_AUTO_RETRY=1` | *(off)* |
+| `--ntfy-url` | `KAMXL_NTFY_URL` | *(off)* |
+| `--ntfy-topic` | `KAMXL_NTFY_TOPIC` | *(off)* |
+| `--ntfy-events` | `KAMXL_NTFY_EVENTS` | `messages,watchdog` |
+| *(env only)* | `KAMXL_NTFY_TOKEN`, `KAMXL_NTFY_CF_ACCESS_CLIENT_ID`, `KAMXL_NTFY_CF_ACCESS_CLIENT_SECRET`, `KAMXL_NTFY_CLICK_URL` | *(none)* |
 | `--retry-count` | `KAMXL_RETRY_COUNT` | `3` (1-5) |
 | `--retry-interval` | `KAMXL_RETRY_INTERVAL` | `60` seconds (min 30), doubling |
 
@@ -81,6 +85,15 @@ are not pruned (use Clear on the dashboard); repeated bulletin
 copies are. SQLite reuses the freed
 space for new rows; the file itself doesn't shrink unless you run
 `sqlite3 reception.sqlite3 VACUUM` with the daemon stopped.
+
+Phone notifications go to an ntfy server (ntfy.sh or self-hosted) as
+JSON posts from a background thread: messages addressed to you
+(including ones gated from APRS-IS), optionally new bulletins, and
+reception-watchdog alerts/recoveries. Duplicate copies of the same
+message or bulletin are suppressed. The token and Cloudflare Access
+secrets are read only from the environment/.env -- deliberately not
+command-line flags, which show up in process listings -- and are never
+returned by the API or logged.
 
 `--port` has no hardcoded default on purpose: a wrong or missing
 serial device should fail immediately with a clear error, not

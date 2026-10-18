@@ -87,6 +87,13 @@ class OutboundAprsMessage:
     next_retry_at: Optional[float] = None
     retries_left: int = 0
     gave_up: bool = False
+    # "Did it get out?": the digipeater we heard repeat it, and the
+    # iGate we heard send it back from APRS-IS (proof it reached the
+    # internet). Latest of each.
+    digipeated_by: Optional[str] = None
+    digipeated_at: Optional[float] = None
+    igated_by: Optional[str] = None
+    igated_at: Optional[float] = None
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
@@ -303,6 +310,28 @@ class OutboundAprsTracker:
             count = len(self._messages)
             self._messages.clear()
         return count
+
+    def heard_back(
+        self,
+        message_id: str,
+        addressee: str,
+        digipeater: Optional[str] = None,
+        igate: Optional[str] = None,
+    ) -> Optional[OutboundAprsMessage]:
+        """Record that a copy of our own message was heard on the air."""
+        with self._lock:
+            record = self._messages.get(message_id)
+            if record is None or record.addressee != addressee.strip().upper():
+                return None
+            now = self.clock()
+            if digipeater:
+                record.digipeated_by, record.digipeated_at = digipeater, now
+            if igate:
+                record.igated_by, record.igated_at = igate, now
+            snapshot = OutboundAprsMessage(**record.to_dict())
+
+        self._changed(snapshot)
+        return snapshot
 
     # -- receiving -----------------------------------------------------
 

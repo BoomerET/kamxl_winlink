@@ -201,6 +201,16 @@
     <button class="action" id="svcUseBtn" type="button">Use</button>
   </div>
 
+  <div class="card" id="notifyCard">
+    <h2>Phone Notifications</h2>
+    <div class="sub" id="notifyStatus" role="status" aria-live="polite">
+      Checking...
+    </div>
+    <button class="action" id="notifyTestBtn" type="button" hidden>
+      Send test notification
+    </button>
+  </div>
+
   <div class="card" id="bulletinCard">
     <h2>Bulletins <span id="bulletinNewBadge" hidden></span></h2>
     <div class="bulletinControls">
@@ -227,6 +237,7 @@
       Beacon my position automatically (transmits on VHF Port 2)
     </label>
     <div class="sub" id="beaconStatus" role="status" aria-live="polite"></div>
+    <div class="sub" id="beaconHeardBack" role="status" aria-live="polite"></div>
     <button class="action" id="beaconNowBtn" type="button">Beacon now</button>
   </div>
 

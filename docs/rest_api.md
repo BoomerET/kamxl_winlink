@@ -749,6 +749,22 @@ Station pop-ups, the station details panel and object pop-ups have a
 **Message** link that opens the dashboard as `/?to=CALL`, which fills
 in the recipient and opens that conversation.
 
+### "Did it get out?" and phone notifications
+
+When the KAM-XL hears a copy of one of our own transmissions repeated
+by a digipeater (source is our callsign, path has a used `*` hop), or
+sent back to RF from APRS-IS by an iGate (a third-party packet from
+us), it's recorded: sent messages in `/aprs/outbox` gain
+`digipeated_by`/`digipeated_at` and `igated_by`/`igated_at` (saved
+with the message), and `/aprs/beacon` gains `heard_back`. The
+dashboard shows "via W5NGU-3" / "on APRS-IS" on sent messages and a
+"Heard back" line on the Position Beacon card.
+
+`GET /notify` reports phone-notification settings and counters
+(`enabled`, `server`, `topic`, `events`, `auth` type, `sent`,
+`failed`, `last_error`; never the secrets). `POST /notify/test` sends
+a test notification and reports whether the server accepted it.
+
 ## Testing
 
 `tests/test_rest.py` runs a real `KAMDaemon` (wired to the same

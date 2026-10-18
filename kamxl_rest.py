@@ -356,6 +356,8 @@ ROUTES: Tuple[Tuple[str, "re.Pattern", str], ...] = (
     ("GET", re.compile(r"^/map$"), "_h_map_page"),
     ("GET", re.compile(r"^/stations$"), "_h_stations_list"),
     ("GET", re.compile(r"^/objects$"), "_h_objects_list"),
+    ("GET", re.compile(r"^/notify$"), "_h_notify_status"),
+    ("POST", re.compile(r"^/notify/test$"), "_h_notify_test"),
     ("GET", re.compile(r"^/stations/(?P<callsign>[A-Za-z0-9\-]+)$"), "_h_stations_get"),
     ("POST", re.compile(r"^/winlink/check$"), "_h_winlink_check_mail"),
     ("POST", re.compile(r"^/winlink/send$"), "_h_winlink_send_message"),
@@ -808,6 +810,13 @@ class RESTRequestHandler(BaseHTTPRequestHandler):
 
     def _h_objects_list(self, params: Dict[str, str], query: Dict[str, Any]) -> None:
         self._relay("objects.list")
+
+    def _h_notify_status(self, params: Dict[str, str], query: Dict[str, Any]) -> None:
+        """Phone-notification settings and counters (never the secrets)."""
+        self._relay("notify.status")
+
+    def _h_notify_test(self, params: Dict[str, str], query: Dict[str, Any]) -> None:
+        self._relay("notify.test", _socket_timeout=20)
 
     def _h_stations_list(self, params: Dict[str, str], query: Dict[str, Any]) -> None:
         self._relay("stations.list")

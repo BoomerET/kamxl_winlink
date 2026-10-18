@@ -2025,3 +2025,37 @@ Tests: `tests/test_aprs_services.py` (3).
 
 Tests: `tests/test_objects_and_message_links.py` (14).
 
+### "Did it get out?" and phone notifications
+
+**Heard back.** Our own transmissions often come back to us: a
+digipeater repeats them (the copy's source is our callsign and its
+path has a used `*` hop -- the last starred hop is the digipeater that
+sent that copy), or an iGate gates them to APRS-IS and another iGate
+sends them back to RF as a third-party packet originated by us (as
+W5CGC-10 did on 2026-10-18). The daemon now records both: on sent
+messages (`digipeated_by/at`, `igated_by/at`, persisted with the
+record, matched by message ID and addressee) and for the beacon
+(`heard_back`). Our own packet with no used hop (not digipeated) is
+ignored, as is anyone else's copy of the same text. Dashboard: "via
+W5NGU-3" and "on APRS-IS" chips on sent messages, a "Heard back" line
+on the beacon card. This automates the check done by hand while
+troubleshooting the amplifier desense.
+
+**Phone notifications** (`notify.py`). Posts JSON to an ntfy server
+(`KAMXL_NTFY_URL` + `KAMXL_NTFY_TOPIC`) from a background thread with
+a bounded queue, so a slow server never delays packet handling.
+Events: `messages` (to us, including via iGate), `bulletins` (new
+ones), `watchdog` (alert and recovery); default messages,watchdog.
+Auth: ntfy bearer token and/or Cloudflare Access service-token headers
+(Dave's server, notify.n5ba.net, is behind Cloudflare). Secrets come
+only from the environment/.env, are never logged or returned by
+`notify.status`. Duplicates (same message heard directly and via an
+iGate; repeated bulletins) are suppressed for 15 minutes. HTTP
+401/403 errors mention the Cloudflare token as the likely cause.
+`notify.status` / `GET /notify`, `notify.test` / `POST /notify/test`,
+and a dashboard card with a "Send test notification" button. Not yet
+tried against the real server (needs Dave's Cloudflare service
+token); tested with a fake HTTP opener.
+
+Tests: `tests/test_heard_back_and_notify.py` (20).
+

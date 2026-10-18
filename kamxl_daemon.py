@@ -117,6 +117,7 @@ class KAMDaemon:
         retry_count: int = 3,
         retry_interval_seconds: float = 60,
         history_retention_days: float = 0,
+        notifier: Optional[Any] = None,
     ) -> None:
         from aprs_tx import validate_aprs_path
 
@@ -269,6 +270,12 @@ class KAMDaemon:
         self._beacons_sent = 0
         self._beacon_stop = threading.Event()
         self._beacon_thread: Optional[threading.Thread] = None
+        # "Did it get out?" -- the last time we heard our own beacon
+        # repeated by a digipeater or sent back from APRS-IS by an iGate.
+        self._beacon_heard: Dict[str, Any] = {}
+
+        # Optional phone notifications (notify.Notifier); None = off.
+        self._notifier = notifier
 
         # Track recently handled message IDs for duplicate detection.
         self._aprs_ack_recent = {}
@@ -333,6 +340,8 @@ class KAMDaemon:
             "monitor.unsubscribe": self._m_monitor_unsubscribe,
             "stations.list": self._m_stations_list,
             "objects.list": self._m_objects_list,
+            "notify.status": self._m_notify_status,
+            "notify.test": self._m_notify_test,
             "stations.get": self._m_stations_get,
             "aprs.stats": self._m_aprs_stats,
             "aprs.history": self._m_aprs_history,
@@ -533,10 +542,20 @@ class KAMDaemon:
 
         if alert and not self._watchdog_alerting:
             logger.warning("Reception watchdog: %s", snapshot["message"])
+            self._push(
+                "watchdog", "KAM-XL reception problem", snapshot["message"],
+                tags=["warning"], priority=4,
+            )
         elif not alert and self._watchdog_alerting:
             logger.info(
                 "Reception watchdog: recovered (heard %s)",
                 snapshot["last_other_source"],
+            )
+            self._push(
+                "watchdog", "KAM-XL reception back",
+                f"Hearing other stations again (latest: "
+                f"{snapshot['last_other_source']}).",
+                tags=["white_check_mark"],
             )
 
         self._watchdog_alerting = alert
@@ -1159,6 +1178,8 @@ class KAMDaemon:
              or self._aprs_safety_state == "unsafe")
             and self._aprs_link_may_be_active
         )
+        with self._beacon_lock:
+            result["heard_back"] = dict(self._beacon_heard)
         return result
 
     def _require_beacon_authorization(self, params: Dict[str, Any]) -> None:
@@ -2321,11 +2342,143 @@ class KAMDaemon:
                             "APRS ACK queue full; acknowledgment dropped"
                         )
         self._observe_outbound_reply(packet)
+        self._observe_own_packet(packet)
+        self._notify_incoming(packet)
 
         with self._stations_lock:
             self._stations.update(packet)
 
         self._broadcast_packet(packet)
+
+    # -- "Did it get out?" and phone notifications -----------------------
+
+    @staticmethod
+    def _transmitting_digipeater(packet: Packet) -> Optional[str]:
+        """The digipeater that sent this copy (last path entry marked *)."""
+        for hop in reversed(packet.digipeaters or ()):
+            if hop.endswith("*"):
+                return hop.rstrip("*").upper()
+        return None
+
+    def _observe_own_packet(self, packet: Packet) -> None:
+        """
+        Notice copies of our own transmissions coming back: repeated by
+        a digipeater (source is us, path has a used hop), or sent back
+        to RF from APRS-IS by an iGate (a third-party packet whose
+        originator is us). Either proves the transmission got out.
+        """
+        if self.station_callsign is None or packet.port != 2:
+            return
+        if packet.frame_type not in ("UI", None):
+            return
+
+        try:
+            digipeater = igate = None
+            payload = packet.payload
+
+            if packet.source.upper() == self.station_callsign:
+                digipeater = self._transmitting_digipeater(packet)
+                if digipeater is None:
+                    return
+            elif payload.startswith("}"):
+                inner_source, inner_payload = unwrap_third_party(
+                    packet.source, payload
+                )
+                if inner_source != self.station_callsign:
+                    return
+                igate, payload = packet.source.upper(), inner_payload
+            else:
+                return
+
+            now = time.time()
+            if self._beacon_payload is not None and payload == self._beacon_payload:
+                with self._beacon_lock:
+                    if digipeater:
+                        self._beacon_heard["digipeated_by"] = digipeater
+                        self._beacon_heard["digipeated_at"] = now
+                    if igate:
+                        self._beacon_heard["igated_by"] = igate
+                        self._beacon_heard["igated_at"] = now
+                return
+
+            message = parse_aprs_message(payload)
+            if message is not None and message.message_id is not None \
+                    and message.kind == "message":
+                self._outbox.heard_back(
+                    message.message_id, message.addressee,
+                    digipeater=digipeater, igate=igate,
+                )
+        except Exception:
+            logger.exception("Own-packet tracking failed")
+
+    def _push(self, event: str, title: str, message: str, **kwargs) -> None:
+        if self._notifier is None:
+            return
+        try:
+            self._notifier.notify(event, title, message, **kwargs)
+        except Exception:
+            logger.exception("Could not queue notification")
+
+    def _notify_incoming(self, packet: Packet) -> None:
+        """Phone notification for messages to us and new bulletins."""
+        if self._notifier is None or self.station_callsign is None:
+            return
+        if packet.port != 2 or packet.frame_type not in ("UI", None):
+            return
+        try:
+            source, payload = unwrap_third_party(packet.source, packet.payload)
+            message = parse_aprs_message(payload)
+            if message is None or source.upper() == self.station_callsign:
+                return
+
+            if message.kind == "message" and \
+                    message.addressee == self.station_callsign:
+                self._push(
+                    "messages", f"APRS from {source}", message.text,
+                    tags=["incoming_envelope"], priority=4,
+                    dedupe_key=(source, message.message_id or message.text),
+                )
+            elif message.kind == "bulletin":
+                self._push(
+                    "bulletins", f"APRS bulletin from {source} ({message.addressee})",
+                    message.text, tags=["loudspeaker"],
+                    dedupe_key=(source, message.addressee, message.text),
+                )
+        except Exception:
+            logger.exception("Notification hook failed")
+
+    def _m_notify_status(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        if self._notifier is None:
+            return {"enabled": False}
+        return self._notifier.status()
+
+    def _m_notify_test(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """Queue a test notification and wait briefly for the result."""
+        if self._notifier is None:
+            raise KAMError(
+                "Phone notifications aren't set up (KAMXL_NTFY_URL and "
+                "KAMXL_NTFY_TOPIC in .env)"
+            )
+        before = self._notifier.status()
+        self._notifier.notify(
+            "test", "KAM-XL test notification",
+            f"Notifications from {self.station_callsign or 'the KAM-XL daemon'} "
+            "are working.", tags=["radio"],
+        )
+        deadline = time.time() + 12
+        while time.time() < deadline:
+            now_status = self._notifier.status()
+            if (now_status["sent"], now_status["failed"]) != \
+                    (before["sent"], before["failed"]):
+                return {
+                    "delivered": now_status["sent"] > before["sent"],
+                    "error": None if now_status["sent"] > before["sent"]
+                    else now_status["last_error"],
+                    "status": now_status,
+                }
+            time.sleep(0.1)
+        return {"delivered": False, "error": "No response from the server yet",
+                "status": self._notifier.status()}
 
     def _observe_outbound_reply(self, packet: Packet) -> None:
         """Match an incoming ack/rej against messages we sent."""
@@ -2448,6 +2601,8 @@ class KAMDaemon:
             self._beacon_stop.set()
             self._watchdog_stop.set()
             self._retry_stop.set()
+            if self._notifier is not None:
+                self._notifier.stop()
 
             # Discard ACKs waiting in the queue. An ACK already
             # being processed remains the worker's responsibility.
@@ -2804,6 +2959,26 @@ def main(argv: Optional[list] = None) -> None:
     )
 
     parser.add_argument(
+        "--ntfy-url",
+        default=os.environ.get("KAMXL_NTFY_URL"),
+        help="ntfy server for phone notifications, e.g. https://ntfy.sh "
+             "(default: $KAMXL_NTFY_URL; notifications off if unset)",
+    )
+
+    parser.add_argument(
+        "--ntfy-topic",
+        default=os.environ.get("KAMXL_NTFY_TOPIC"),
+        help="ntfy topic your phone subscribes to (default: $KAMXL_NTFY_TOPIC)",
+    )
+
+    parser.add_argument(
+        "--ntfy-events",
+        default=os.environ.get("KAMXL_NTFY_EVENTS"),
+        help="What to notify: messages, bulletins, watchdog (comma list; "
+             "default: $KAMXL_NTFY_EVENTS, or messages,watchdog)",
+    )
+
+    parser.add_argument(
         "--auto-ack",
         action="store_true",
         default=os.environ.get("KAMXL_AUTO_ACK", "").strip().lower()
@@ -2866,6 +3041,27 @@ def main(argv: Optional[list] = None) -> None:
         parser.error("--retry-interval must be at least 30 seconds")
     if args.history_days and args.history_days < 31:
         parser.error("--history-days must be 0 (keep all) or at least 31")
+    notifier = None
+    if args.ntfy_url or args.ntfy_topic:
+        if not (args.ntfy_url and args.ntfy_topic):
+            parser.error("Set both KAMXL_NTFY_URL and KAMXL_NTFY_TOPIC (or neither)")
+        from notify import Notifier, parse_events
+        try:
+            # Built (and validated) before the serial port is opened.
+            notifier = Notifier(
+                url=args.ntfy_url,
+                topic=args.ntfy_topic,
+                # Secrets: environment/.env only, never command-line flags
+                # (those show up in process listings).
+                token=os.environ.get("KAMXL_NTFY_TOKEN") or None,
+                cf_client_id=os.environ.get("KAMXL_NTFY_CF_ACCESS_CLIENT_ID") or None,
+                cf_client_secret=os.environ.get(
+                    "KAMXL_NTFY_CF_ACCESS_CLIENT_SECRET") or None,
+                events=parse_events(args.ntfy_events),
+                click_url=os.environ.get("KAMXL_NTFY_CLICK_URL") or None,
+            )
+        except ValueError as exc:
+            parser.error(str(exc))
     if args.beacon_interval < 10:
         parser.error("--beacon-interval must be at least 10 minutes")
 
@@ -2890,7 +3086,14 @@ def main(argv: Optional[list] = None) -> None:
         retry_count=args.retry_count,
         retry_interval_seconds=args.retry_interval,
         history_retention_days=args.history_days,
+        notifier=notifier,
     )
+
+    if notifier is not None:
+        logger.info(
+            "Phone notifications: %s topic %s (%s)",
+            notifier.url, notifier.topic, ", ".join(sorted(notifier.events)),
+        )
 
     if args.auto_retry:
         try:
