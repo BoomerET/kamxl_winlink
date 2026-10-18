@@ -353,6 +353,116 @@
     });
   });
 
+  // -- Messaging a station from the map --------------------------------
+
+  function messageUrl(callsign) {
+    return authedUrl("/?to=" + encodeURIComponent(callsign));
+  }
+
+  function messageLinkHtml(callsign, label) {
+    return "<a class='messageStation' href='" + escapeHtml(messageUrl(callsign)) +
+      "'>" + escapeHtml(label || ("Message " + callsign)) + " &rarr;</a>";
+  }
+
+  // -- Objects and items (repeaters, nets, events) ---------------------
+
+  var objectMarkers = {};
+  var lastObjects = [];
+  var showObjects = document.getElementById("showObjects");
+
+  try {
+    var savedObjects = window.localStorage.getItem("kamxl.map.showObjects");
+    if (savedObjects !== null) showObjects.checked = savedObjects === "1";
+  } catch (e) { /* storage unavailable: default on */ }
+
+  function formatOffset(khz) {
+    var sign = khz < 0 ? "−" : "+";
+    var abs = Math.abs(khz);
+    return sign + (abs >= 1000 ? (abs / 1000) + " MHz" : abs + " kHz");
+  }
+
+  // Plain-text summary of a repeater object's frequency info.
+  function frequencySummary(f) {
+    if (!f) return "";
+    var parts = [f.frequency_mhz.toFixed(3) + " MHz"];
+    if (f.offset_khz !== null && f.offset_khz !== undefined) {
+      parts.push(formatOffset(f.offset_khz));
+    }
+    if (f.tone_hz) parts.push("tone " + f.tone_hz.toFixed(1));
+    if (f.dcs_code) parts.push("DCS " + f.dcs_code);
+    if (f.range_miles) parts.push("range " + f.range_miles + " mi");
+    return parts.join(", ");
+  }
+
+  function objectPopupHtml(obj) {
+    var html = "<b>" + escapeHtml(obj.name) + "</b> <span class='objectKind'>" +
+      (obj.kind === "item" ? "item" : "object") + "</span><br>";
+    var freq = frequencySummary(obj.frequency);
+    if (freq) html += "<div class='freqBlock'>" + escapeHtml(freq) + "</div>";
+    if (obj.comment) html += escapeHtml(obj.comment) + "<br>";
+    html += obj.latitude.toFixed(5) + ", " + obj.longitude.toFixed(5) + "<br>";
+    html += "from " + escapeHtml(obj.owner) + ", heard " +
+      relativeTime(obj.last_heard) + "<br>";
+    html += messageLinkHtml(obj.owner);
+    return html;
+  }
+
+  function renderObjects() {
+    var seen = {};
+
+    if (showObjects.checked) {
+      lastObjects.forEach(function (obj) {
+        seen[obj.name] = true;
+        var latLng = [obj.latitude, obj.longitude];
+        var icon = aprsIcon(obj.symbol_table, obj.symbol_code);
+        var marker = objectMarkers[obj.name];
+
+        if (marker) {
+          marker.setLatLng(latLng);
+          marker.setPopupContent(objectPopupHtml(obj));
+          if (icon) marker.setIcon(icon);
+        } else {
+          marker = icon ? L.marker(latLng, { icon: icon }) : L.marker(latLng);
+          marker.addTo(map).bindPopup(objectPopupHtml(obj));
+          marker.bindTooltip(escapeHtml(obj.name), {
+            direction: "top",
+            offset: [0, -(APRS_ICON_SIZE / 2)],
+            className: "objectLabel"
+          });
+          objectMarkers[obj.name] = marker;
+        }
+      });
+    }
+
+    Object.keys(objectMarkers).forEach(function (name) {
+      if (!seen[name]) {
+        map.removeLayer(objectMarkers[name]);
+        delete objectMarkers[name];
+      }
+    });
+  }
+
+  async function refreshObjects() {
+    try {
+      var res = await fetch(authedUrl("/objects"));
+      var payload = await res.json();
+      if (!payload.ok) return;
+      lastObjects = payload.result || [];
+      renderObjects();
+    } catch (err) {
+      // Transient failure -- next poll retries.
+    }
+  }
+
+  showObjects.addEventListener("change", function () {
+    try {
+      window.localStorage.setItem(
+        "kamxl.map.showObjects", showObjects.checked ? "1" : "0"
+      );
+    } catch (e) {}
+    renderObjects();
+  });
+
   function popupHtml(station) {
     // escapeHtml() added alongside the overlay-badge work above --
     // used here too now that it exists, since this popup content
@@ -369,6 +479,7 @@
       (station.packet_count === 1 ? "" : "s") + ")";
     html += "<br><a href='#' class='viewStationDetails' data-callsign='" +
       escapeHtml(station.callsign) + "'>View Details &rarr;</a>";
+    html += " &middot; " + messageLinkHtml(station.callsign, "Message");
     return html;
   }
 
@@ -411,7 +522,8 @@
       var station = payload.result;
       var history = station.history || [];
 
-      var html = "";
+      var html = "<div class='detailActions'>" +
+        messageLinkHtml(station.callsign) + "</div>";
 
       function detail(label, value) {
         html += "<div class='detailRow'>" +
@@ -814,4 +926,6 @@
 
   refresh();
   setInterval(refresh, 15000);
+  refreshObjects();
+  setInterval(refreshObjects, 15000);
 })();

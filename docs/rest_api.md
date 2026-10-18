@@ -733,6 +733,22 @@ text`, `J HOTG`, `U HOTG`) and WHO-IS callsign lookups. It shows a
 long. Sending to service names with a letter suffix (`WHO-IS`) is now
 allowed by `format_aprs_message()`.
 
+### Objects and items
+
+`GET /objects` lists APRS objects (`;NAME*...`) and items (`)NAME!...`)
+heard in the last hour -- repeaters, nets, events -- separately from
+`/stations` (an object is placed by one station but describes
+something else, so it never moves its sender's marker). Each has
+`name`, `kind` (`object`/`item`), `owner` (the station that last sent
+it), position, symbol, `comment`, `last_heard`, `report_count`, and
+`frequency` for repeater objects: `frequency_mhz`, `offset_khz`,
+`tone_hz` (`T110` -> 110.9), `dcs_code`, `range_miles`. A killed
+object/item is removed. The map draws them (toggle "Show Objects").
+
+Station pop-ups, the station details panel and object pop-ups have a
+**Message** link that opens the dashboard as `/?to=CALL`, which fills
+in the recipient and opens that conversation.
+
 ## Testing
 
 `tests/test_rest.py` runs a real `KAMDaemon` (wired to the same

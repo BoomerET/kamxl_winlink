@@ -1999,3 +1999,29 @@ transaction accepts the result.
 
 Tests: `tests/test_aprs_services.py` (3).
 
+### Objects/items on the map, and "Message" from the map
+
+- `aprs.parse_object()` decodes objects (`;` + 9-char name + `*`/`_` +
+  timestamp + position) and items (`)` + 3-9 char name + `!`/`_` +
+  position), reusing `parse_position()` for both position forms.
+  `parse_frequency_info()` reads repeater details from the name and
+  comment per the APRS frequency conventions (`147.000-T`, `T110`
+  -> 110.9 Hz via the standard CTCSS table, `-060` = -600 kHz, `R30m`),
+  limited to amateur repeater bands so stray numbers don't read as
+  frequencies.
+- `StationTracker` keeps objects in their own table keyed by name
+  (`MapObject`, with the current `owner`), drops killed ones, and
+  expires them on the same 1-hour rule. They never move the sending
+  station's marker but still appear in its recent packets.
+  `objects.list` / `GET /objects`; `/stations` is unchanged.
+- Map: object/item markers with their APRS symbol, hover name label,
+  pop-up with a highlighted frequency line, "Show Objects" toggle.
+- "Message" links in station pop-ups, the details panel and object
+  pop-ups (to the owner) open `/?to=CALL`; the dashboard pre-fills
+  the recipient, opens that conversation, focuses the text box, and
+  removes `to` from the address bar.
+- Checked in headless Chromium with Leaflet served locally, including
+  following a Message link from the map to the filled-in form.
+
+Tests: `tests/test_objects_and_message_links.py` (14).
+

@@ -23,7 +23,7 @@ import time
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 
-from aprs import parse_position, parse_weather
+from aprs import parse_frequency_info, parse_object, parse_position, parse_weather
 from packet import Packet
 
 @dataclass(frozen=True)
@@ -77,6 +77,29 @@ class Station:
     weather: Optional[dict] = None
     weather_at: Optional[float] = None
 
+@dataclass(frozen=True)
+class MapObject:
+    """
+    The latest state of one APRS object or item (a repeater, net,
+    event...). Keyed by ``name`` -- objects are named things, and any
+    station may update or kill one. ``owner`` is the station that last
+    sent it (message that station about it). ``frequency`` is
+    aprs.parse_frequency_info() output for repeater objects, else None.
+    """
+
+    name: str
+    kind: str
+    owner: str
+    latitude: float
+    longitude: float
+    symbol_table: str
+    symbol_code: str
+    comment: str
+    last_heard: float
+    report_count: int
+    frequency: Optional[dict] = None
+
+
 class StationTracker:
     """
     Decodes APRS position reports out of Packets and maintains one
@@ -99,6 +122,7 @@ class StationTracker:
     def __init__(self) -> None:
         self._stations: Dict[str, Station] = {}
         self._pending_weather: Dict[str, Tuple[dict, float]] = {}
+        self._objects: Dict[str, MapObject] = {}
 
     def update(
         self, packet: Packet, now: Optional[float] = None
@@ -116,6 +140,13 @@ class StationTracker:
 
         if now is None:
             now = time.time()
+
+        # Objects/items describe something else at some other place.
+        # Track them separately; parse_position() below doesn't decode
+        # them, so they never move the sending station's own marker
+        # (they still appear in its recent packets).
+        if packet.payload[:1] in (";", ")"):
+            self._update_object(packet, now)
 
         existing = self._stations.get(packet.source)
         position = parse_position(
@@ -206,6 +237,36 @@ class StationTracker:
 
         return station
 
+    def _update_object(self, packet: Packet, now: float) -> Optional[MapObject]:
+        obj = parse_object(packet.payload)
+        if obj is None:
+            return None
+
+        if not obj.live:
+            self._objects.pop(obj.name, None)  # killed: off the map
+            return None
+
+        existing = self._objects.get(obj.name)
+        pos = obj.position
+        entry = MapObject(
+            name=obj.name,
+            kind=obj.kind,
+            owner=packet.source,
+            latitude=pos.latitude,
+            longitude=pos.longitude,
+            symbol_table=pos.symbol_table,
+            symbol_code=pos.symbol_code,
+            comment=pos.comment.strip(),
+            last_heard=now,
+            report_count=(existing.report_count + 1) if existing else 1,
+            frequency=parse_frequency_info(obj.name, pos.comment),
+        )
+        self._objects[obj.name] = entry
+        return entry
+
+    def list_objects(self) -> List[MapObject]:
+        return sorted(self._objects.values(), key=lambda o: o.name)
+
     def _remember_pending_weather(
         self, callsign: str, weather: dict, now: float
     ) -> None:
@@ -248,5 +309,12 @@ class StationTracker:
 
         for callsign in expired:
             del self._stations[callsign]
+
+        # Objects are typically re-sent every 10-30 min; same age rule.
+        for name in [
+            n for n, o in self._objects.items()
+            if now - o.last_heard > max_age_seconds
+        ]:
+            del self._objects[name]
 
         return len(expired)

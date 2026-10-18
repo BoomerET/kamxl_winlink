@@ -202,3 +202,15 @@
   }
   .wxAge { color: #888; font-weight: normal; }
 
+  /* Objects/items and Message links */
+  .objectKind { color: #888; font-size: 11px; }
+  .freqBlock {
+    margin: 4px 0; padding: 3px 6px; border-left: 3px solid #3388ff;
+    background: rgba(51, 136, 255, 0.08); font-weight: bold;
+  }
+  .leaflet-tooltip.objectLabel {
+    font: 11px "Courier New", Courier, monospace; padding: 0 4px;
+  }
+  .detailActions { margin-bottom: 8px; }
+  .detailActions a.messageStation, a.messageStation { color: #3388ff; }
+
