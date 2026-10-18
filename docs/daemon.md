@@ -22,6 +22,13 @@ defaults:
 | `--port` | `KAMXL_PORT` | *(required -- no fallback)* |
 | `--socket` | `KAMXL_SOCKET` | `/tmp/kamxl.sock` |
 | `--baud` | `KAMXL_BAUD` | `19200` |
+| `--history-db` | `KAMXL_HISTORY_DB` | *(off)* |
+| `--auto-ack` | `KAMXL_AUTO_ACK=1` | *(off)* |
+
+`--auto-ack` turns automatic APRS acknowledgments on at startup (put
+`KAMXL_AUTO_ACK=1` in `.env` to make that permanent); it can also be
+toggled from the dashboard. If the TNC check fails at startup the
+daemon keeps running with auto-ACK off and logs why.
 
 `--port` has no hardcoded default on purpose: a wrong or missing
 serial device should fail immediately with a clear error, not

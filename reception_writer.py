@@ -167,6 +167,21 @@ class ReceptionWriter:
         finally:
             history.close()
 
+    def clear_aprs_messages(self, addressee):
+        """Delete stored APRS messages using a separate SQLite connection."""
+
+        if not self.wait_ready():
+            raise RuntimeError(
+                "Reception history database is not ready"
+            )
+
+        history = ReceptionHistory(self.database_path)
+
+        try:
+            return history.clear_aprs_messages(addressee)
+        finally:
+            history.close()
+
     def snapshot(self, since=None):
         """Read persisted history using a separate SQLite connection."""
 

@@ -134,6 +134,16 @@ class KAMDaemon:
         # ackID/rejID replies can be matched back to them.
         self._outbox = OutboundAprsTracker(APRS_STATION_CALLSIGN)
 
+        # True after anything that may have left an AX.25 link or
+        # conversational session open (terminal, connect, PBBS, ...).
+        # The auto-ACK worker won't Ctrl-C its way into a verification
+        # while this is set -- that could knock an operator out of a
+        # live session -- and pauses instead until a send/verify.
+        self._aprs_link_may_be_active = False
+        self._aprs_ack_disabled_reason: Optional[str] = None
+        self._aprs_acks_sent = 0
+        self._aprs_last_ack: Optional[Dict[str, Any]] = None
+
         # Track recently handled message IDs for duplicate detection.
         self._aprs_ack_recent = {}
         self._aprs_ack_lock = threading.Lock()
@@ -197,6 +207,7 @@ class KAMDaemon:
             "aprs.preview_message": self._m_aprs_preview_message,
             "aprs.send_message": self._m_aprs_send_message,
             "aprs.outbox": self._m_aprs_outbox,
+            "aprs.clear_messages": self._m_aprs_clear_messages,
             "aprs.tx_safety": self._m_aprs_tx_safety,
             "aprs.tx_preflight": self._m_aprs_tx_preflight,
             "aprs.tx_get_unproto": self._m_aprs_tx_get_unproto,
@@ -311,6 +322,7 @@ class KAMDaemon:
             self._invalidate_aprs_safety(
                 "Raw terminal command may have changed TNC state"
             )
+            self._aprs_link_may_be_active = True
             return self.kam.send_command(
                 params["command"],
                 command_timeout=params.get("timeout", 10),
@@ -350,6 +362,7 @@ class KAMDaemon:
         with self._kam_lock:
             self._aprs_session_uncertain = True
             self._invalidate_aprs_safety("AX.25 connection attempted")
+            self._aprs_link_may_be_active = True
             return self.kam.connect_station(
                 params["callsign"],
                 via=params.get("via"),
@@ -360,6 +373,7 @@ class KAMDaemon:
         with self._kam_lock:
             self._aprs_session_uncertain = True
             self._invalidate_aprs_safety("Connected data operation attempted")
+            self._aprs_link_may_be_active = True
             self.kam.send_connected(
                 params["text"],
                 add_cr=params.get("add_cr", True),
@@ -373,16 +387,20 @@ class KAMDaemon:
             self._invalidate_aprs_safety(
                 "TNC query or read may have changed session state"
             )
+            self._aprs_link_may_be_active = True
             return self.kam.read_connected(params.get("timeout", 5))
 
     def _m_disconnect_station(self, params: Dict[str, Any]) -> str:
         with self._kam_lock:
             self._aprs_session_uncertain = True
             self._invalidate_aprs_safety("AX.25 disconnect attempted")
-            return self.kam.disconnect_station(
+            self._aprs_link_may_be_active = True
+            result = self.kam.disconnect_station(
                 params.get("timeout", 30),
                 command_mode_timeout=params.get("command_mode_timeout", 5)
             )
+            self._aprs_link_may_be_active = False
+            return result
 
     def _m_pbbs_list_messages(
         self, params: Dict[str, Any]
@@ -390,11 +408,14 @@ class KAMDaemon:
         with self._kam_lock:
             self._aprs_session_uncertain = True
             self._invalidate_aprs_safety("PBBS operation attempted")
+            self._aprs_link_may_be_active = True
             messages = self.kam.list_pbbs_messages(
                 mypbbs=params.get("mypbbs"),
                 connect_timeout=params.get("connect_timeout", 15),
                 read_timeout=params.get("read_timeout", 10),
             )
+            # The operation connects and disconnects on its own.
+            self._aprs_link_may_be_active = False
 
         return [dataclasses.asdict(message) for message in messages]
 
@@ -404,12 +425,15 @@ class KAMDaemon:
         with self._kam_lock:
             self._aprs_session_uncertain = True
             self._invalidate_aprs_safety("PBBS operation attempted")
+            self._aprs_link_may_be_active = True
             message = self.kam.read_pbbs_message(
                 int(params["number"]),
                 mypbbs=params.get("mypbbs"),
                 connect_timeout=params.get("connect_timeout", 15),
                 read_timeout=params.get("read_timeout", 10),
             )
+            # The operation connects and disconnects on its own.
+            self._aprs_link_may_be_active = False
 
         return dataclasses.asdict(message) if message is not None else None
 
@@ -424,6 +448,7 @@ class KAMDaemon:
         with self._kam_lock:
             self._aprs_session_uncertain = True
             self._invalidate_aprs_safety("Winlink operation attempted")
+            self._aprs_link_may_be_active = True
             messages = self.kam.check_winlink_mail(
                 gateway=params["gateway"],
                 password=params["password"],
@@ -431,6 +456,8 @@ class KAMDaemon:
                 connect_timeout=params.get("connect_timeout", 60),
                 read_timeout=params.get("read_timeout", 30),
             )
+            # The operation connects and disconnects on its own.
+            self._aprs_link_may_be_active = False
 
         return [dataclasses.asdict(message) for message in messages]
 
@@ -458,6 +485,7 @@ class KAMDaemon:
         with self._kam_lock:
             self._aprs_session_uncertain = True
             self._invalidate_aprs_safety("Winlink operation attempted")
+            self._aprs_link_may_be_active = True
             accepted_mids = self.kam.send_winlink_message(
                 gateway=params["gateway"],
                 password=params["password"],
@@ -466,6 +494,8 @@ class KAMDaemon:
                 connect_timeout=params.get("connect_timeout", 60),
                 read_timeout=params.get("read_timeout", 30),
             )
+            # The operation connects and disconnects on its own.
+            self._aprs_link_may_be_active = False
 
         return accepted_mids
 
@@ -800,6 +830,21 @@ class KAMDaemon:
             "messages": messages,
         }
 
+    def _m_aprs_clear_messages(
+        self, params: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Delete stored received APRS messages. Never touches the TNC."""
+        addressee = params.get("addressee", APRS_STATION_CALLSIGN)
+
+        if self._reception_writer is None:
+            return {"enabled": False, "deleted": 0}
+
+        deleted = self._reception_writer.clear_aprs_messages(addressee)
+        logger.info("Cleared %d stored APRS message(s) for %s",
+                    deleted, addressee)
+
+        return {"enabled": True, "addressee": addressee, "deleted": deleted}
+
     def _m_aprs_history(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """Return persistent packet reception history."""
         if self._reception_writer is None:
@@ -879,6 +924,7 @@ class KAMDaemon:
                 self._aprs_ack_vhf_ready = True
                 self._aprs_ack_hf_disconnected = True
                 self._aprs_auto_ack_enabled = True
+                self._aprs_ack_disabled_reason = None
 
         logger.info("Automatic APRS ACKs explicitly enabled")
 
@@ -899,6 +945,7 @@ class KAMDaemon:
                 self._aprs_ack_authorized = False
                 self._aprs_ack_vhf_ready = False
                 self._aprs_ack_hf_disconnected = False
+                self._aprs_ack_disabled_reason = "Turned off by operator"
 
         # Discard requests that have not yet been processed.
         discarded = 0
@@ -929,9 +976,30 @@ class KAMDaemon:
         """Report automatic APRS ACK status without hardware access."""
         with self._aprs_ack_lock:
             enabled = self._aprs_auto_ack_enabled
+            disabled_reason = self._aprs_ack_disabled_reason
+            acks_sent = self._aprs_acks_sent
+            last_ack = self._aprs_last_ack
+
+        # Plain attribute reads; no _kam_lock needed for a status hint.
+        paused = enabled and (
+            (self._aprs_session_uncertain
+             or self._aprs_safety_state == "unsafe")
+            and self._aprs_link_may_be_active
+        )
 
         return {
             "enabled": enabled,
+            "paused": paused,
+            "paused_reason": (
+                "A terminal, connected-mode, PBBS or Winlink session may "
+                "still be open; ACKs resume after the next APRS send "
+                "(or turning auto-ACK off and on)"
+                if paused else None
+            ),
+            "disabled_reason": None if enabled else disabled_reason,
+            "acks_sent": acks_sent,
+            "last_ack": last_ack,
+            "station": APRS_STATION_CALLSIGN,
             "pending": self._aprs_ack_queue.qsize(),
             "worker_running": (
                 self._aprs_ack_thread is not None
@@ -1023,6 +1091,9 @@ class KAMDaemon:
             self._invalidate_aprs_safety(
                 "APRS session verification failed; TNC state uncertain"
             )
+            # Most likely an AX.25 session is open; don't let the
+            # auto-ACK worker keep Ctrl-C'ing into it.
+            self._aprs_link_may_be_active = True
             logger.exception("APRS session verification failed")
             raise APRSTransmitError(
                 "Could not verify the KAM-XL is idle in command mode "
@@ -1031,6 +1102,7 @@ class KAMDaemon:
             ) from exc
 
         self._aprs_session_uncertain = False
+        self._aprs_link_may_be_active = False
         self._aprs_safety_state = "unknown"
         self._aprs_safety_reason = (
             "Command mode and disconnected A/2 verified; "
@@ -1308,14 +1380,6 @@ class KAMDaemon:
                     "Automatic APRS ACK transmission not authorized"
                 )
 
-            if (
-                self._aprs_session_uncertain
-                or self._aprs_safety_state == "unsafe"
-            ):
-                raise APRSTransmitError(
-                    "APRS session uncertain; ACK transmission blocked"
-                )
-
             if not self.kam.is_connected or (
                 getattr(self.kam.serial, "exclusive", None) is not True
             ):
@@ -1331,6 +1395,20 @@ class KAMDaemon:
                 raise APRSTransmitError(
                     "APRS monitor thread not healthy"
                 )
+
+            if (
+                self._aprs_session_uncertain
+                or self._aprs_safety_state == "unsafe"
+            ):
+                if self._aprs_link_may_be_active:
+                    # Don't Ctrl-C into what may be a live session.
+                    raise APRSTransmitError(
+                        "APRS session uncertain (a connected session may "
+                        "be open); ACK transmission paused"
+                    )
+
+                # Same Ctrl-C + STATUS check a manual send runs.
+                self._verify_aprs_session_locked()
 
             # Mark the session uncertain before touching the TNC.
             self._aprs_session_uncertain = True
@@ -1358,6 +1436,10 @@ class KAMDaemon:
                     self._aprs_ack_authorized = False
                     self._aprs_ack_vhf_ready = False
                     self._aprs_ack_hf_disconnected = False
+                    self._aprs_ack_disabled_reason = (
+                        "Turned off after an ACK transmission failed; "
+                        "TNC state needs checking"
+                    )
 
                 # Discard pending ACK requests after authorization
                 # has been revoked. Do not acquire _kam_lock again:
@@ -1386,10 +1468,20 @@ class KAMDaemon:
                 "APRS ACK submitted; RF delivery not confirmed"
             )
 
+            with self._aprs_ack_lock:
+                self._aprs_acks_sent += 1
+                self._aprs_last_ack = {
+                    "to": source,
+                    "message_id": message_id,
+                    "at": time.time(),
+                }
+
             return {**result, "payload": payload}
 
     def _aprs_ack_worker_loop(self) -> None:
         """Process queued ACK requests without blocking APRS reception."""
+        from aprs_tx import APRSTransmitError
+
         while not self._aprs_ack_stop.is_set():
             try:
                 candidate = self._aprs_ack_queue.get(timeout=0.5)
@@ -1419,6 +1511,8 @@ class KAMDaemon:
                     result.get("submitted_to_tnc", False),
                 )
 
+            except APRSTransmitError as exc:
+                logger.warning("APRS ACK not sent: %s", exc)
             except Exception:
                 logger.exception("APRS ACK worker processing failed")
             finally:
@@ -1914,6 +2008,20 @@ def main(argv: Optional[list] = None) -> None:
     )
 
     parser.add_argument(
+        "--auto-ack",
+        action="store_true",
+        default=os.environ.get("KAMXL_AUTO_ACK", "").strip().lower()
+        in ("1", "true", "yes", "on"),
+        help=(
+            "Turn on automatic APRS acknowledgments at startup "
+            "(default: $KAMXL_AUTO_ACK). Starting the daemon with this "
+            "is the operator's standing authorization for ACK "
+            "transmissions on VHF Port 2. Can also be toggled from the "
+            "dashboard."
+        ),
+    )
+
+    parser.add_argument(
         "-v", "--verbose",
         action="store_true",
         help="Also log individual packet broadcasts (DEBUG level)",
@@ -1934,6 +2042,20 @@ def main(argv: Optional[list] = None) -> None:
         args.socket,
         history_db=args.history_db,
     )
+
+    if args.auto_ack:
+        try:
+            daemon.dispatch("aprs.ack_enable", {
+                "confirm_transmit": True,
+                "confirm_vhf_port2_radio_ready": True,
+                "confirm_hf_port1_disconnected": True,
+            })
+        except Exception as exc:
+            # Keep running; it can be turned on from the dashboard.
+            logger.warning(
+                "Automatic APRS ACKs could not be enabled at startup: %s",
+                exc,
+            )
 
     # socketserver.BaseServer.shutdown() blocks until serve_forever()'s
     # own loop notices and exits -- and it deadlocks if called from the

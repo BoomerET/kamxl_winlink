@@ -198,6 +198,20 @@ DASHBOARD_HTML = """<!doctype html>
     overflow-wrap: anywhere;
   }
   #aprsOutbox { margin-top: 16px; }
+  #aprsInbox { margin-top: 16px; }
+  .autoAckToggle {
+    display: flex;
+    gap: 8px;
+    align-items: flex-start;
+    font-size: 12px;
+    color: #cfc;
+    cursor: pointer;
+  }
+  .autoAckToggle input { margin-top: 2px; }
+  #aprsAutoAckStatus.on { color: #6f6; }
+  #aprsAutoAckStatus.paused { color: #cc6; }
+  #aprsAutoAckStatus.off { color: #9ab; }
+  .inboxButtons { display: flex; gap: 8px; flex-wrap: wrap; }
   #aprsOutbox h3, #aprsInbox h3 { font-size: 13px; color: #9ab; margin: 0 0 6px; }
   .outboxEntry {
     padding: 8px 0;
@@ -533,10 +547,26 @@ DASHBOARD_HTML = """<!doctype html>
     <div id="aprsInbox">
       <h3>Received Messages</h3>
 
-      <button class="action" id="aprsRefreshInbox"
-              type="button">
-        Refresh Inbox
-      </button>
+      <label class="autoAckToggle">
+        <input id="aprsAutoAck" type="checkbox">
+        Automatically acknowledge messages to me
+        (transmits on VHF Port 2)
+      </label>
+      <div class="sub" id="aprsAutoAckStatus"
+           role="status" aria-live="polite">
+        Checking auto-ACK...
+      </div>
+
+      <div class="inboxButtons">
+        <button class="action" id="aprsRefreshInbox"
+                type="button">
+          Refresh Inbox
+        </button>
+        <button class="action" id="aprsClearInbox"
+                type="button">
+          Clear Inbox
+        </button>
+      </div>
 
       <div class="sub" id="aprsInboxStatus"
            role="status" aria-live="polite">
@@ -939,7 +969,11 @@ DASHBOARD_HTML = """<!doctype html>
         return;
       }
 
-      var messages = result.messages || [];
+      // Acks/rejects for our own messages are shown under Sent
+      // Messages instead; the inbox is just real messages.
+      var messages = (result.messages || []).filter(function (msg) {
+        return msg.kind !== "ack" && msg.kind !== "rej";
+      });
       aprsInboxStatus.textContent =
         messages.length + " received message(s).";
 
@@ -989,6 +1023,105 @@ DASHBOARD_HTML = """<!doctype html>
   }
 
   aprsInboxBtn.addEventListener("click", refreshAprsInbox);
+
+  var aprsClearBtn = document.getElementById("aprsClearInbox");
+
+  aprsClearBtn.addEventListener("click", async function () {
+    if (!window.confirm("Delete all received APRS messages?")) {
+      return;
+    }
+
+    aprsClearBtn.disabled = true;
+    aprsInboxStatus.textContent = "Clearing inbox...";
+
+    try {
+      var res = await fetch(authedUrl("/aprs/messages/clear"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: "{}"
+      });
+      var payload = await res.json();
+
+      if (!payload.ok) {
+        throw new Error(
+          (payload.error && payload.error.message) || "Request failed"
+        );
+      }
+    } catch (err) {
+      aprsInboxStatus.textContent = "Unable to clear inbox: " + String(err);
+      aprsClearBtn.disabled = false;
+      return;
+    }
+
+    aprsClearBtn.disabled = false;
+    refreshAprsInbox();
+  });
+
+  // -- Automatic acknowledgments ------------------------------------
+
+  var aprsAutoAck = document.getElementById("aprsAutoAck");
+  var aprsAutoAckStatus = document.getElementById("aprsAutoAckStatus");
+
+  function showAutoAckStatus(st) {
+    aprsAutoAck.checked = !!st.enabled;
+
+    if (st.enabled && st.paused) {
+      aprsAutoAckStatus.className = "sub paused";
+      aprsAutoAckStatus.textContent = "Auto-ACK paused: " + st.paused_reason;
+    } else if (st.enabled) {
+      aprsAutoAckStatus.className = "sub on";
+      aprsAutoAckStatus.textContent = "Auto-ACK on" +
+        (st.acks_sent ? " \u2014 " + st.acks_sent + " sent, last to " +
+          st.last_ack.to + " " + relativeTime(st.last_ack.at) : "") + ".";
+    } else {
+      aprsAutoAckStatus.className = "sub off";
+      aprsAutoAckStatus.textContent = "Auto-ACK off" +
+        (st.disabled_reason ? " (" + st.disabled_reason + ")" : "") +
+        ". Senders will keep retrying until they give up.";
+    }
+  }
+
+  async function refreshAutoAck() {
+    try {
+      showAutoAckStatus(await apiGet("/aprs/ack"));
+    } catch (err) {
+      aprsAutoAckStatus.className = "sub";
+      aprsAutoAckStatus.textContent =
+        "Unable to read auto-ACK status: " + String(err);
+    }
+  }
+
+  aprsAutoAck.addEventListener("change", async function () {
+    var wanted = aprsAutoAck.checked;
+    aprsAutoAck.disabled = true;
+    aprsAutoAckStatus.className = "sub";
+    aprsAutoAckStatus.textContent = wanted
+      ? "Checking the TNC and turning auto-ACK on..."
+      : "Turning auto-ACK off...";
+
+    try {
+      var res = await fetch(authedUrl("/aprs/ack"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled: wanted })
+      });
+      var payload = await res.json();
+
+      if (!payload.ok) {
+        aprsAutoAckStatus.textContent = "Could not change auto-ACK: " +
+          ((payload.error && payload.error.message) || "Unknown error");
+        aprsAutoAck.checked = !wanted;
+        return;
+      }
+      await refreshAutoAck();
+    } catch (err) {
+      aprsAutoAckStatus.textContent =
+        "Auto-ACK request failed: " + String(err);
+      aprsAutoAck.checked = !wanted;
+    } finally {
+      aprsAutoAck.disabled = false;
+    }
+  });
 
   function relativeTime(epochSeconds) {
     var deltaSeconds = Math.max(0, (Date.now() / 1000) - epochSeconds);
@@ -1677,8 +1810,12 @@ DASHBOARD_HTML = """<!doctype html>
   refreshReceptionStats();
   refreshPersistentHistory();
   refreshAprsOutbox();
+  refreshAprsInbox();
+  refreshAutoAck();
 
   setInterval(refreshStatus, 15000);
+  setInterval(refreshAprsInbox, 15000);
+  setInterval(refreshAutoAck, 15000);
   setInterval(refreshStations, 15000);
   setInterval(refreshReceptionStats, 15000);
   setInterval(refreshPersistentHistory, 60000);
@@ -3722,6 +3859,9 @@ ROUTES: Tuple[Tuple[str, "re.Pattern", str], ...] = (
     ("GET", re.compile(r"^/aprs/messages$"), "_h_aprs_messages"),
     ("POST", re.compile(r"^/aprs/send$"), "_h_aprs_send_message"),
     ("GET", re.compile(r"^/aprs/outbox$"), "_h_aprs_outbox"),
+    ("GET", re.compile(r"^/aprs/ack$"), "_h_aprs_ack_status"),
+    ("POST", re.compile(r"^/aprs/ack$"), "_h_aprs_ack_set"),
+    ("POST", re.compile(r"^/aprs/messages/clear$"), "_h_aprs_clear_messages"),
 )
 
 
@@ -4298,6 +4438,58 @@ class RESTRequestHandler(BaseHTTPRequestHandler):
     ) -> None:
         """Sent APRS messages and their ack status (no TNC access)."""
         self._relay("aprs.outbox")
+
+    def _h_aprs_ack_status(
+        self,
+        params: Dict[str, str],
+        query: Dict[str, Any],
+    ) -> None:
+        """Automatic-ACK status (no TNC access)."""
+        self._relay("aprs.ack_status")
+
+    def _h_aprs_ack_set(
+        self,
+        params: Dict[str, str],
+        query: Dict[str, Any],
+    ) -> None:
+        """Turn automatic ACKs on or off: body {"enabled": true|false}.
+
+        Turning them on is the operator's authorization for ACK
+        transmissions, so it supplies the daemon's three confirmations
+        (same as the dashboard's single "Transmit now" checkbox).
+        """
+        body = self._read_json_body()
+        enabled = body.get("enabled")
+
+        if not isinstance(enabled, bool):
+            self._send_json(400, {
+                "ok": False,
+                "error": {
+                    "type": "InvalidParam",
+                    "message": "'enabled' must be true or false",
+                },
+            })
+            return
+
+        if not enabled:
+            self._relay("aprs.ack_disable")
+            return
+
+        self._relay(
+            "aprs.ack_enable",
+            confirm_transmit=True,
+            confirm_vhf_port2_radio_ready=True,
+            confirm_hf_port1_disconnected=True,
+            _socket_timeout=30,
+        )
+
+    def _h_aprs_clear_messages(
+        self,
+        params: Dict[str, str],
+        query: Dict[str, Any],
+    ) -> None:
+        """Delete all stored received APRS messages for this station."""
+        self._relay("aprs.clear_messages")
 
     # -- Winlink (milestone 8) -------------------------------------------
     #
