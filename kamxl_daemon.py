@@ -45,6 +45,7 @@ import threading
 import time
 import serial
 import queue
+import re
 
 from typing import Any, Callable, Dict, List, Optional, Set
 
@@ -72,10 +73,20 @@ DEFAULT_BAUDRATE = 19200  # matches KAMXL's own constructor default
 # errors) straight to stderr during the offline test run.
 logger = logging.getLogger("kamxl_daemon")
 
-# This station's APRS callsign: the addressee our inbox shows, the
-# callsign automatic ACKs answer for, and the addressee incoming
-# acks for our own sent messages must carry.
-APRS_STATION_CALLSIGN = "N5BA"
+_CALLSIGN_RE = re.compile(r"[A-Z0-9]{1,6}(?:-[0-9]{1,2})?")
+
+
+def normalize_station_callsign(callsign: str) -> str:
+    """Validate and upper-case this station's APRS callsign (SSID ok)."""
+    value = (callsign or "").strip().upper()
+
+    if not _CALLSIGN_RE.fullmatch(value):
+        raise ValueError(
+            f"Invalid APRS station callsign {callsign!r} "
+            "(expected e.g. N5BA or N5BA-10)"
+        )
+
+    return value
 logger.addHandler(logging.NullHandler())
 
 
@@ -90,8 +101,20 @@ class KAMDaemon:
         kam: KAMXL,
         socket_path: str = DEFAULT_SOCKET_PATH,
         history_db: Optional[str] = None,
+        station_callsign: Optional[str] = None,
     ) -> None:
         self.kam = kam
+
+        # This station's APRS callsign (KAMXL_CALLSIGN / --callsign):
+        # the addressee the inbox shows, the callsign automatic ACKs
+        # answer for, and the addressee acks for our own sent messages
+        # must carry. Must match the KAM-XL's MYCALL exactly (SSID
+        # included). None disables all three -- nothing is ever
+        # acked or matched for a callsign we don't know.
+        self.station_callsign = (
+            normalize_station_callsign(station_callsign)
+            if station_callsign is not None else None
+        )
         self.socket_path = socket_path
         self._reception_writer = None
 
@@ -132,7 +155,7 @@ class KAMDaemon:
 
         # Messages we sent, keyed by the {ID we appended, so incoming
         # ackID/rejID replies can be matched back to them.
-        self._outbox = OutboundAprsTracker(APRS_STATION_CALLSIGN)
+        self._outbox = OutboundAprsTracker(self.station_callsign or "")
 
         # True after anything that may have left an AX.25 link or
         # conversational session open (terminal, connect, PBBS, ...).
@@ -618,7 +641,7 @@ class KAMDaemon:
         Never touches the TNC.
         """
         return {
-            "station": APRS_STATION_CALLSIGN,
+            "station": self.station_callsign,
             "messages": self._outbox.list(),
         }
 
@@ -810,8 +833,13 @@ class KAMDaemon:
     def _m_aprs_messages(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """Return stored APRS messages without accessing the TNC."""
 
-        addressee = params.get("addressee", APRS_STATION_CALLSIGN)
+        addressee = params.get("addressee") or self.station_callsign
         limit = params.get("limit", 100)
+
+        if not addressee:
+            raise KAMError(
+                "No APRS station callsign configured (KAMXL_CALLSIGN)"
+            )
 
         if self._reception_writer is None:
             return {
@@ -834,10 +862,15 @@ class KAMDaemon:
         self, params: Dict[str, Any]
     ) -> Dict[str, Any]:
         """Delete stored received APRS messages. Never touches the TNC."""
-        addressee = params.get("addressee", APRS_STATION_CALLSIGN)
+        addressee = params.get("addressee") or self.station_callsign
 
         if self._reception_writer is None:
             return {"enabled": False, "deleted": 0}
+
+        if not addressee:
+            raise KAMError(
+                "No APRS station callsign configured (KAMXL_CALLSIGN)"
+            )
 
         deleted = self._reception_writer.clear_aprs_messages(addressee)
         logger.info("Cleared %d stored APRS message(s) for %s",
@@ -999,7 +1032,7 @@ class KAMDaemon:
             "disabled_reason": None if enabled else disabled_reason,
             "acks_sent": acks_sent,
             "last_ack": last_ack,
-            "station": APRS_STATION_CALLSIGN,
+            "station": self.station_callsign,
             "pending": self._aprs_ack_queue.qsize(),
             "worker_running": (
                 self._aprs_ack_thread is not None
@@ -1518,10 +1551,17 @@ class KAMDaemon:
             finally:
                 self._aprs_ack_queue.task_done()
 
-    @staticmethod
-    def _aprs_ack_candidate(packet: Packet):
-        """Identify incoming APRS messages eligible for an ACK."""
-        from aprs import parse_aprs_message
+    def _aprs_ack_candidate(self, packet: Packet):
+        """Identify incoming APRS messages eligible for an ACK.
+
+        Returns (originator, message_id). For a message gated from
+        APRS-IS by an iGate (third-party ``}`` packet) the originator is
+        the station inside the header, not the iGate: that's who the
+        ACK must be addressed to, and the iGate gates our RF ACK back
+        to APRS-IS.
+        """
+        if self.station_callsign is None:
+            return None
 
         if packet.port != 2:
             return None
@@ -1529,7 +1569,8 @@ class KAMDaemon:
         if packet.frame_type not in ("UI", None):
             return None
 
-        message = parse_aprs_message(packet.payload)
+        source, payload = unwrap_third_party(packet.source, packet.payload)
+        message = parse_aprs_message(payload)
 
         if message is None:
             return None
@@ -1538,14 +1579,15 @@ class KAMDaemon:
             return None
 
         # Only acknowledge messages addressed to this station.
-        if message.addressee != APRS_STATION_CALLSIGN:
+        if message.addressee != self.station_callsign:
             return None
 
-        # Never acknowledge our own transmissions.
-        if packet.source.upper() == APRS_STATION_CALLSIGN:
+        # Never acknowledge our own transmissions (including our own
+        # packets gated back to RF by an iGate).
+        if source.upper() == self.station_callsign:
             return None
 
-        return packet.source, message.message_id
+        return source.upper(), message.message_id
 
     def _handle_packet(self, packet: Packet) -> None:
         now = time.monotonic()
@@ -2008,6 +2050,18 @@ def main(argv: Optional[list] = None) -> None:
     )
 
     parser.add_argument(
+        "--callsign",
+        default=os.environ.get("KAMXL_CALLSIGN"),
+        required=os.environ.get("KAMXL_CALLSIGN") is None,
+        help=(
+            "This station's APRS callsign, exactly as the KAM-XL's "
+            "MYCALL (SSID included), e.g. N5BA or N5BA-10 (default: "
+            "$KAMXL_CALLSIGN; required if that's unset). Used for the "
+            "inbox, automatic ACKs, and matching acks to sent messages."
+        ),
+    )
+
+    parser.add_argument(
         "--auto-ack",
         action="store_true",
         default=os.environ.get("KAMXL_AUTO_ACK", "").strip().lower()
@@ -2028,6 +2082,12 @@ def main(argv: Optional[list] = None) -> None:
     )
     args = parser.parse_args(argv)
 
+    # Validate before opening the serial port.
+    try:
+        station_callsign = normalize_station_callsign(args.callsign)
+    except ValueError as exc:
+        parser.error(str(exc))
+
     logging.basicConfig(
         level=logging.DEBUG if args.verbose else logging.INFO,
         format="%(asctime)s %(message)s",
@@ -2041,6 +2101,7 @@ def main(argv: Optional[list] = None) -> None:
         kam,
         args.socket,
         history_db=args.history_db,
+        station_callsign=station_callsign,
     )
 
     if args.auto_ack:

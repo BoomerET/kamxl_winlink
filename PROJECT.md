@@ -1454,7 +1454,13 @@ Avoid: giant functions, global state.
 ## Test Hardware
 
 - Kantronics KAM-XL, firmware 1.24160
-- Callsign AI6K, COM8, Port 2
+- Station callsign N5BA (set via `KAMXL_CALLSIGN`), serial port
+  `/dev/kamxl` on an Evolve Maestro III laptop (Linux, systemd
+  services `kamxl-daemon` / `kamxl-web`). Early development used
+  AI6K on COM8 (Windows).
+- Port 2: VHF APRS on 144.390 MHz, 1200 baud. Port 1 (HF) is kept
+  disconnected for APRS work.
+- APRS messaging test partner: Kenwood TH-D75A as N5BA-7
 - Live testing on 1200 baud packet
 - Everything should be validated against the real unit, not just mocked
 
@@ -1648,7 +1654,8 @@ acknowledgments.
   from the new `aprs_outbox.OutboundAprsTracker` (4 base-36 chars,
   clock-seeded so restarts don't reuse recent IDs).
 - The monitor thread matches incoming `ackID`/`rejID` -- addressed to
-  `APRS_STATION_CALLSIGN`, from the original addressee, with our ID --
+  this station's callsign (`KAMXL_CALLSIGN`, see below), from the
+  original addressee, with our ID --
   and marks the message `acked`/`rejected`. Passive only: no serial
   I/O, wrapped so a bookkeeping error can't kill the monitor thread.
 - Also handled: third-party (`}`) packets from iGates (how replies
@@ -1664,11 +1671,14 @@ acknowledgments.
 - Sent-message state is in memory only (lost on daemon restart);
   acks themselves are still persisted in `aprs_messages` when
   `--history-db` is on.
-- Not yet verified on real hardware/RF.
-- Known gap left alone: automatic ACKs (`aprs.ack_enable`) still only
-  answer direct RF messages, not third-party ones gated from APRS-IS.
-  Changing what triggers an automatic RF transmission felt like a
-  decision for Dave, not a side effect of this change.
+- **Verified over the air 2026-10-17** against a Kenwood TH-D75A
+  (N5BA-7) on 144.390: dashboard -> D75 message, D75's automatic ack
+  matched back to it (status Acknowledged); D75 -> N5BA message shown
+  in the inbox and auto-acked by the daemon, D75 marked it
+  acknowledged. Messages and ACKs confirmed in both directions.
+- Automatic ACKs for messages gated from APRS-IS were initially left
+  out; Dave asked for them and they were added later (see "Station
+  callsign from .env, and auto-ACK for iGated messages" below).
 
 Tests: `tests/test_aprs_outbox.py` (45).
 
@@ -1690,11 +1700,10 @@ unworkable. The verification itself only ever writes Ctrl-C and
   is transmitted, and the state stays unsafe.
 - `aprs.tx_initialize` still exists but no longer needs
   `confirm_radio_disconnected`.
-- Deliberately unchanged: the automatic-ACK worker does NOT
-  auto-verify. Its Ctrl-C would fire with nobody at the controls and
-  could knock an operator out of a live connected session, so after
-  terminal/PBBS use auto-ACKs stay blocked until the next manual send
-  (or `aprs.tx_initialize`) re-verifies the TNC.
+- At this point the automatic-ACK worker did not auto-verify (its
+  Ctrl-C could knock an operator out of a live connected session).
+  Superseded by the next section: it now auto-verifies except when a
+  session may be open, in which case it pauses.
 
 ### Dashboard auto-ACK switch and Clear Inbox
 
@@ -1711,5 +1720,36 @@ unworkable. The verification itself only ever writes Ctrl-C and
   received messages for this station. Inbox auto-loads, refreshes
   every 15 s, and hides ack/rej rows.
 
+- Verified on the air the same night: auto-ACK on, D75 messages to
+  N5BA acked and marked acknowledged on the radio. History enabled via
+  `KAMXL_HISTORY_DB=/var/lib/kamxl/reception.sqlite3` in `.env`.
+
 Tests: `tests/test_auto_ack_and_inbox.py` (13).
+
+### Station callsign from .env, and auto-ACK for iGated messages
+
+- The station callsign is no longer hard-coded (`N5BA` used to be a
+  constant in `kamxl_daemon.py` and the dashboard's inbox URL). It now
+  comes from `KAMXL_CALLSIGN` (normally in `.env`) or `--callsign`,
+  and is **required**, same fail-fast reasoning as `--port`: a missing
+  or wrong callsign stops the daemon at startup, before the serial
+  port is opened, instead of silently never matching anything. It
+  must equal the KAM-XL's MYCALL exactly, SSID included (`N5BA` and
+  `N5BA-10` are different stations to APRS). `KAMDaemon(...,
+  station_callsign=None)` -- the library default -- disables the
+  inbox, ack matching and auto-ACKs rather than guessing.
+- The dashboard inbox and `GET /aprs/messages` now default to the
+  daemon's configured callsign instead of a hard-coded `N5BA`.
+- Automatic ACKs now also answer messages gated to RF from APRS-IS
+  (third-party `}` packets from an iGate -- phone apps, ANSRVR,
+  aprs.fi messaging). The ACK is addressed to the originator inside
+  the third-party header, not the iGate, and goes out on RF like any
+  other ACK; an iGate in range gates it back to APRS-IS. Our own
+  packets gated back to RF are never acked. Duplicate copies (iGate +
+  digipeaters) are still suppressed by the existing 10 s dedupe.
+- Limitation: ACKs, like all our transmissions, go out direct (no
+  digipeater path), so they only reach APRS-IS if an iGate hears the
+  KAM-XL's radio directly.
+
+Tests: `tests/test_callsign_and_igate.py` (11).
 

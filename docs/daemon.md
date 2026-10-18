@@ -22,8 +22,15 @@ defaults:
 | `--port` | `KAMXL_PORT` | *(required -- no fallback)* |
 | `--socket` | `KAMXL_SOCKET` | `/tmp/kamxl.sock` |
 | `--baud` | `KAMXL_BAUD` | `19200` |
+| `--callsign` | `KAMXL_CALLSIGN` | *(required -- no fallback)* |
 | `--history-db` | `KAMXL_HISTORY_DB` | *(off)* |
 | `--auto-ack` | `KAMXL_AUTO_ACK=1` | *(off)* |
+
+`--callsign` is this station's APRS callsign, exactly as the KAM-XL's
+MYCALL (SSID included, e.g. `N5BA` or `N5BA-10`). It decides which
+received messages show in the inbox and get auto-acked, and which
+incoming acks match messages you sent. Like `--port`, it has no
+default: the daemon refuses to start without it.
 
 `--auto-ack` turns automatic APRS acknowledgments on at startup (put
 `KAMXL_AUTO_ACK=1` in `.env` to make that permanent); it can also be

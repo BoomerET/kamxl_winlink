@@ -565,7 +565,7 @@ daemon restart doesn't reuse recent ones.
 | `rejected` | `rejID` heard from the addressee |
 
 An incoming ack is matched only when it is addressed to this station
-(`APRS_STATION_CALLSIGN` in `kamxl_daemon.py`, currently `N5BA`), sent
+(`KAMXL_CALLSIGN` / `--callsign` on the daemon, e.g. `N5BA`), sent
 by the station the message was addressed to (exact SSID), and carries
 the assigned ID. Also recognized: acks that arrive via an iGate as
 APRS third-party packets (`}ANSRVR>...::N5BA     :ack0A1F`), APRS 1.1
@@ -593,6 +593,9 @@ fields separately.
 turning it on is the operator's authorization for ACK transmissions on
 VHF Port 2 and runs the same Ctrl-C + `STATUS` TNC check as a send.
 `--auto-ack` / `KAMXL_AUTO_ACK=1` turns it on at daemon startup.
+Messages that reach RF from APRS-IS through an iGate (third-party
+`}` packets) are acked too, addressed to the originating station
+rather than the iGate.
 
 When the TNC state is unknown the ACK worker re-checks the TNC itself
 before transmitting -- except after a web-terminal command, a connect,

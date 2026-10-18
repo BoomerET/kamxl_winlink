@@ -89,11 +89,15 @@ For the background daemon, set the following in `.env`:
 
 ```dotenv
 KAMXL_PORT=/dev/kam-xl
+KAMXL_CALLSIGN=N0CALL                # your KAM-XL's MYCALL, SSID included
+KAMXL_HISTORY_DB=/var/lib/kamxl/reception.sqlite3   # optional: inbox + history
+KAMXL_AUTO_ACK=1                     # optional: auto-ack received messages
 ```
 
 The library accepts an explicit serial port on all platforms.
-The daemon requires `--port` or `KAMXL_PORT` rather than
-silently selecting a serial device.
+The daemon requires `--port`/`KAMXL_PORT` and `--callsign`/`KAMXL_CALLSIGN`
+rather than silently guessing either.
+
 ## Status
 
 Actively developed and tested against real hardware (Kantronics
