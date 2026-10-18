@@ -556,7 +556,10 @@ def format_aprs_message(
 
     addressee = addressee.strip().upper()
 
-    if not re.fullmatch(r"[A-Z0-9]{1,6}(?:-[0-9]{1,2})?", addressee):
+    # Callsign with optional SSID, or a service name with a short
+    # alphanumeric suffix such as WHO-IS (APRS addressees are just
+    # 9 characters; real APRS-IS services use this form).
+    if not re.fullmatch(r"[A-Z0-9]{1,6}(?:-[A-Z0-9]{1,2})?", addressee):
         raise ValueError("Invalid APRS addressee")
 
     if len(addressee) > 9:

@@ -118,6 +118,89 @@
     </div>
   </div>
 
+  <div class="card" id="servicesCard">
+    <h2>APRS Services</h2>
+    <div class="sub">
+      Internet services you reach with an ordinary APRS message. Pick one,
+      fill it in, and <b>Use</b> puts it in the APRS Messaging form; tick
+      Transmit now and send. Replies show up under Conversations.
+    </div>
+
+    <label for="svcSelect" class="svcLabel">Service</label>
+    <select id="svcSelect">
+      <option value="wx">Weather forecast (WXBOT)</option>
+      <option value="sms">Text message to a phone (SMSGTE)</option>
+      <option value="email">Email (EMAIL-2)</option>
+      <option value="group">Group messaging (ANSRVR)</option>
+      <option value="whois">Callsign lookup (WHO-IS)</option>
+    </select>
+
+    <div class="svcFields" data-svc="wx">
+      <label for="svcWxWhere" class="svcLabel">Where</label>
+      <input id="svcWxWhere" type="text" autocomplete="off"
+             placeholder="ZIP, City,ST or airport (76201, Denton,TX, KDTO)">
+      <label for="svcWxWhen" class="svcLabel">What</label>
+      <select id="svcWxWhen">
+        <option value="">Today's forecast</option>
+        <option value="tonight">Tonight</option>
+        <option value="tomorrow">Tomorrow</option>
+        <option value="current">Current conditions</option>
+        <option value="metar">Airport METAR</option>
+      </select>
+    </div>
+
+    <div class="svcFields" data-svc="sms" hidden>
+      <label for="svcSmsTo" class="svcLabel">Phone number (US/Canada) or alias</label>
+      <input id="svcSmsTo" type="text" autocomplete="off" placeholder="9405551234">
+      <label for="svcSmsText" class="svcLabel">Text</label>
+      <input id="svcSmsText" type="text" autocomplete="off" placeholder="Running late, home by 6">
+      <div class="sub svcNote">
+        For replies to reach you, register once by sending SMSGTE:
+        <code>#mynumber add</code> followed by your own number.
+      </div>
+    </div>
+
+    <div class="svcFields" data-svc="email" hidden>
+      <label for="svcEmailTo" class="svcLabel">Email address or shortcut</label>
+      <input id="svcEmailTo" type="text" autocomplete="off" placeholder="name@example.com">
+      <label for="svcEmailText" class="svcLabel">Text</label>
+      <input id="svcEmailText" type="text" autocomplete="off" placeholder="Arrived safely">
+      <div class="sub svcNote">
+        Save room with a shortcut: send EMAIL-2 <code>me name@example.com</code>
+        once, then use <code>me</code> as the address.
+      </div>
+    </div>
+
+    <div class="svcFields" data-svc="group" hidden>
+      <label for="svcGroupAction" class="svcLabel">Action</label>
+      <select id="svcGroupAction">
+        <option value="CQ">Send to the group (and join it)</option>
+        <option value="J">Join the group</option>
+        <option value="U">Leave the group</option>
+      </select>
+      <label for="svcGroupName" class="svcLabel">Group</label>
+      <input id="svcGroupName" type="text" autocomplete="off" placeholder="HOTG">
+      <label for="svcGroupText" class="svcLabel">Text</label>
+      <input id="svcGroupText" type="text" autocomplete="off" placeholder="Hello from Denton County">
+      <div class="sub svcNote">
+        Membership lasts 12 hours. Common groups: HOTG (hams on the go),
+        APRSTHURSDAY (Thursday net).
+      </div>
+    </div>
+
+    <div class="svcFields" data-svc="whois" hidden>
+      <label for="svcWhoisCall" class="svcLabel">Callsign</label>
+      <input id="svcWhoisCall" type="text" autocomplete="off" placeholder="W1AW">
+    </div>
+
+    <div class="svcPreview">
+      <span>To <b id="svcPreviewTo">WXBOT</b>:</span>
+      <code id="svcPreviewText"></code>
+      <span id="svcCount" class="sub"></span>
+    </div>
+    <button class="action" id="svcUseBtn" type="button">Use</button>
+  </div>
+
   <div class="card" id="bulletinCard">
     <h2>Bulletins <span id="bulletinNewBadge" hidden></span></h2>
     <div class="bulletinControls">

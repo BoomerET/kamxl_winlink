@@ -1517,6 +1517,136 @@
   refreshStations();
   refreshReceptionStats();
   refreshPersistentHistory();
+  // -- APRS services ----------------------------------------------------
+  //
+  // Templates for the common APRS-IS services. They only build the
+  // addressee + text and drop it into the normal send form, so sending
+  // still needs the "Transmit now" tick and gets IDs, acks and resends
+  // like any other message.
+
+  var APRS_MESSAGE_MAX = 67;
+
+  function svcValue(id) {
+    return document.getElementById(id).value.trim();
+  }
+
+  // Returns {to, text} or {error}.
+  function buildServiceMessage(service, f) {
+    var text;
+    switch (service) {
+      case "wx":
+        if (!f.where) return { error: "Enter a ZIP, City,ST or airport code." };
+        text = f.where.replace(/\s*,\s*/g, ",") + (f.when ? " " + f.when : "");
+        return { to: "WXBOT", text: text };
+
+      case "sms": {
+        var to = f.to.replace(/[\s().-]/g, "");
+        if (/^\+?1?\d{10}$/.test(to)) to = to.replace(/^\+?1?(\d{10})$/, "$1");
+        else if (!/^[A-Za-z0-9]{1,20}$/.test(f.to)) {
+          return { error: "Enter a 10-digit phone number or an alias." };
+        }
+        if (!f.text) return { error: "Enter the text to send." };
+        return { to: "SMSGTE", text: "@" + to + " " + f.text };
+      }
+
+      case "email":
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(f.to) && !/^[A-Za-z0-9]+$/.test(f.to)) {
+          return { error: "Enter an email address or a shortcut name." };
+        }
+        if (!f.text) return { error: "Enter the text to send." };
+        return { to: "EMAIL-2", text: f.to + " " + f.text };
+
+      case "group": {
+        var group = f.group.toUpperCase();
+        if (!/^[A-Z0-9]{1,20}$/.test(group)) {
+          return { error: "Enter a group name (letters and digits)." };
+        }
+        if (f.action === "CQ") {
+          if (!f.text) return { error: "Enter the text to send to the group." };
+          return { to: "ANSRVR", text: "CQ " + group + " " + f.text };
+        }
+        return { to: "ANSRVR", text: f.action + " " + group };
+      }
+
+      case "whois": {
+        var call = f.call.toUpperCase();
+        if (!/^[A-Z0-9]{1,6}(-[0-9]{1,2})?$/.test(call)) {
+          return { error: "Enter a callsign, e.g. W1AW." };
+        }
+        return { to: "WHO-IS", text: call };
+      }
+    }
+    return { error: "Unknown service." };
+  }
+
+  var svcSelect = document.getElementById("svcSelect");
+  var svcPreviewTo = document.getElementById("svcPreviewTo");
+  var svcPreviewText = document.getElementById("svcPreviewText");
+  var svcCount = document.getElementById("svcCount");
+  var svcUseBtn = document.getElementById("svcUseBtn");
+
+  function currentServiceFields() {
+    return {
+      where: svcValue("svcWxWhere"),
+      when: document.getElementById("svcWxWhen").value,
+      to: svcSelect.value === "sms" ? svcValue("svcSmsTo") : svcValue("svcEmailTo"),
+      text: svcSelect.value === "sms" ? svcValue("svcSmsText")
+        : svcSelect.value === "email" ? svcValue("svcEmailText")
+        : svcValue("svcGroupText"),
+      group: svcValue("svcGroupName"),
+      action: document.getElementById("svcGroupAction").value,
+      call: svcValue("svcWhoisCall")
+    };
+  }
+
+  function updateServicePreview() {
+    document.querySelectorAll("#servicesCard .svcFields").forEach(function (el) {
+      el.hidden = el.getAttribute("data-svc") !== svcSelect.value;
+    });
+    document.getElementById("svcGroupText").disabled =
+      document.getElementById("svcGroupAction").value !== "CQ";
+
+    var built = buildServiceMessage(svcSelect.value, currentServiceFields());
+    svcPreviewTo.textContent = built.to || {
+      wx: "WXBOT", sms: "SMSGTE", email: "EMAIL-2", group: "ANSRVR", whois: "WHO-IS"
+    }[svcSelect.value];
+
+    if (built.error) {
+      svcPreviewText.textContent = "";
+      svcCount.textContent = built.error;
+      svcCount.className = "sub";
+      svcUseBtn.disabled = true;
+      return;
+    }
+
+    svcPreviewText.textContent = built.text;
+    var over = built.text.length > APRS_MESSAGE_MAX;
+    svcCount.textContent = built.text.length + "/" + APRS_MESSAGE_MAX +
+      (over ? " — too long for one APRS message" : "");
+    svcCount.className = over ? "sub err" : "sub";
+    svcUseBtn.disabled = over;
+  }
+
+  document.querySelectorAll("#servicesCard input, #servicesCard select")
+    .forEach(function (el) {
+      el.addEventListener("input", updateServicePreview);
+      el.addEventListener("change", updateServicePreview);
+    });
+
+  svcUseBtn.addEventListener("click", function () {
+    var built = buildServiceMessage(svcSelect.value, currentServiceFields());
+    if (built.error || built.text.length > APRS_MESSAGE_MAX) return;
+    document.getElementById("aprsRecipient").value = built.to;
+    document.getElementById("aprsMessageText").value = built.text;
+    aprsSendStatus.textContent = "Message to " + built.to +
+      " is ready in the message form — tick Transmit now and send.";
+    var tick = document.getElementById("aprsConfirmTransmit");
+    tick.scrollIntoView({ block: "center", behavior: "smooth" });
+    tick.focus();
+  });
+
+  updateServicePreview();
+
   // -- Bulletins ------------------------------------------------------
   //
   // Broadcasts heard on the air: BLN0-9 bulletins, BLNA-Z

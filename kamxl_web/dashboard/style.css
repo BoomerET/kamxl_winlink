@@ -523,3 +523,21 @@
   }
   .bulletinSeen { color: #678; font-size: 11px; white-space: nowrap; }
 
+  /* APRS services card */
+  #servicesCard { flex: 1 1 340px; }
+  #servicesCard input[type="text"], #servicesCard select {
+    width: 100%; box-sizing: border-box; margin-top: 2px;
+    background: #0b0f10; color: #d4f7d4; border: 1px solid #234;
+    border-radius: 3px; padding: 6px 8px; font: inherit; font-size: 13px;
+  }
+  #servicesCard input:disabled { opacity: 0.4; }
+  .svcLabel { display: block; margin-top: 10px; font-size: 12px; color: #9ab; }
+  .svcNote { margin-top: 6px; line-height: 1.5; }
+  .svcNote code, .svcPreview code { color: #cfc; }
+  .svcPreview {
+    margin-top: 12px; padding: 8px; border: 1px dashed #234; border-radius: 4px;
+    font-size: 12px; display: flex; flex-wrap: wrap; gap: 6px; align-items: baseline;
+    overflow-wrap: anywhere;
+  }
+  .svcPreview code { flex: 1 1 100%; font-size: 13px; }
+

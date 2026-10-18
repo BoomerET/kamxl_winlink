@@ -1982,3 +1982,20 @@ Tests: `tests/test_weather.py` (13).
 
 Tests: `tests/test_bulletins.py` (13).
 
+### APRS Services card
+
+A dashboard card with templates for WXBOT (weather by ZIP, City,ST,
+airport; today/tonight/tomorrow/current/metar), SMSGTE (SMS, phone
+normalized to 10 digits or an alias), EMAIL-2 (address or shortcut),
+ANSRVR (CQ/join/leave a group) and WHO-IS (callsign lookup). Syntax
+checked against the services' own documentation (KI6WJP's WXBOT page,
+aprs-is.net's email page, and the "APRS Queries" reference). It only
+fills the existing send form -- no new transmit path -- with a live
+preview and 67-character limit. Writing its test exposed a real gap:
+`format_aprs_message()` rejected `WHO-IS` (it only allowed numeric
+SSIDs), so addressees may now carry a 1-2 character alphanumeric
+suffix; malformed addressees are still rejected and the live TX
+transaction accepts the result.
+
+Tests: `tests/test_aprs_services.py` (3).
+
