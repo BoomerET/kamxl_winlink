@@ -156,14 +156,21 @@ def validate_unproto(response: str) -> str:
     if not isinstance(response, str):
         raise APRSTransmitError("Invalid UNPROTO response")
 
-    value = response.strip().upper()
+    # Collapse runs of spaces; the KAM-XL pads some displays.
+    value = re.sub(r" +", " ", response.strip().upper())
+    value = value.replace(" ,", ",").replace(", ", ",")
 
-    if not re.fullmatch(
+    # One port's value: DEST [VIA DIGI,DIGI...]. The KAM-XL shows a
+    # multi-port value as two of these separated by "/", and a path
+    # can appear on either side (e.g. after we set APRS VIA ... it
+    # reads back "APRS VIA WIDE1-1,WIDE2-1/APRS VIA WIDE1-1,WIDE2-1").
+    side = (
         r"[A-Z0-9]{1,6}(?:-[0-9]{1,2})?"
-        r"(?:/[A-Z0-9]{1,6}(?:-[0-9]{1,2})?)?"
-        r"(?: VIA [A-Z0-9-]+(?:,[A-Z0-9-]+)*)?",
-        value,
-    ):
+        r"(?: VIA [A-Z0-9]{1,6}(?:-[0-9]{1,2})?"
+        r"(?:,[A-Z0-9]{1,6}(?:-[0-9]{1,2})?)*)?"
+    )
+
+    if not re.fullmatch(rf"{side}(?:/{side})?", value):
         raise APRSTransmitError(
             f"Unrecognized UNPROTO configuration: {response!r}"
         )
@@ -266,6 +273,41 @@ def check_aprs_tx_preflight(kam) -> dict:
         "checks": [command for command, _ in checks],
     }
 
+# Uncompressed position report as built by aprs.format_aprs_position().
+_POSITION_RE = re.compile(
+    r"[=!][0-9]{4}\.[0-9]{2}[NS][/\\0-9A-Z][0-9]{5}\.[0-9]{2}[EW]"
+    r"[\x21-\x7E](?:(?![|~])[\x20-\x7E]){0,43}"
+)
+
+
+def validate_aprs_path(path: str) -> str:
+    """
+    Validate a digipeater path like ``WIDE1-1,WIDE2-1``.
+
+    Returns the normalized (upper-case, no spaces) path, or "" for a
+    direct transmission. At most 8 digipeaters (AX.25 limit).
+    """
+    if path is None:
+        return ""
+
+    if not isinstance(path, str):
+        raise APRSTransmitError("Invalid APRS digipeater path")
+
+    value = path.strip().upper().replace(" ", "")
+
+    if value in ("", "DIRECT", "NONE"):
+        return ""
+
+    if not re.fullmatch(
+        r"[A-Z0-9]{1,6}(?:-[0-9]{1,2})?"
+        r"(?:,[A-Z0-9]{1,6}(?:-[0-9]{1,2})?){0,7}",
+        value,
+    ):
+        raise APRSTransmitError(f"Invalid APRS digipeater path: {path!r}")
+
+    return value
+
+
 def build_aprs_tx_plan(
     payload: str,
     original_unproto: str,
@@ -282,7 +324,10 @@ def build_aprs_tx_plan(
     if not isinstance(payload, str):
         raise APRSTransmitError("Invalid APRS payload")
 
-    if not re.fullmatch(r":[A-Z0-9 -]{9}:[\x20-\x7E]+", payload):
+    if not (
+        re.fullmatch(r":[A-Z0-9 -]{9}:[\x20-\x7E]+", payload)
+        or _POSITION_RE.fullmatch(payload)
+    ):
         raise APRSTransmitError("Invalid APRS message format")
 
     if "\r" in payload or "\n" in payload:
@@ -292,12 +337,7 @@ def build_aprs_tx_plan(
         raise APRSTransmitError("APRS payload exceeds Port 2 PACLEN")
 
     if path:
-        if not re.fullmatch(
-            r"[A-Z0-9]{1,6}-[0-9]{1,2}"
-            r"(?:,[A-Z0-9]{1,6}-[0-9]{1,2})*",
-            path,
-        ):
-            raise APRSTransmitError("Invalid APRS digipeater path")
+        path = validate_aprs_path(path)
 
     unproto = f"APRS VIA {path}" if path else "APRS"
 
@@ -365,21 +405,27 @@ def _execute_aprs_tx_transaction(kam, payload: str, path: str = "") -> dict:
     if not isinstance(payload, str) or len(payload) < 11:
         raise APRSTransmitError("Invalid APRS payload")
 
-    # Validate the complete payload through the existing formatter.
-    if payload[0] != ":" or payload[10] != ":":
-        raise APRSTransmitError("Invalid APRS message structure")
+    if _POSITION_RE.fullmatch(payload):
+        # Position beacon, exactly as format_aprs_position() builds it.
+        pass
+    else:
+        # Validate the complete message through the existing formatter.
+        if payload[0] != ":" or payload[10] != ":":
+            raise APRSTransmitError("Invalid APRS message structure")
 
-    addressee = payload[1:10].strip()
-    message = payload[11:]
-    message_id = None
+        addressee = payload[1:10].strip()
+        message = payload[11:]
+        message_id = None
 
-    # A trailing {ID requests an acknowledgment; re-validate it
-    # separately, since "{" is otherwise reserved in message text.
-    if "{" in message:
-        message, message_id = message.rsplit("{", 1)
+        # A trailing {ID requests an acknowledgment; re-validate it
+        # separately, since "{" is otherwise reserved in message text.
+        if "{" in message:
+            message, message_id = message.rsplit("{", 1)
 
-    if format_aprs_message(addressee, message, message_id=message_id) != payload:
-        raise APRSTransmitError("Noncanonical APRS message")
+        if format_aprs_message(
+            addressee, message, message_id=message_id
+        ) != payload:
+            raise APRSTransmitError("Noncanonical APRS message")
 
     # Validate path before touching hardware.
     build_aprs_tx_plan(payload, "CQ/CQ", path)

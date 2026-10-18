@@ -76,6 +76,10 @@ logger = logging.getLogger("kamxl_daemon")
 _CALLSIGN_RE = re.compile(r"[A-Z0-9]{1,6}(?:-[0-9]{1,2})?")
 
 
+class _BeaconPaused(Exception):
+    """Automatic beacon skipped for now; will retry shortly."""
+
+
 def normalize_station_callsign(callsign: str) -> str:
     """Validate and upper-case this station's APRS callsign (SSID ok)."""
     value = (callsign or "").strip().upper()
@@ -102,8 +106,47 @@ class KAMDaemon:
         socket_path: str = DEFAULT_SOCKET_PATH,
         history_db: Optional[str] = None,
         station_callsign: Optional[str] = None,
+        aprs_path: str = "",
+        beacon: Optional[Dict[str, Any]] = None,
+        beacon_interval_minutes: float = 30,
     ) -> None:
+        from aprs_tx import validate_aprs_path
+
         self.kam = kam
+
+        # Digipeater path for everything we transmit on APRS (messages,
+        # resends, ACKs, beacons). "" = direct. The command line
+        # defaults this to WIDE1-1,WIDE2-1 (KAMXL_APRS_PATH).
+        self.aprs_path = validate_aprs_path(aprs_path)
+
+        # Position beacon payload, built and validated once up front
+        # (None = no position configured, beacon unavailable).
+        self._beacon_payload: Optional[str] = None
+        self._beacon_position: Optional[Dict[str, Any]] = None
+        if beacon is not None:
+            from aprs import format_aprs_position
+            symbol = beacon.get("symbol", "/-")
+            if not isinstance(symbol, str) or len(symbol) != 2:
+                raise ValueError(
+                    "Beacon symbol must be two characters, e.g. '/-'"
+                )
+            self._beacon_payload = format_aprs_position(
+                float(beacon["latitude"]),
+                float(beacon["longitude"]),
+                symbol_table=symbol[0],
+                symbol_code=symbol[1],
+                comment=beacon.get("comment", "") or "",
+            )
+            self._beacon_position = {
+                "latitude": float(beacon["latitude"]),
+                "longitude": float(beacon["longitude"]),
+                "symbol": symbol,
+                "comment": beacon.get("comment", "") or "",
+            }
+
+        if beacon_interval_minutes < 10:
+            raise ValueError("Beacon interval must be at least 10 minutes")
+        self._beacon_interval = float(beacon_interval_minutes) * 60
 
         # This station's APRS callsign (KAMXL_CALLSIGN / --callsign):
         # the addressee the inbox shows, the callsign automatic ACKs
@@ -166,6 +209,19 @@ class KAMDaemon:
         self._aprs_ack_disabled_reason: Optional[str] = None
         self._aprs_acks_sent = 0
         self._aprs_last_ack: Optional[Dict[str, Any]] = None
+
+        # Position beacon state. Off by default; never inherited across
+        # restarts except via --beacon / KAMXL_BEACON at startup.
+        # Lock order: _kam_lock -> _beacon_lock.
+        self._beacon_lock = threading.Lock()
+        self._beacon_enabled = False
+        self._beacon_disabled_reason: Optional[str] = None
+        self._beacon_next_at: Optional[float] = None
+        self._beacon_last_at: Optional[float] = None
+        self._beacon_last_result: Optional[str] = None
+        self._beacons_sent = 0
+        self._beacon_stop = threading.Event()
+        self._beacon_thread: Optional[threading.Thread] = None
 
         # Track recently handled message IDs for duplicate detection.
         self._aprs_ack_recent = {}
@@ -231,6 +287,10 @@ class KAMDaemon:
             "aprs.send_message": self._m_aprs_send_message,
             "aprs.outbox": self._m_aprs_outbox,
             "aprs.clear_messages": self._m_aprs_clear_messages,
+            "aprs.beacon_status": self._m_aprs_beacon_status,
+            "aprs.beacon_enable": self._m_aprs_beacon_enable,
+            "aprs.beacon_disable": self._m_aprs_beacon_disable,
+            "aprs.beacon_now": self._m_aprs_beacon_now,
             "aprs.tx_safety": self._m_aprs_tx_safety,
             "aprs.tx_preflight": self._m_aprs_tx_preflight,
             "aprs.tx_get_unproto": self._m_aprs_tx_get_unproto,
@@ -251,6 +311,12 @@ class KAMDaemon:
 
         # Start the ACK worker, but do not authorize RF transmissions.
         self._ensure_aprs_ack_worker()
+
+        # Same for the beacon scheduler: running, but off.
+        self._beacon_thread = threading.Thread(
+            target=self._beacon_loop, name="kamxl-aprs-beacon", daemon=True
+        )
+        self._beacon_thread.start()
 
     # -----------------------------------------------------------------------
     # Method dispatch
@@ -545,8 +611,15 @@ class KAMDaemon:
             )
         if params.get("confirm_hf_port1_disconnected") is not True:
             raise APRSTransmitError("Confirm HF Port 1 radio disconnected")
-        if params.get("path", "") != "":
-            raise APRSTransmitError("First live APRS transmission must be direct")
+        # Digipeater path: the daemon's configured one unless the
+        # request names its own ("" or "DIRECT" = no digipeaters).
+        from aprs_tx import validate_aprs_path
+
+        path = (
+            validate_aprs_path(params["path"])
+            if params.get("path") is not None
+            else self.aprs_path
+        )
 
         # Every message carries a {ID so the recipient acknowledges it.
         # A resend reuses the original ID: a late ack for the first
@@ -603,7 +676,8 @@ class KAMDaemon:
             self._invalidate_aprs_safety("APRS transmission in progress")
             try:
                 result = execute_live_aprs_tx_transaction(
-                    self.kam, payload, _capability=_LIVE_APRS_CAPABILITY
+                    self.kam, payload, path,
+                    _capability=_LIVE_APRS_CAPABILITY,
                 )
             except Exception:
                 self._invalidate_aprs_safety(
@@ -630,6 +704,7 @@ class KAMDaemon:
             return {
                 **result,
                 "payload": payload,
+                "path": path,
                 "state": "unknown",
                 "message_id": message_id,
                 "outbound": record.to_dict(),
@@ -642,6 +717,7 @@ class KAMDaemon:
         """
         return {
             "station": self.station_callsign,
+            "path": self.aprs_path,
             "messages": self._outbox.list(),
         }
 
@@ -857,6 +933,207 @@ class KAMDaemon:
             "addressee": addressee,
             "messages": messages,
         }
+
+    # -- Position beacon ----------------------------------------------
+
+    def _m_aprs_beacon_status(
+        self, params: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Beacon configuration and state. Never touches the TNC."""
+        with self._beacon_lock:
+            enabled = self._beacon_enabled
+            result = {
+                "configured": self._beacon_payload is not None,
+                "enabled": enabled,
+                "disabled_reason": (
+                    None if enabled else self._beacon_disabled_reason
+                ),
+                "position": self._beacon_position,
+                "payload": self._beacon_payload,
+                "path": self.aprs_path,
+                "interval_minutes": self._beacon_interval / 60,
+                "beacons_sent": self._beacons_sent,
+                "last_beacon_at": self._beacon_last_at,
+                "last_result": self._beacon_last_result,
+                "next_beacon_at": (
+                    self._beacon_next_at if enabled else None
+                ),
+            }
+
+        result["paused"] = enabled and (
+            (self._aprs_session_uncertain
+             or self._aprs_safety_state == "unsafe")
+            and self._aprs_link_may_be_active
+        )
+        return result
+
+    def _require_beacon_authorization(self, params: Dict[str, Any]) -> None:
+        from aprs_tx import APRSTransmitError
+
+        if params.get("confirm_transmit") is not True:
+            raise APRSTransmitError("Explicit confirm_transmit=true required")
+        if params.get("confirm_vhf_port2_radio_ready") is not True:
+            raise APRSTransmitError(
+                "Confirm VHF Port 2 radio, audio, PTT, antenna and power "
+                "are ready"
+            )
+        if params.get("confirm_hf_port1_disconnected") is not True:
+            raise APRSTransmitError("Confirm HF Port 1 radio disconnected")
+        if self._beacon_payload is None:
+            raise APRSTransmitError(
+                "No beacon position configured (set KAMXL_LATITUDE and "
+                "KAMXL_LONGITUDE)"
+            )
+
+    def _m_aprs_beacon_enable(
+        self, params: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Turn the periodic position beacon on (first one in ~5 s)."""
+        self._require_beacon_authorization(params)
+
+        with self._beacon_lock:
+            self._beacon_enabled = True
+            self._beacon_disabled_reason = None
+            self._beacon_next_at = time.time() + 5
+
+        logger.info(
+            "APRS position beacon enabled: every %g min via %s",
+            self._beacon_interval / 60, self.aprs_path or "direct",
+        )
+        return self._m_aprs_beacon_status({})
+
+    def _m_aprs_beacon_disable(
+        self, params: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        with self._beacon_lock:
+            self._beacon_enabled = False
+            self._beacon_disabled_reason = "Turned off by operator"
+            self._beacon_next_at = None
+
+        logger.info("APRS position beacon disabled")
+        return self._m_aprs_beacon_status({})
+
+    def _m_aprs_beacon_now(
+        self, params: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Send one position beacon right now (operator-initiated)."""
+        self._require_beacon_authorization(params)
+
+        # Operator is at the controls: verifying the TNC is fine even
+        # if a terminal session was used (same as a manual send).
+        result = self._beacon_transmit(operator_initiated=True)
+        return {**result, "status": self._m_aprs_beacon_status({})}
+
+    def _beacon_transmit(self, operator_initiated: bool) -> Dict[str, Any]:
+        """
+        Submit the beacon through the guarded TX path.
+
+        Raises _BeaconPaused when the TNC can't be verified without
+        risking an open session (automatic beacons only).
+        """
+        from aprs_tx import (
+            APRSTransmitError, _LIVE_APRS_CAPABILITY,
+            execute_live_aprs_tx_transaction,
+        )
+
+        payload = self._beacon_payload
+        if payload is None:
+            raise APRSTransmitError("No beacon position configured")
+
+        with self._kam_lock:
+            if not self.kam.is_connected or (
+                getattr(self.kam.serial, "exclusive", None) is not True
+            ):
+                raise APRSTransmitError("Exclusive serial connection required")
+
+            if (
+                self._monitor_stop.is_set()
+                or self._monitor_thread is None
+                or not self._monitor_thread.is_alive()
+            ):
+                raise APRSTransmitError("APRS monitor thread not healthy")
+
+            if (
+                self._aprs_session_uncertain
+                or self._aprs_safety_state == "unsafe"
+            ):
+                if self._aprs_link_may_be_active and not operator_initiated:
+                    raise _BeaconPaused(
+                        "a terminal, connected-mode, PBBS or Winlink "
+                        "session may be open"
+                    )
+                try:
+                    self._verify_aprs_session_locked()
+                except APRSTransmitError as exc:
+                    if operator_initiated:
+                        raise
+                    raise _BeaconPaused(str(exc)) from exc
+
+            self._aprs_session_uncertain = True
+            self._invalidate_aprs_safety("APRS beacon transmission in progress")
+
+            try:
+                result = execute_live_aprs_tx_transaction(
+                    self.kam, payload, self.aprs_path,
+                    _capability=_LIVE_APRS_CAPABILITY,
+                )
+            except Exception:
+                self._invalidate_aprs_safety(
+                    "APRS beacon failed or state uncertain"
+                )
+                with self._beacon_lock:
+                    self._beacon_enabled = False
+                    self._beacon_next_at = None
+                    self._beacon_disabled_reason = (
+                        "Turned off after a beacon transmission failed; "
+                        "TNC state needs checking"
+                    )
+                    self._beacon_last_result = "failed"
+                raise
+
+            self._aprs_session_uncertain = False
+            self._aprs_safety_state = "unknown"
+            self._aprs_safety_reason = (
+                "APRS beacon submitted; RF delivery not confirmed"
+            )
+
+            now = time.time()
+            with self._beacon_lock:
+                self._beacons_sent += 1
+                self._beacon_last_at = now
+                self._beacon_last_result = "sent"
+                if self._beacon_enabled:
+                    self._beacon_next_at = now + self._beacon_interval
+
+        logger.info(
+            "APRS position beacon submitted via %s: %s",
+            self.aprs_path or "direct", payload,
+        )
+        return {**result, "payload": payload, "path": self.aprs_path}
+
+    def _beacon_loop(self) -> None:
+        """Send the beacon on schedule while enabled."""
+        while not self._beacon_stop.wait(1.0):
+            with self._beacon_lock:
+                due = (
+                    self._beacon_enabled
+                    and self._beacon_next_at is not None
+                    and time.time() >= self._beacon_next_at
+                )
+
+            if not due:
+                continue
+
+            try:
+                self._beacon_transmit(operator_initiated=False)
+            except _BeaconPaused as exc:
+                logger.warning("APRS beacon skipped (paused): %s", exc)
+                with self._beacon_lock:
+                    self._beacon_last_result = "paused"
+                    if self._beacon_enabled:
+                        self._beacon_next_at = time.time() + 60
+            except Exception:
+                logger.exception("APRS beacon failed; beacon turned off")
 
     def _m_aprs_clear_messages(
         self, params: Dict[str, Any]
@@ -1453,6 +1730,7 @@ class KAMDaemon:
                 result = execute_live_aprs_tx_transaction(
                     self.kam,
                     payload,
+                    self.aprs_path,
                     _capability=_LIVE_APRS_CAPABILITY,
                 )
 
@@ -1774,6 +2052,7 @@ class KAMDaemon:
                 self._aprs_ack_hf_disconnected = False
 
             self._aprs_ack_stop.set()
+            self._beacon_stop.set()
 
             # Discard ACKs waiting in the queue. An ACK already
             # being processed remains the worker's responsibility.
@@ -2062,6 +2341,66 @@ def main(argv: Optional[list] = None) -> None:
     )
 
     parser.add_argument(
+        "--aprs-path",
+        default=os.environ.get("KAMXL_APRS_PATH", "WIDE1-1,WIDE2-1"),
+        help=(
+            "Digipeater path for everything sent on APRS (messages, "
+            "ACKs, beacons) (default: $KAMXL_APRS_PATH, or "
+            "WIDE1-1,WIDE2-1). Use DIRECT for no digipeaters."
+        ),
+    )
+
+    parser.add_argument(
+        "--latitude",
+        type=float,
+        default=os.environ.get("KAMXL_LATITUDE"),
+        help="Station latitude for the position beacon, decimal degrees "
+             "(default: $KAMXL_LATITUDE)",
+    )
+
+    parser.add_argument(
+        "--longitude",
+        type=float,
+        default=os.environ.get("KAMXL_LONGITUDE"),
+        help="Station longitude, decimal degrees, west negative "
+             "(default: $KAMXL_LONGITUDE)",
+    )
+
+    parser.add_argument(
+        "--beacon-symbol",
+        default=os.environ.get("KAMXL_BEACON_SYMBOL", "/-"),
+        help="APRS symbol table + code, 2 characters (default: "
+             "$KAMXL_BEACON_SYMBOL, or /- = house)",
+    )
+
+    parser.add_argument(
+        "--beacon-comment",
+        default=os.environ.get("KAMXL_BEACON_COMMENT", ""),
+        help="Beacon comment, up to 43 characters "
+             "(default: $KAMXL_BEACON_COMMENT)",
+    )
+
+    parser.add_argument(
+        "--beacon-interval",
+        type=float,
+        default=float(os.environ.get("KAMXL_BEACON_INTERVAL", "30")),
+        help="Minutes between beacons, at least 10 "
+             "(default: $KAMXL_BEACON_INTERVAL, or 30)",
+    )
+
+    parser.add_argument(
+        "--beacon",
+        action="store_true",
+        default=os.environ.get("KAMXL_BEACON", "").strip().lower()
+        in ("1", "true", "yes", "on"),
+        help=(
+            "Start the position beacon at startup (default: "
+            "$KAMXL_BEACON). Needs --latitude/--longitude. Can also be "
+            "toggled from the dashboard."
+        ),
+    )
+
+    parser.add_argument(
         "--auto-ack",
         action="store_true",
         default=os.environ.get("KAMXL_AUTO_ACK", "").strip().lower()
@@ -2088,6 +2427,37 @@ def main(argv: Optional[list] = None) -> None:
     except ValueError as exc:
         parser.error(str(exc))
 
+    from aprs_tx import APRSTransmitError, validate_aprs_path
+    from aprs import format_aprs_position
+
+    try:
+        aprs_path = validate_aprs_path(args.aprs_path)
+    except APRSTransmitError as exc:
+        parser.error(str(exc))
+
+    beacon_config = None
+    if (args.latitude is None) != (args.longitude is None):
+        parser.error("Set both --latitude and --longitude (or neither)")
+    if args.latitude is not None:
+        beacon_config = {
+            "latitude": float(args.latitude),
+            "longitude": float(args.longitude),
+            "symbol": args.beacon_symbol,
+            "comment": args.beacon_comment,
+        }
+        try:
+            if len(args.beacon_symbol) != 2:
+                raise ValueError("Beacon symbol must be 2 characters, e.g. /-")
+            format_aprs_position(
+                beacon_config["latitude"], beacon_config["longitude"],
+                args.beacon_symbol[0], args.beacon_symbol[1],
+                args.beacon_comment,
+            )
+        except ValueError as exc:
+            parser.error(f"Invalid beacon settings: {exc}")
+    if args.beacon_interval < 10:
+        parser.error("--beacon-interval must be at least 10 minutes")
+
     logging.basicConfig(
         level=logging.DEBUG if args.verbose else logging.INFO,
         format="%(asctime)s %(message)s",
@@ -2102,7 +2472,22 @@ def main(argv: Optional[list] = None) -> None:
         args.socket,
         history_db=args.history_db,
         station_callsign=station_callsign,
+        aprs_path=aprs_path,
+        beacon=beacon_config,
+        beacon_interval_minutes=args.beacon_interval,
     )
+
+    if args.beacon:
+        try:
+            daemon.dispatch("aprs.beacon_enable", {
+                "confirm_transmit": True,
+                "confirm_vhf_port2_radio_ready": True,
+                "confirm_hf_port1_disconnected": True,
+            })
+        except Exception as exc:
+            logger.warning(
+                "Position beacon could not be enabled at startup: %s", exc
+            )
 
     if args.auto_ack:
         try:

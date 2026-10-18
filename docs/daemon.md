@@ -25,6 +25,12 @@ defaults:
 | `--callsign` | `KAMXL_CALLSIGN` | *(required -- no fallback)* |
 | `--history-db` | `KAMXL_HISTORY_DB` | *(off)* |
 | `--auto-ack` | `KAMXL_AUTO_ACK=1` | *(off)* |
+| `--aprs-path` | `KAMXL_APRS_PATH` | `WIDE1-1,WIDE2-1` (`DIRECT` = none) |
+| `--latitude` / `--longitude` | `KAMXL_LATITUDE` / `KAMXL_LONGITUDE` | *(none -- beacon unavailable)* |
+| `--beacon-symbol` | `KAMXL_BEACON_SYMBOL` | `/-` (house) |
+| `--beacon-comment` | `KAMXL_BEACON_COMMENT` | *(empty, max 43 chars)* |
+| `--beacon-interval` | `KAMXL_BEACON_INTERVAL` | `30` minutes (min 10) |
+| `--beacon` | `KAMXL_BEACON=1` | *(off)* |
 
 `--callsign` is this station's APRS callsign, exactly as the KAM-XL's
 MYCALL (SSID included, e.g. `N5BA` or `N5BA-10`). It decides which
@@ -36,6 +42,15 @@ default: the daemon refuses to start without it.
 `KAMXL_AUTO_ACK=1` in `.env` to make that permanent); it can also be
 toggled from the dashboard. If the TNC check fails at startup the
 daemon keeps running with auto-ACK off and logs why.
+
+`--aprs-path` is the digipeater path for everything the daemon
+transmits on APRS: messages, resends, automatic ACKs and beacons. A
+per-request `path` on `aprs.send_message` overrides it.
+
+The position beacon needs `--latitude` and `--longitude` (decimal
+degrees, west/south negative). `--beacon` starts it at boot; it can
+also be switched on/off or fired once from the dashboard. All beacon
+settings are validated before the serial port is opened.
 
 `--port` has no hardcoded default on purpose: a wrong or missing
 serial device should fail immediately with a clear error, not

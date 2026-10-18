@@ -611,6 +611,30 @@ for confirmation first. The dashboard inbox now loads on its own,
 refreshes every 15 s, and leaves out acks/rejects (those appear under
 Sent Messages).
 
+### Digipeater path and position beacon
+
+Everything sent on APRS (messages, resends, ACKs, beacons) uses the
+daemon's `--aprs-path` / `KAMXL_APRS_PATH` (default
+`WIDE1-1,WIDE2-1`). `POST /aprs/send` may include `"path"` to
+override it for one message (`"DIRECT"` or `""` = no digipeaters);
+`GET /aprs/outbox` reports the configured `path`.
+
+`GET /aprs/beacon` reports the beacon: `configured`, `enabled`,
+`paused`, `disabled_reason`, `position`, `payload`, `path`,
+`interval_minutes`, `beacons_sent`, `last_beacon_at`, `last_result`
+(`sent` / `paused` / `failed`), `next_beacon_at`.
+`POST /aprs/beacon` with `{"enabled": true|false}` turns the periodic
+beacon on or off (first beacon about 5 s after turning on);
+`POST /aprs/beacon/now` sends one immediately. The beacon is an
+uncompressed position report with the `=` (messaging-capable) data
+type, e.g. `=3313.65N/09707.64W-comment`.
+
+Like auto-ACK, an automatic beacon re-checks the TNC itself when its
+state is unknown, but is skipped (`paused`, retried a minute later)
+while a terminal/connected/PBBS/Winlink session may be open. "Beacon
+now" is operator-initiated and re-checks the TNC regardless. A failed
+beacon transmission turns the periodic beacon off.
+
 ## Testing
 
 `tests/test_rest.py` runs a real `KAMDaemon` (wired to the same
