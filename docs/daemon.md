@@ -77,7 +77,8 @@ after a restart.
 `--history-days` limits how long per-packet history is kept. The
 writer thread deletes older rows at startup and then once a day, in
 small batches so recording never stalls. Received and sent messages
-are not pruned (use Clear on the dashboard). SQLite reuses the freed
+are not pruned (use Clear on the dashboard); repeated bulletin
+copies are. SQLite reuses the freed
 space for new rows; the file itself doesn't shrink unless you run
 `sqlite3 reception.sqlite3 VACUUM` with the daemon stopped.
 

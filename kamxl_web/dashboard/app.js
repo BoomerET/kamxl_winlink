@@ -1517,6 +1517,176 @@
   refreshStations();
   refreshReceptionStats();
   refreshPersistentHistory();
+  // -- Bulletins ------------------------------------------------------
+  //
+  // Broadcasts heard on the air: BLN0-9 bulletins, BLNA-Z
+  // announcements, BLN#GROUP group bulletins and NWS-* weather
+  // bulletins. Grouped by sender; each line shows the latest text and
+  // how often it was heard. "New" = first heard after the last
+  // "Mark all read" in this browser.
+
+  var bulletinList = document.getElementById("bulletinList");
+  var bulletinStatus = document.getElementById("bulletinStatus");
+  var bulletinDays = document.getElementById("bulletinDays");
+  var bulletinNewBadge = document.getElementById("bulletinNewBadge");
+  var bulletinState = { items: [], newestSeen: null };
+
+  function bulletinLabel(b) {
+    var a = b.addressee;
+    if (b.kind === "announcement") return "Announcement " + a.slice(3);
+    if (b.kind === "group") return a.slice(4) + " #" + a.charAt(3);
+    if (b.kind === "nws") return "NWS " + a.slice(4);
+    return "Bulletin " + a.slice(3);
+  }
+
+  function bulletinReadUpTo() {
+    return storageGet("kamxl.bulletinsReadUpTo", 0) || 0;
+  }
+
+  function renderBulletins() {
+    var readUpTo = bulletinReadUpTo();
+    var groups = {};
+    var order = [];
+    var fresh = 0;
+
+    bulletinState.items.forEach(function (b) {
+      if (!groups[b.source]) {
+        groups[b.source] = { source: b.source, last: 0, items: [] };
+        order.push(b.source);
+      }
+      var g = groups[b.source];
+      g.items.push(b);
+      g.last = Math.max(g.last, b.last_heard);
+      if (b.first_heard > readUpTo) fresh++;
+    });
+
+    order.sort(function (a, b) { return groups[b].last - groups[a].last; });
+
+    bulletinNewBadge.hidden = fresh === 0;
+    bulletinNewBadge.textContent = fresh + " new";
+
+    bulletinList.replaceChildren();
+    order.forEach(function (source) {
+      var g = groups[source];
+      g.items.sort(function (a, b) { return a.addressee < b.addressee ? -1 : 1; });
+
+      var box = document.createElement("div");
+      box.className = "bulletinGroup";
+
+      var from = document.createElement("div");
+      from.className = "bulletinFrom";
+      var call = document.createElement("b");
+      call.textContent = source;
+      from.appendChild(call);
+      from.appendChild(document.createTextNode(" · " + relativeTime(g.last)));
+      box.appendChild(from);
+
+      g.items.forEach(function (b) {
+        var row = document.createElement("div");
+        row.className = "bulletinRow" + (b.first_heard > readUpTo ? " new" : "");
+
+        var tag = document.createElement("span");
+        tag.className = "bulletinTag " + b.kind;
+        tag.textContent = bulletinLabel(b);
+        tag.title = b.addressee;
+
+        var text = document.createElement("span");
+        text.className = "bulletinText";
+        text.textContent = b.text;
+
+        var seen = document.createElement("span");
+        seen.className = "bulletinSeen";
+        seen.textContent = (b.count > 1 ? "×" + b.count + " · " : "") +
+          relativeTime(b.last_heard);
+        seen.title = "First heard " + new Date(b.first_heard * 1000).toLocaleString() +
+          ", last heard " + new Date(b.last_heard * 1000).toLocaleString();
+
+        row.appendChild(tag);
+        row.appendChild(text);
+        row.appendChild(seen);
+        box.appendChild(row);
+      });
+
+      bulletinList.appendChild(box);
+    });
+  }
+
+  async function refreshBulletins() {
+    try {
+      var result = await apiGet("/aprs/bulletins?days=" + bulletinDays.value);
+      if (!result.enabled) {
+        bulletinState.items = [];
+        renderBulletins();
+        bulletinStatus.textContent =
+          "Bulletins are kept in the history database (--history-db), which is off.";
+        return;
+      }
+
+      var items = result.bulletins || [];
+      var newestFirst = items.reduce(function (n, b) {
+        return Math.max(n, b.first_heard);
+      }, 0);
+
+      // Alert for bulletins first heard since the last poll (not on load).
+      if (bulletinState.newestSeen !== null && newestFirst > bulletinState.newestSeen &&
+          alertsAllowed()) {
+        playChime();
+        var newest = items.filter(function (b) { return b.first_heard === newestFirst; })[0];
+        if (newest && "Notification" in window && Notification.permission === "granted") {
+          try {
+            new Notification("APRS bulletin from " + newest.source, {
+              body: bulletinLabel(newest) + ": " + newest.text,
+              tag: "kamxl-bulletin"
+            });
+          } catch (e) {}
+        }
+      }
+      bulletinState.newestSeen = Math.max(bulletinState.newestSeen || 0, newestFirst);
+      bulletinState.items = items;
+      renderBulletins();
+
+      var senders = Object.keys(items.reduce(function (acc, b) {
+        acc[b.source] = true;
+        return acc;
+      }, {})).length;
+      bulletinStatus.textContent = items.length
+        ? items.length + " bulletin" + (items.length === 1 ? "" : "s") +
+          " from " + senders + " station" + (senders === 1 ? "" : "s") + "."
+        : "No bulletins heard in this period.";
+    } catch (err) {
+      bulletinStatus.textContent = "Unable to load bulletins: " + String(err);
+    }
+  }
+
+  bulletinDays.addEventListener("change", refreshBulletins);
+
+  document.getElementById("bulletinMarkRead").addEventListener("click", function () {
+    var newest = bulletinState.items.reduce(function (n, b) {
+      return Math.max(n, b.first_heard);
+    }, bulletinReadUpTo());
+    storageSet("kamxl.bulletinsReadUpTo", newest);
+    renderBulletins();
+  });
+
+  document.getElementById("bulletinClear").addEventListener("click", async function () {
+    if (!window.confirm("Delete all stored bulletins?")) return;
+    try {
+      var res = await fetch(authedUrl("/aprs/bulletins/clear"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: "{}"
+      });
+      var payload = await res.json();
+      if (!payload.ok) {
+        throw new Error((payload.error && payload.error.message) || "Request failed");
+      }
+    } catch (err) {
+      bulletinStatus.textContent = "Unable to clear bulletins: " + String(err);
+      return;
+    }
+    refreshBulletins();
+  });
+
   refreshConversations();
   refreshAutoAck();
   refreshAutoRetry();
@@ -1525,6 +1695,8 @@
   setInterval(refreshStatus, 15000);
   setInterval(refreshBeacon, 15000);
   setInterval(refreshAutoRetry, 15000);
+  refreshBulletins();
+  setInterval(refreshBulletins, 60000);
   setInterval(refreshAutoAck, 15000);
   setInterval(refreshStations, 15000);
   setInterval(refreshReceptionStats, 15000);

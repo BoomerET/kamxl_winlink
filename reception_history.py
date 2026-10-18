@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Optional
 
 from packet import Packet
-from aprs import parse_aprs_message, unwrap_third_party
+from aprs import bulletin_kind, parse_aprs_message, unwrap_third_party
 
 
 class ReceptionHistory:
@@ -217,6 +217,72 @@ class ReceptionHistory:
             }
             for row in self._connection.execute(query, parameters)
         ]
+
+    _BULLETIN_WHERE = (
+        "(addressee GLOB 'BLN?*' OR addressee GLOB 'NWS[-_]*')"
+    )
+
+    def list_bulletins(self, since: Optional[int] = None, limit: int = 200):
+        """
+        Bulletins/announcements heard, one entry per (source, addressee),
+        newest first. Bulletins are re-sent every few minutes, so each
+        entry carries the latest text plus first/last heard and a count.
+        """
+        where = self._BULLETIN_WHERE
+        params: list = []
+        if since is not None:
+            where += " AND received_at >= ?"
+            params.append(int(since))
+
+        # Latest text per (source, addressee): an explicit subquery,
+        # since SQLite's "bare column" shortcut is undefined once a
+        # query uses both MIN() and MAX().
+        query = (
+            "SELECT g.source, g.addressee, ("
+            "  SELECT m.message_text FROM aprs_messages m"
+            "  WHERE m.source = g.source AND m.addressee = g.addressee"
+            "  ORDER BY m.received_at DESC, m.id DESC LIMIT 1"
+            "), g.last, g.first, g.n FROM ("
+            "  SELECT source, addressee, MAX(received_at) AS last,"
+            "         MIN(received_at) AS first, COUNT(*) AS n"
+            "  FROM aprs_messages WHERE " + where +
+            "  GROUP BY source, addressee"
+            ") g ORDER BY g.last DESC LIMIT ?"
+        )
+        params.append(int(limit))
+
+        result = []
+        for row in self._connection.execute(query, params):
+            kind = bulletin_kind(row[1])
+            if kind is None:
+                continue
+            result.append({
+                "source": row[0],
+                "addressee": row[1],
+                "kind": kind,
+                "text": row[2],
+                "last_heard": row[3],
+                "first_heard": row[4],
+                "count": row[5],
+            })
+        return result
+
+    def clear_bulletins(self) -> int:
+        with self._connection:
+            cursor = self._connection.execute(
+                "DELETE FROM aprs_messages WHERE " + self._BULLETIN_WHERE
+            )
+        return cursor.rowcount
+
+    def prune_bulletins(self, older_than: int) -> int:
+        """Bulletins repeat all day; drop copies older than the cutoff."""
+        with self._connection:
+            cursor = self._connection.execute(
+                "DELETE FROM aprs_messages WHERE " + self._BULLETIN_WHERE
+                + " AND received_at < ?",
+                (int(older_than),),
+            )
+        return cursor.rowcount
 
     def list_aprs_messages(
         self,

@@ -145,6 +145,7 @@ class ReceptionWriter:
 
         try:
             deleted = history.prune_packets(cutoff)
+            deleted_bulletins = history.prune_bulletins(cutoff)
         except Exception:
             logger.exception("Failed to prune reception history")
             with self._lock:
@@ -155,10 +156,11 @@ class ReceptionWriter:
             self.last_pruned_at = now
             self.last_pruned_rows = deleted
 
-        if deleted:
+        if deleted or deleted_bulletins:
             logger.info(
-                "Reception history: deleted %d packet record(s) older "
-                "than %g days", deleted, self.retention_days,
+                "Reception history: deleted %d packet record(s) and %d "
+                "bulletin copy(ies) older than %g days",
+                deleted, deleted_bulletins, self.retention_days,
             )
 
     def _discard_pending(self) -> None:
@@ -251,6 +253,12 @@ class ReceptionWriter:
 
     def load_outbound(self, limit=200):
         return self._with_history(lambda h: h.list_outbound(limit))
+
+    def list_bulletins(self, since=None, limit=200):
+        return self._with_history(lambda h: h.list_bulletins(since, limit))
+
+    def clear_bulletins(self):
+        return self._with_history(lambda h: h.clear_bulletins())
 
     def clear_outbound(self):
         return self._with_history(lambda h: h.clear_outbound())
