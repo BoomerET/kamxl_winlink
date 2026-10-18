@@ -1804,3 +1804,26 @@ range.
 
 Tests: `tests/test_path_and_beacon.py` (30).
 
+### Reception watchdog
+
+Prompted by the 2026-10-17/18 night when the IC-91AD sat on top of
+the amplifier: for about two hours the KAM-XL decoded only the nearby
+TH-D75A (N5BA-7) and nothing from the network, which looked like a
+software fault until the log was read.
+
+- The daemon now tracks, for Port 2, when it last heard any station
+  other than its own callsigns (any SSID of `KAMXL_CALLSIGN`) and
+  when it last heard its own.
+- `diagnostics.watchdog` in `status`: `ok` / `starting` /
+  `only_own` (own stations heard, nobody else -- desense, local
+  noise, or a digipeater outage) / `silent` (nothing at all) /
+  `disabled`, with a plain-language `message`.
+- Threshold `KAMXL_WATCHDOG_MINUTES` / `--watchdog-minutes`, default
+  30, `0` disables, minimum 5.
+- A `kamxl-watchdog` thread logs a warning on entering an alert state
+  and an info line on recovery (once each, not every check).
+- Dashboard: an amber (only own) or red (silent) banner above the
+  cards, plus the KAM-XL Link card's reception line.
+
+Tests: `tests/test_reception_watchdog.py` (12).
+
