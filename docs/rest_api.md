@@ -541,6 +541,14 @@ confirmations `confirm_transmit`, `confirm_vhf_port2_radio_ready`,
 `confirm_hf_port1_disconnected` (all `true`, every call -- nothing is
 cached).
 
+If the daemon doesn't currently know the TNC's state (after a
+restart, a web-terminal command, a setting change, PBBS/Winlink use,
+or a failed send), the send first re-verifies it on its own: Ctrl-C
+back to command mode, then `STATUS` must show stream A/2 idle and not
+connected. That writes nothing that can key a radio, so the radios
+can stay connected. If the check fails (for example an AX.25 session
+is still open), the send is refused and nothing is transmitted.
+
 Every message now goes out with an APRS message ID appended
 (`:W1ABC-7  :Hello{0A1F`), which asks the recipient to reply with
 `ack0A1F`. The response includes `message_id` and an `outbound`
@@ -573,7 +581,9 @@ the first attempt still counts and the recipient can discard the
 duplicate; resending an already-acked/rejected message is refused.
 The dashboard's "Sent Messages" list shows each message's status,
 polls `/aprs/outbox` every 10 s while anything is pending, and offers
-a Resend button.
+a Resend button. The dashboard uses a single "Transmit now" checkbox
+that supplies all three confirmations; the API still takes the three
+fields separately.
 
 ## Testing
 

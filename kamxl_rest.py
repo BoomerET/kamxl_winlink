@@ -509,17 +509,7 @@ DASHBOARD_HTML = """<!doctype html>
 
       <label>
         <input id="aprsConfirmTransmit" type="checkbox" required>
-        I authorize this RF transmission
-      </label>
-
-      <label>
-        <input id="aprsConfirmVhf" type="checkbox" required>
-        VHF radio is connected and ready on Port 2
-      </label>
-
-      <label>
-        <input id="aprsConfirmHf" type="checkbox" required>
-        HF radio is disconnected from Port 1
+        Transmit now (VHF ready on Port 2, HF disconnected from Port 1)
       </label>
 
       <button class="action" id="aprsSendBtn" type="submit">
@@ -732,14 +722,10 @@ DASHBOARD_HTML = """<!doctype html>
     var recipient = document.getElementById("aprsRecipient").value.trim().toUpperCase();
     var message = document.getElementById("aprsMessageText").value.trim();
 
+    // One checkbox covers all three daemon-side confirmations.
     var confirmTransmit = document.getElementById("aprsConfirmTransmit");
-    var confirmVhf = document.getElementById("aprsConfirmVhf");
-    var confirmHf = document.getElementById("aprsConfirmHf");
 
-    if (!recipient || !message ||
-        !confirmTransmit.checked ||
-        !confirmVhf.checked ||
-        !confirmHf.checked) {
+    if (!recipient || !message || !confirmTransmit.checked) {
       return;
     }
 
@@ -779,8 +765,6 @@ DASHBOARD_HTML = """<!doctype html>
         "APRS request failed: " + String(err);
     } finally {
       confirmTransmit.checked = false;
-      confirmVhf.checked = false;
-      confirmHf.checked = false;
       aprsSendBtn.disabled = false;
     }
   });
@@ -796,22 +780,18 @@ DASHBOARD_HTML = """<!doctype html>
   var aprsOutboxTimer = null;
 
   function aprsConfirmationsChecked() {
-    return document.getElementById("aprsConfirmTransmit").checked &&
-      document.getElementById("aprsConfirmVhf").checked &&
-      document.getElementById("aprsConfirmHf").checked;
+    return document.getElementById("aprsConfirmTransmit").checked;
   }
 
   function clearAprsConfirmations() {
     document.getElementById("aprsConfirmTransmit").checked = false;
-    document.getElementById("aprsConfirmVhf").checked = false;
-    document.getElementById("aprsConfirmHf").checked = false;
   }
 
   async function resendAprsMessage(messageId, button) {
     if (!aprsConfirmationsChecked()) {
       aprsSendStatus.textContent =
         "To resend #" + messageId +
-        ", tick the three transmit confirmations above first.";
+        ", tick the Transmit now box above first.";
       return;
     }
 

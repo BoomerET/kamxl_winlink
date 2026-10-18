@@ -741,19 +741,20 @@ class APRSPreviewTests(DaemonTestCase):
         )
         self.assertEqual(serial.written, [])
 
-    def test_aprs_initialize_requires_confirmation(self):
-        serial = ScriptedSerial({})
-        _, socket_path = self.start_daemon(serial)
+    def test_aprs_initialize_no_longer_requires_radio_disconnect(self):
+        # Initialization writes only Ctrl-C and STATUS, so radios may
+        # stay connected; no confirm_radio_disconnected needed.
+        serial = APRSTransactionFake()
+        serial.mode = "convers"
+        daemon, socket_path = self.start_daemon(serial)
         client = self.connect(socket_path)
 
         response = client.call("aprs.tx_initialize")
 
-        self.assertFalse(response["ok"])
-        self.assertIn(
-            "confirmation",
-            str(response["error"]).lower(),
-        )
-        self.assertEqual(serial.written, [])
+        self.assertTrue(response["ok"], response)
+        self.assertFalse(response["result"]["rf_enabled"])
+        self.assertEqual(serial.written, [b"\x03", b"STATUS\r"])
+        self.assertFalse(daemon._aprs_session_uncertain)
 
     def test_aprs_exit_kiss_failure_remains_unsafe(self):
         serial = ScriptedSerial({})

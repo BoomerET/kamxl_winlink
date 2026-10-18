@@ -441,6 +441,52 @@ class DaemonOutboundAckTests(DaemonTestCase):
         self.assertFalse(response["ok"])
         self.assertEqual(serial.written, written_before)
 
+    def test_send_auto_verifies_unverified_session(self):
+        # Fresh daemon: session unverified (as after every restart).
+        serial = APRSTransactionFake()
+        serial.exclusive = True
+        serial.mode = "convers"
+        daemon, socket_path = self.start_daemon(serial)
+        client = self.connect(socket_path)
+        self.assertTrue(daemon._aprs_session_uncertain)
+
+        result = self._send(client, addressee="W1ABC-7", message="Hello")
+
+        # Ctrl-C + STATUS verification came first, then the transaction.
+        self.assertEqual(serial.written[:2], [b"\x03", b"STATUS\r"])
+        self.assertIn(
+            result["payload"].encode("ascii") + b"\r", serial.written
+        )
+        self.assertFalse(daemon._aprs_session_uncertain)
+
+    def test_send_refused_when_stream_connected(self):
+        class ConnectedFake(APRSTransactionFake):
+            def write(self, data):
+                if data == b"STATUS\r" and self.mode == "command":
+                    self.written.append(data)
+                    self._out.extend(
+                        b"FREE BYTES 2685\r\n"
+                        b"A/2  stream - CONNECTED to W1ABC-1\r\ncmd:"
+                    )
+                    return len(data)
+                return super().write(data)
+
+        serial = ConnectedFake()
+        serial.exclusive = True
+        daemon, socket_path = self.start_daemon(serial)
+        client = self.connect(socket_path)
+
+        response = client.call(
+            "aprs.send_message",
+            addressee="W1ABC-7", message="Hello", **_CONFIRM
+        )
+
+        self.assertFalse(response["ok"])
+        self.assertIn("Nothing was transmitted", response["error"]["message"])
+        self.assertNotIn(b"CONVERS\r", serial.written)
+        self.assertEqual(daemon._aprs_safety_state, "unsafe")
+        self.assertEqual(client.call("aprs.outbox")["result"]["messages"], [])
+
     def test_failed_send_not_tracked(self):
         serial = APRSTransactionFake()
         serial.fail_command = "PACLEN"

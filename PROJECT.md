@@ -1671,3 +1671,28 @@ acknowledgments.
   decision for Dave, not a side effect of this change.
 
 Tests: `tests/test_aprs_outbox.py` (45).
+
+### No more separate "initialize with radios disconnected" step
+
+Before, every daemon restart (and any terminal command, setting
+change, PBBS/Winlink use) left APRS sending locked until the operator
+ran `aprs.tx_initialize` with `confirm_radio_disconnected`, which had
+no web UI and meant physically disconnecting radios. Dave found that
+unworkable. The verification itself only ever writes Ctrl-C and
+`STATUS`, nothing that can transmit, so:
+
+- `aprs.send_message` and `aprs.ack_enable` now run that verification
+  themselves (`_verify_aprs_session_locked()`) when the session is
+  unverified or latched unsafe, then continue. Exclusive-serial and
+  monitor-thread checks still come first; the three per-send
+  confirmations are unchanged. If STATUS shows A/2 connected (or
+  anything unexpected), the send is refused before CONVERS, nothing
+  is transmitted, and the state stays unsafe.
+- `aprs.tx_initialize` still exists but no longer needs
+  `confirm_radio_disconnected`.
+- Deliberately unchanged: the automatic-ACK worker does NOT
+  auto-verify. Its Ctrl-C would fire with nobody at the controls and
+  could knock an operator out of a live connected session, so after
+  terminal/PBBS use auto-ACKs stay blocked until the next manual send
+  (or `aprs.tx_initialize`) re-verifies the TNC.
+
