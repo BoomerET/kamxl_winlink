@@ -44,18 +44,9 @@ jobs:
       - name: Install dependencies
         run: python -m pip install "pyserial>=3.5"
 
-      - name: Check dashboard JavaScript syntax
+      - name: Check web page JavaScript syntax
         run: |
-          python - <<'PY'
-          import re, kamxl_rest
-          for name in dir(kamxl_rest):
-              if name.endswith("_HTML"):
-                  html = getattr(kamxl_rest, name)
-                  js = "\n".join(re.findall(r"<script>(.*?)</script>", html, re.S))
-                  if js.strip():
-                      open(f"/tmp/{name}.js", "w").write(js)
-          PY
-          for f in /tmp/*_HTML.js; do echo "node --check $f"; node --check "$f"; done
+          for f in kamxl_web/*/app.js; do echo "node --check $f"; node --check "$f"; done
 
       - name: Run test suite
         run: python run_tests.py

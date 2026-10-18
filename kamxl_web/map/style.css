@@ -1,0 +1,185 @@
+
+  html, body {
+    margin: 0;
+    height: 100%;
+    background: #0b0f10;
+    color: #d4f7d4;
+    font-family: "Courier New", Courier, monospace;
+  }
+  body { display: flex; flex-direction: column; }
+  .paneHeader {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 4px 10px;
+    background: #101617;
+    border-bottom: 1px solid #234;
+    font-size: 12px;
+    letter-spacing: 0.05em;
+    color: #888;
+    box-sizing: border-box;
+    flex: 0 0 auto;
+  }
+  .paneHeader a, .paneHeader button {
+    background: none;
+    border: 1px solid #345;
+    color: #9c9;
+    font: inherit;
+    font-size: 11px;
+    padding: 2px 8px;
+    cursor: pointer;
+    text-decoration: none;
+  }
+  .paneHeader a:hover, .paneHeader button:hover { border-color: #5a8; color: #cfc; }
+  #map { flex: 1; }
+  #empty {
+    position: absolute;
+    top: 50px;
+    left: 0;
+    right: 0;
+    text-align: center;
+    color: #999;
+    font-style: italic;
+    pointer-events: none;
+    z-index: 500;
+  }
+  .leaflet-popup-content { font-family: "Courier New", Courier, monospace; font-size: 12px; }
+  /* Leaflet's L.divIcon normally draws a white box + border -- our
+     APRS icons supply their own sprite background, so strip both. */
+  .aprsIcon { background: transparent; border: none; }
+  /* Small text badge for an APRS overlay character (a digit/letter
+     drawn over the base icon) -- see the module comment above
+     MAP_HTML for why this is text rather than sprite art. */
+  .aprsOverlay {
+    position: absolute;
+    right: -2px;
+    bottom: -2px;
+    min-width: 14px;
+    height: 14px;
+    line-height: 14px;
+    text-align: center;
+    font: bold 11px sans-serif;
+    color: #000;
+    background: #fc3;
+    border-radius: 3px;
+    padding: 0 2px;
+    box-shadow: 0 0 0 1px #000;
+  }
+  #stationDetails {
+    position: absolute;
+    top: 42px;
+    right: 12px;
+    width: min(360px, calc(100vw - 40px));
+    max-height: calc(100vh - 70px);
+    overflow-y: auto;
+    background: #101b1c;
+    border: 1px solid #3a6;
+    border-radius: 6px;
+    padding: 14px;
+    box-sizing: border-box;
+    z-index: 1100;
+    box-shadow: 0 6px 24px #0009;
+  }
+
+  #stationDetails[hidden] {
+    display: none;
+  }
+
+  #stationDetails h2 {
+    margin: 0 0 12px;
+    color: #9f9;
+    font-size: 17px;
+  }
+
+  #stationDetails .detailRow {
+    margin: 8px 0;
+    overflow-wrap: anywhere;
+  }
+
+  #stationDetails .detailLabel {
+    color: #999;
+  }
+
+  #closeStationDetails {
+    float: right;
+    background: transparent;
+    border: 1px solid #456;
+    color: #cfc;
+    cursor: pointer;
+  }
+
+  .packetRecord {
+    border-top: 1px solid #345;
+    padding: 9px 0;
+    overflow-wrap: anywhere;
+  }
+
+  .packetMeta {
+    color: #9aa;
+    font-size: 11px;
+    margin-bottom: 4px;
+  }
+
+  .packetPayload {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    background: #0b1213;
+    border: 1px solid #234;
+    padding: 7px;
+    margin-top: 5px;
+    font-size: 11px;
+  }
+
+  #digiStationFilter {
+    background: #101617;
+    color: #9c9;
+    border: 1px solid #345;
+    font: inherit;
+    font-size: 11px;
+    padding: 2px 5px;
+    margin-right: 12px;
+    max-width: 170px;
+  }
+
+  #stationSearchForm {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    margin: 0 12px;
+  }
+
+  #stationSearch {
+    background: #101617;
+    color: #d4f7d4;
+    border: 1px solid #345;
+    border-radius: 3px;
+    font: inherit;
+    font-size: 11px;
+    padding: 4px 7px;
+    width: 170px;
+    min-width: 90px;
+  }
+
+  #stationSearch:focus {
+    outline: 1px solid #5a8;
+  }
+
+  .paneHeader {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  #stationSelectionStatus:not([hidden]) {
+    position: absolute;
+    top: 48px;
+    left: 12px;
+    z-index: 1100;
+    background: #101b1c;
+    color: #d4f7d4;
+    border: 1px solid #3a6;
+    border-radius: 5px;
+    padding: 9px 12px;
+    max-width: min(400px, calc(100vw - 40px));
+    font-size: 12px;
+  }
+

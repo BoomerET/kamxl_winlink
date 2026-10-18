@@ -1,0 +1,35 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>kamxl web terminal</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="monitorPane">
+  <div class="paneHeader">
+    <span>LIVE MONITOR <span id="monitorStatus" class="connecting">connecting</span></span>
+    <button id="clearMonitor" type="button">clear</button>
+  </div>
+  <div id="monitorFeed"></div>
+</div>
+<div id="terminalPane">
+  <div class="paneHeader">
+    <span>TERMINAL</span>
+    <span>
+      <a href="#" id="homeLink" style="background:none;border:1px solid #345;color:#9c9;font:inherit;font-size:11px;padding:2px 8px;text-decoration:none;">home</a>
+      <a href="#" id="pbbsLink" style="background:none;border:1px solid #345;color:#9c9;font:inherit;font-size:11px;padding:2px 8px;text-decoration:none;">pbbs</a>
+      <a href="#" id="mapLink" style="background:none;border:1px solid #345;color:#9c9;font:inherit;font-size:11px;padding:2px 8px;text-decoration:none;">map</a>
+      <a href="#" id="winlinkLink" style="background:none;border:1px solid #345;color:#9c9;font:inherit;font-size:11px;padding:2px 8px;text-decoration:none;">winlink</a>
+    </span>
+  </div>
+  <div id="output"></div>
+  <div id="inputRow">
+    <div id="prompt">cmd:</div>
+    <input id="cmdInput" autocomplete="off" autofocus
+           placeholder="type a KAM-XL command and press Enter..." />
+  </div>
+</div>
+<script src="app.js"></script>
+</body>
+</html>

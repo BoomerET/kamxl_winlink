@@ -1,0 +1,261 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>kamxl dashboard</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="paneHeader">
+  <span>DASHBOARD</span>
+  <span>
+    <a href="#" id="terminalLink">terminal</a>
+    <a href="#" id="pbbsLink">pbbs</a>
+    <a href="#" id="mapLink">map</a>
+    <a href="#" id="winlinkLink">winlink</a>
+  </span>
+</div>
+<div id="receptionAlert" role="alert" hidden>
+  <strong id="receptionAlertTitle">Reception problem</strong>
+  <div id="receptionAlertText"></div>
+</div>
+<div id="cards">
+  <div class="card" id="statusCard">
+    <h2>KAM-XL Link</h2>
+    <div class="big"><span id="statusDot" class="checking">checking...</span></div>
+    <div class="sub" id="statusDetail"></div>
+    <div class="sub" id="receptionHealth" role="status" aria-live="polite">
+      Reception: checking...
+    </div>
+    <div class="sub" id="diagnosticsDetail">
+      Waiting for APRS diagnostics...
+    </div>
+  </div>
+
+  <div class="card" id="stationsCard">
+    <h2>APRS Stations</h2>
+    <div class="big" id="stationCount">-</div>
+    <div class="sub" id="stationDetail">Loading...</div>
+    <a class="action" href="#" id="mapAction">View map &rarr;</a>
+  </div>
+
+  <div class="card" id="aprsMessagingCard">
+    <h2>APRS Messaging</h2>
+
+    <form id="aprsMessageForm">
+      <label for="aprsRecipient">Recipient callsign</label>
+      <input id="aprsRecipient" type="text"
+             placeholder="N5BA-7" maxlength="9" required
+             autocomplete="off">
+
+      <label for="aprsMessageText">Message</label>
+      <input id="aprsMessageText" type="text"
+             placeholder="Your APRS message"
+             maxlength="67" required autocomplete="off">
+
+      <label>
+        <input id="aprsConfirmTransmit" type="checkbox" required>
+        Transmit now (VHF ready on Port 2, HF disconnected from Port 1)
+      </label>
+
+      <button class="action" id="aprsSendBtn" type="submit">
+        Send APRS Message
+      </button>
+    </form>
+
+    <div class="sub" id="aprsSendStatus"
+         role="status" aria-live="polite">
+      No message submitted.
+    </div>
+    <div id="aprsConversations">
+      <h3>Conversations <span id="convUnreadBadge" hidden></span></h3>
+
+      <label class="autoAckToggle">
+        <input id="aprsAutoAck" type="checkbox">
+        Automatically acknowledge messages to me
+        (transmits on VHF Port 2)
+      </label>
+      <div class="sub" id="aprsAutoAckStatus"
+           role="status" aria-live="polite">
+        Checking auto-ACK...
+      </div>
+
+      <label class="autoAckToggle">
+        <input id="aprsAutoRetry" type="checkbox">
+        Automatically resend unacknowledged messages
+        (transmits on VHF Port 2)
+      </label>
+      <div class="sub" id="aprsAutoRetryStatus"
+           role="status" aria-live="polite">
+        Checking auto-resend...
+      </div>
+
+      <div class="inboxButtons">
+        <button class="action" id="convAlertsBtn" type="button">
+          Enable alerts
+        </button>
+        <button class="action" id="aprsClearInbox" type="button">
+          Clear all messages
+        </button>
+      </div>
+
+      <div class="sub" id="convStatus" role="status" aria-live="polite">
+        Loading conversations...
+      </div>
+
+      <div class="convLayout">
+        <div id="convList" role="listbox"
+             aria-label="Stations you have messaged with"></div>
+        <div id="convThread">
+          <div class="convThreadHead">
+            <strong id="convThreadTitle">Select a station</strong>
+            <button class="action" id="convReplyBtn" type="button"
+                    hidden>Reply</button>
+          </div>
+          <div id="convMessages"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" id="beaconCard">
+    <h2>Position Beacon</h2>
+    <div class="sub" id="beaconPosition">Loading...</div>
+    <label class="autoAckToggle">
+      <input id="beaconToggle" type="checkbox">
+      Beacon my position automatically (transmits on VHF Port 2)
+    </label>
+    <div class="sub" id="beaconStatus" role="status" aria-live="polite"></div>
+    <button class="action" id="beaconNowBtn" type="button">Beacon now</button>
+  </div>
+
+  <div class="card" id="pbbsCard">
+    <h2>PBBS</h2>
+    <div class="sub" id="pbbsSummary">Not checked this session.</div>
+    <button class="action" id="pbbsCheckBtn" type="button">Check PBBS</button>
+    <a class="action" href="#" id="pbbsAction">Open PBBS &rarr;</a>
+    <div id="pbbsPreview"></div>
+  </div>
+
+  <div class="card" id="winlinkCard">
+    <h2>Winlink</h2>
+    <div class="sub">Check or send mail from the Winlink page (needs your account password -- entered there only).</div>
+    <a class="action" href="#" id="winlinkAction">Open Winlink &rarr;</a>
+  </div>
+</div>
+<div class="card" id="activityCard">
+  <h2>APRS Activity History — Last 60 Minutes</h2>
+
+  <svg id="activityChart"
+       viewBox="0 0 900 160"
+       role="img"
+       aria-label="APRS packets received per minute over the last hour">
+  </svg>
+
+  <div class="sub" id="activitySummary">
+    Waiting for APRS activity...
+  </div>
+</div>
+
+<div class="card" id="historyCard">
+  <h2>APRS Reception History</h2>
+
+  <div class="receptionFilters">
+    <label for="historyRange">Display period</label>
+    <select id="historyRange">
+      <option value="24h">Last 24 hours</option>
+      <option value="7d">Last 7 days</option>
+      <option value="30d">Last 30 days</option>
+    </select>
+  </div>
+  <div class="sub">
+    Persistent SQLite history — survives daemon restarts
+  </div>
+
+  <svg id="historyChart"
+       viewBox="0 0 900 180"
+       role="img"
+       aria-label="APRS packets received per hour over the last 24 hours">
+  </svg>
+
+  <div class="sub" id="historySummary" role="status">
+    Loading reception history...
+  </div>
+</div>
+
+<div class="card" id="receptionStatsCard">
+  <h2>AX.25 Reception Statistics</h2>
+  <div class="sub">Since daemon startup — refreshes every 15 seconds</div>
+
+  <div class="receptionMetrics">
+    <div>
+      <div class="receptionMetricValue" id="rxTotal">-</div>
+      <div class="sub">Packets received</div>
+    </div>
+    <div>
+      <div class="receptionMetricValue" id="rxSources">-</div>
+      <div class="sub">Unique sources</div>
+    </div>
+    <div>
+      <div class="receptionMetricValue" id="rxRelayed">-</div>
+      <div class="sub">With identified used digi</div>
+    </div>
+    <div>
+      <div class="receptionMetricValue" id="rxDirect">-</div>
+      <div class="sub">No identified used digi</div>
+    </div>
+  </div>
+
+  <div class="receptionLists">
+   <div>
+     <h3>Top Heard Sources</h3>
+
+     <div class="receptionFilters">
+       <input
+         id="rxSourceSearch"
+         type="search"
+         placeholder="Search callsign..."
+         aria-label="Search heard stations"
+         autocomplete="off"
+       >
+
+       <div class="receptionFilterOptions">
+         <label>
+           Minimum packets
+           <select id="rxSourceMinimum">
+             <option value="1">1+</option>
+             <option value="5">5+</option>
+             <option value="10">10+</option>
+             <option value="25">25+</option>
+           </select>
+         </label>
+
+         <label>
+           Sort by
+           <select id="rxSourceSort">
+             <option value="most">Most heard</option>
+             <option value="least">Least heard</option>
+             <option value="callsign">Callsign A-Z</option>
+           </select>
+         </label>
+       </div>
+     </div>
+
+     <div id="rxSourceCount" class="sub" role="status"></div>
+     <div id="rxTopSources" class="sub">Loading...</div>
+   </div>
+    <div>
+      <h3>Top Digipeaters</h3>
+      <div id="rxTopDigis" class="sub">Loading...</div>
+    </div>
+  </div>
+
+  <div class="sub" id="rxStatsStatus" role="status"></div>
+  <div class="sub">
+    Digipeaters are identified from used (*) path entries.
+    A packet without an identified used digi is not necessarily a direct RF reception.
+  </div>
+</div>
+<script src="app.js"></script>
+</body>
+</html>
