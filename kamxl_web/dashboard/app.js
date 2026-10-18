@@ -267,6 +267,25 @@
       info.textContent = extra.join(" · ");
       meta.appendChild(info);
 
+      // "Did it get out?": heard repeated by a digipeater, or sent
+      // back to RF from APRS-IS by an iGate.
+      if (msg.digipeated_by) {
+        var digi = document.createElement("span");
+        digi.className = "heardChip";
+        digi.textContent = "via " + msg.digipeated_by;
+        digi.title = "Heard repeated by " + msg.digipeated_by + " " +
+          relativeTime(msg.digipeated_at);
+        meta.appendChild(digi);
+      }
+      if (msg.igated_by) {
+        var ig = document.createElement("span");
+        ig.className = "heardChip igate";
+        ig.textContent = "on APRS-IS";
+        ig.title = "Reached the internet; sent back on RF by " + msg.igated_by +
+          " " + relativeTime(msg.igated_at);
+        meta.appendChild(ig);
+      }
+
       if (msg.status === "pending") {
         var resend = document.createElement("button");
         resend.type = "button";
@@ -662,6 +681,24 @@
       parts.push("last sent " + relativeTime(st.last_beacon_at));
     }
     beaconStatus.textContent = parts.join(", ") + ".";
+
+    var heard = st.heard_back || {};
+    var heardEl = document.getElementById("beaconHeardBack");
+    var bits = [];
+    if (heard.digipeated_by) {
+      bits.push("repeated by " + heard.digipeated_by + " " +
+        relativeTime(heard.digipeated_at));
+    }
+    if (heard.igated_by) {
+      bits.push("on APRS-IS (gated back by " + heard.igated_by + ") " +
+        relativeTime(heard.igated_at));
+    }
+    heardEl.className = bits.length ? "sub heard" : "sub";
+    heardEl.textContent = bits.length
+      ? "Heard back: " + bits.join("; ") + "."
+      : (st.last_beacon_at
+        ? "Not heard back yet (no digipeater copy since the daemon started)."
+        : "");
   }
 
   async function refreshBeacon() {
@@ -1647,6 +1684,68 @@
 
   updateServicePreview();
 
+  // -- Phone notifications ----------------------------------------------
+
+  var notifyStatus = document.getElementById("notifyStatus");
+  var notifyTestBtn = document.getElementById("notifyTestBtn");
+
+  function showNotifyStatus(st) {
+    if (!st.enabled) {
+      notifyStatus.textContent =
+        "Off. Set KAMXL_NTFY_URL and KAMXL_NTFY_TOPIC in .env (and a " +
+        "token or Cloudflare Access keys if your server needs them), then " +
+        "restart the daemon.";
+      notifyTestBtn.hidden = true;
+      return;
+    }
+    notifyTestBtn.hidden = false;
+    var parts = ["Sending " + st.events.join(", ") + " to " + st.server +
+      " (topic " + st.topic + ")."];
+    if (st.sent) {
+      parts.push(st.sent + " sent" +
+        (st.last_sent_at ? ", last " + relativeTime(st.last_sent_at) : "") + ".");
+    }
+    if (st.last_error) parts.push("Last error: " + st.last_error + ".");
+    notifyStatus.textContent = parts.join(" ");
+    notifyStatus.className = st.last_error ? "sub err" : "sub";
+  }
+
+  async function refreshNotify() {
+    try {
+      showNotifyStatus(await apiGet("/notify"));
+    } catch (err) {
+      notifyStatus.textContent = "Unable to read notification status: " + String(err);
+    }
+  }
+
+  notifyTestBtn.addEventListener("click", async function () {
+    notifyTestBtn.disabled = true;
+    notifyStatus.textContent = "Sending a test notification...";
+    try {
+      var res = await fetch(authedUrl("/notify/test"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: "{}"
+      });
+      var payload = await res.json();
+      if (!payload.ok) {
+        notifyStatus.textContent = "Test failed: " +
+          ((payload.error && payload.error.message) || "Unknown error");
+        notifyStatus.className = "sub err";
+        return;
+      }
+      showNotifyStatus(payload.result.status);
+      notifyStatus.textContent = (payload.result.delivered
+        ? "Test notification delivered — check your phone. "
+        : "Test notification failed: " + payload.result.error + ". ") +
+        notifyStatus.textContent;
+    } catch (err) {
+      notifyStatus.textContent = "Test request failed: " + String(err);
+    } finally {
+      notifyTestBtn.disabled = false;
+    }
+  });
+
   // -- Bulletins ------------------------------------------------------
   //
   // Broadcasts heard on the air: BLN0-9 bulletins, BLNA-Z
@@ -1853,6 +1952,8 @@
   setInterval(refreshAutoRetry, 15000);
   refreshBulletins();
   setInterval(refreshBulletins, 60000);
+  refreshNotify();
+  setInterval(refreshNotify, 60000);
   setInterval(refreshAutoAck, 15000);
   setInterval(refreshStations, 15000);
   setInterval(refreshReceptionStats, 15000);

@@ -541,3 +541,13 @@
   }
   .svcPreview code { flex: 1 1 100%; font-size: 13px; }
 
+  /* "Did it get out?" and notifications */
+  .heardChip {
+    display: inline-block; border: 1px solid #2c5a3c; border-radius: 3px;
+    padding: 0 5px; font-size: 11px; color: #8fd;
+  }
+  .heardChip.igate { border-color: #357; color: #8cf; }
+  #beaconHeardBack.heard { color: #6f6; }
+  #notifyCard { flex: 1 1 260px; }
+  #notifyStatus { line-height: 1.5; }
+
