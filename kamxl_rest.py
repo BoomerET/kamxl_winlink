@@ -1871,6 +1871,10 @@ DASHBOARD_HTML = """<!doctype html>
 
       renderPersistentHistory(history.hourly_counts || [], range);
 
+      historySummary.textContent += history.retention_days
+        ? " \u00b7 packet history kept " + history.retention_days + " days"
+        : " \u00b7 packet history kept indefinitely";
+
       historyChart.setAttribute(
         "aria-label",
         range === "24h"

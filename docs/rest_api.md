@@ -676,6 +676,12 @@ above the cards while the state is `only_own` or `silent`.
   when a message arrives). Read state and the alerts setting are kept
   per browser in `localStorage`.
 
+### Packet history retention
+
+`GET /aprs/history` also reports `retention_days` (0 = keep all),
+`oldest_packet_at`, `last_pruned_at` and `last_pruned_rows`. The
+dashboard's history card shows how long history is kept.
+
 ## Testing
 
 `tests/test_rest.py` runs a real `KAMDaemon` (wired to the same

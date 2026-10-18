@@ -24,6 +24,7 @@ defaults:
 | `--baud` | `KAMXL_BAUD` | `19200` |
 | `--callsign` | `KAMXL_CALLSIGN` | *(required -- no fallback)* |
 | `--history-db` | `KAMXL_HISTORY_DB` | *(off)* |
+| `--history-days` | `KAMXL_HISTORY_DAYS` | `90` (`0` = keep all, else min 31) |
 | `--auto-ack` | `KAMXL_AUTO_ACK=1` | *(off)* |
 | `--aprs-path` | `KAMXL_APRS_PATH` | `WIDE1-1,WIDE2-1` (`DIRECT` = none) |
 | `--latitude` / `--longitude` | `KAMXL_LATITUDE` / `KAMXL_LONGITUDE` | *(none -- beacon unavailable)* |
@@ -72,6 +73,13 @@ same pause rule as auto-ACK and beacons and turns itself off if a
 resend transmission fails. With `--history-db`, sent messages are
 saved and restored after a restart, but resends are never resumed
 after a restart.
+
+`--history-days` limits how long per-packet history is kept. The
+writer thread deletes older rows at startup and then once a day, in
+small batches so recording never stalls. Received and sent messages
+are not pruned (use Clear on the dashboard). SQLite reuses the freed
+space for new rows; the file itself doesn't shrink unless you run
+`sqlite3 reception.sqlite3 VACUUM` with the daemon stopped.
 
 `--port` has no hardcoded default on purpose: a wrong or missing
 serial device should fail immediately with a clear error, not

@@ -1876,3 +1876,22 @@ fixed a packaging gap found on the way: `pyproject.toml`'s
 `py-modules` was missing modules the daemon imports (`aprs_tx`,
 `aprs_outbox`, `reception_*`) plus the new `envfile`.
 
+### Packet history retention
+
+`received_packets` gained a row per packet heard and never shrank.
+`KAMXL_HISTORY_DAYS` / `--history-days` (command-line default 90; `0`
+keeps everything; otherwise at least 31 so the 30-day chart is never
+truncated) now bounds it. Pruning runs on the reception writer thread
+-- the one that owns the inserting connection -- once right after
+startup and then every 24 h, deleting in batches of 5,000 so inserts
+never wait long. Messages (`aprs_messages`, `aprs_outbound`) are
+deliberately never pruned. `aprs.history` reports `retention_days`,
+`oldest_packet_at`, `last_pruned_at`, `last_pruned_rows`; the
+dashboard history card shows the retention. The `KAMDaemon` library
+default stays 0 (keep all); only the command line defaults to 90.
+
+Also: `requires-python` corrected to `>=3.9` (the code uses
+`str.removeprefix`; CI proves 3.9, 3.11 and 3.13).
+
+Tests: `tests/test_history_retention.py` (7).
+
