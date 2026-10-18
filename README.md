@@ -97,6 +97,7 @@ KAMXL_LATITUDE=33.2275               # optional: position beacon
 KAMXL_LONGITUDE=-97.1273
 KAMXL_BEACON_COMMENT=KAM-XL
 KAMXL_BEACON=1                       # optional: beacon automatically
+KAMXL_WATCHDOG_MINUTES=30            # optional: reception alert after N quiet min (0 = off)
 ```
 
 The library accepts an explicit serial port on all platforms.

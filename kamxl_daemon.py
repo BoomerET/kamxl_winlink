@@ -109,6 +109,7 @@ class KAMDaemon:
         aprs_path: str = "",
         beacon: Optional[Dict[str, Any]] = None,
         beacon_interval_minutes: float = 30,
+        watchdog_minutes: float = 30,
     ) -> None:
         from aprs_tx import validate_aprs_path
 
@@ -143,6 +144,12 @@ class KAMDaemon:
                 "symbol": symbol,
                 "comment": beacon.get("comment", "") or "",
             }
+
+        # Reception watchdog: warn when nothing but our own stations has
+        # been heard on Port 2 for this long. 0 disables it.
+        if watchdog_minutes and watchdog_minutes < 5:
+            raise ValueError("Watchdog threshold must be 0 or >= 5 minutes")
+        self._watchdog_seconds = float(watchdog_minutes or 0) * 60
 
         if beacon_interval_minutes < 10:
             raise ValueError("Beacon interval must be at least 10 minutes")
@@ -249,6 +256,15 @@ class KAMDaemon:
 
         # Monotonic timestamps of packets received within the last 5 minutes.
         self._recent_packet_times = deque()
+        # Reception watchdog bookkeeping (wall-clock times, Port 2 only).
+        # "Own" = any SSID of our base callsign (e.g. N5BA-7 handheld);
+        # "other" = everyone else, including digipeaters and iGates.
+        self._last_other_packet_at: Optional[float] = None
+        self._last_other_source: Optional[str] = None
+        self._last_own_packet_at: Optional[float] = None
+        self._watchdog_alerting = False
+        self._watchdog_stop = threading.Event()
+
         # Minute-indexed APRS activity history.
         # Store only the most recent 60 minute buckets.
         self._activity_minutes: Dict[int, int] = {}        
@@ -311,6 +327,10 @@ class KAMDaemon:
 
         # Start the ACK worker, but do not authorize RF transmissions.
         self._ensure_aprs_ack_worker()
+
+        threading.Thread(
+            target=self._watchdog_loop, name="kamxl-watchdog", daemon=True
+        ).start()
 
         # Same for the beacon scheduler: running, but off.
         self._beacon_thread = threading.Thread(
@@ -375,8 +395,100 @@ class KAMDaemon:
                 "rate_1m": float(packets_last_1m),
                 "rate_5m": round(packets_last_5m / 5.0, 2),
                 "activity_history": activity_history,
+                "watchdog": self._watchdog_snapshot(),
             },
         }
+
+    # -- Reception watchdog ---------------------------------------------
+
+    def _is_own_station(self, source: str) -> bool:
+        if not self.station_callsign or not source:
+            return False
+        base = self.station_callsign.split("-")[0]
+        return source.strip().upper().split("-")[0] == base
+
+    def _watchdog_snapshot(self, now: Optional[float] = None) -> Dict[str, Any]:
+        """
+        Is the receiver hearing the network, or only our own stations?
+
+        States: "disabled", "starting" (not enough uptime to judge),
+        "ok", "only_own" (only N5BA-* heard -- the classic symptom of
+        receiver desense/noise, e.g. the radio sitting on an amplifier,
+        or a digipeater outage), "silent" (nothing at all heard).
+        """
+        now = time.time() if now is None else now
+        threshold = self._watchdog_seconds
+
+        with self._stats_lock:
+            last_other = self._last_other_packet_at
+            last_other_source = self._last_other_source
+            last_own = self._last_own_packet_at
+
+        result: Dict[str, Any] = {
+            "threshold_minutes": threshold / 60,
+            "last_other_packet_at": last_other,
+            "last_other_source": last_other_source,
+            "last_own_packet_at": last_own,
+            "minutes_since_other": (
+                round((now - last_other) / 60, 1)
+                if last_other is not None else None
+            ),
+        }
+
+        if not threshold:
+            return {**result, "state": "disabled", "message": None}
+
+        # Measure from startup if nothing has been heard yet.
+        reference = last_other if last_other is not None else self._started_at
+
+        if now - reference < threshold:
+            state = "ok" if last_other is not None else "starting"
+            return {**result, "state": state, "message": None}
+
+        minutes = int((now - reference) // 60)
+        own_recent = last_own is not None and now - last_own < threshold
+
+        if own_recent:
+            return {
+                **result,
+                "state": "only_own",
+                "message": (
+                    f"Only your own stations heard for {minutes} min. "
+                    "The KAM-XL decodes fine, so the receiver is likely "
+                    "desensed by nearby noise (amplifier, power supply, "
+                    "computer) or the digipeater you rely on is down."
+                ),
+            }
+
+        return {
+            **result,
+            "state": "silent",
+            "message": (
+                f"Nothing heard on Port 2 for {minutes} min. Check the "
+                "radio: frequency (144.390), volume, squelch, the Port 2 "
+                "audio cable, and nearby noise sources."
+            ),
+        }
+
+    def _watchdog_loop(self) -> None:
+        """Log when reception goes quiet and when it recovers."""
+        while not self._watchdog_stop.wait(30.0):
+            self._watchdog_tick()
+
+    def _watchdog_tick(self) -> None:
+        """One check: log on entering and on leaving an alert state."""
+        snapshot = self._watchdog_snapshot()
+        alert = snapshot["state"] in ("only_own", "silent")
+
+        if alert and not self._watchdog_alerting:
+            logger.warning("Reception watchdog: %s", snapshot["message"])
+        elif not alert and self._watchdog_alerting:
+            logger.info(
+                "Reception watchdog: recovered (heard %s)",
+                snapshot["last_other_source"],
+            )
+
+        self._watchdog_alerting = alert
 
     def _m_get(self, params: Dict[str, Any]) -> str:
         with self._kam_lock:
@@ -1885,6 +1997,14 @@ class KAMDaemon:
                 self._activity_minutes.get(minute, 0) + 1
             )
 
+            if packet.port == 2:
+                wall = time.time()
+                if self._is_own_station(packet.source):
+                    self._last_own_packet_at = wall
+                else:
+                    self._last_other_packet_at = wall
+                    self._last_other_source = packet.source
+
             # Keep the current minute and the previous 59 minutes.
             cutoff_minute = minute - 59
             for old_minute in list(self._activity_minutes):
@@ -2053,6 +2173,7 @@ class KAMDaemon:
 
             self._aprs_ack_stop.set()
             self._beacon_stop.set()
+            self._watchdog_stop.set()
 
             # Discard ACKs waiting in the queue. An ACK already
             # being processed remains the worker's responsibility.
@@ -2401,6 +2522,17 @@ def main(argv: Optional[list] = None) -> None:
     )
 
     parser.add_argument(
+        "--watchdog-minutes",
+        type=float,
+        default=float(os.environ.get("KAMXL_WATCHDOG_MINUTES", "30")),
+        help=(
+            "Warn when nothing but your own stations has been heard on "
+            "Port 2 for this many minutes; 0 disables (default: "
+            "$KAMXL_WATCHDOG_MINUTES, or 30; minimum 5)"
+        ),
+    )
+
+    parser.add_argument(
         "--auto-ack",
         action="store_true",
         default=os.environ.get("KAMXL_AUTO_ACK", "").strip().lower()
@@ -2455,6 +2587,8 @@ def main(argv: Optional[list] = None) -> None:
             )
         except ValueError as exc:
             parser.error(f"Invalid beacon settings: {exc}")
+    if args.watchdog_minutes and args.watchdog_minutes < 5:
+        parser.error("--watchdog-minutes must be 0 (off) or at least 5")
     if args.beacon_interval < 10:
         parser.error("--beacon-interval must be at least 10 minutes")
 
@@ -2475,6 +2609,7 @@ def main(argv: Optional[list] = None) -> None:
         aprs_path=aprs_path,
         beacon=beacon_config,
         beacon_interval_minutes=args.beacon_interval,
+        watchdog_minutes=args.watchdog_minutes,
     )
 
     if args.beacon:

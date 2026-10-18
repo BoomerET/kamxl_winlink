@@ -309,6 +309,25 @@ DASHBOARD_HTML = """<!doctype html>
     font-weight: bold;
   }
 
+  #receptionAlert {
+    margin: 12px 16px 0;
+    padding: 10px 14px;
+    border: 1px solid #f1c40f;
+    border-left-width: 6px;
+    border-radius: 4px;
+    background: rgba(241, 196, 15, 0.08);
+    color: #f1c40f;
+    font-size: 13px;
+    line-height: 1.5;
+  }
+  #receptionAlert.silent {
+    border-color: #ff5555;
+    background: rgba(255, 85, 85, 0.08);
+    color: #ff7777;
+  }
+  #receptionAlert[hidden] { display: none; }
+  #receptionAlertText { color: #cdd; margin-top: 2px; }
+
   #receptionHealth.receiving {
     color: #50fa7b;
   }
@@ -486,6 +505,10 @@ DASHBOARD_HTML = """<!doctype html>
     <a href="#" id="mapLink">map</a>
     <a href="#" id="winlinkLink">winlink</a>
   </span>
+</div>
+<div id="receptionAlert" role="alert" hidden>
+  <strong id="receptionAlertTitle">Reception problem</strong>
+  <div id="receptionAlertText"></div>
 </div>
 <div id="cards">
   <div class="card" id="statusCard">
@@ -1641,6 +1664,29 @@ DASHBOARD_HTML = """<!doctype html>
     return secs + "s";
   }
 
+  function showReceptionAlert(wd) {
+    var box = document.getElementById("receptionAlert");
+    var alerting = wd && (wd.state === "only_own" || wd.state === "silent");
+
+    if (!alerting) {
+      box.hidden = true;
+      return;
+    }
+
+    box.hidden = false;
+    box.className = wd.state;
+    document.getElementById("receptionAlertTitle").textContent =
+      wd.state === "silent"
+        ? "Receiver hearing nothing"
+        : "Receiver hearing only your own stations";
+    var last = wd.last_other_packet_at
+      ? " Last other station: " + wd.last_other_source + ", " +
+        relativeTime(wd.last_other_packet_at) + "."
+      : "";
+    document.getElementById("receptionAlertText").textContent =
+      wd.message + last;
+  }
+
   function updateReceptionHealth(connected, diag) {
     var element = document.getElementById("receptionHealth");
 
@@ -1658,8 +1704,16 @@ DASHBOARD_HTML = """<!doctype html>
 
     var packets = Number(diag.packets_last_5m || 0);
     var uptime = Number(diag.uptime_seconds || 0);
+    var wd = diag.watchdog || {};
 
-    if (packets > 0) {
+    if (wd.state === "only_own") {
+      element.className = "quiet";
+      element.textContent = "Reception: Only own stations heard (" +
+        Math.round(wd.minutes_since_other || 0) + " min)";
+    } else if (wd.state === "silent") {
+      element.className = "disconnected";
+      element.textContent = "Reception: Nothing heard";
+    } else if (packets > 0) {
       element.className = "receiving";
       element.textContent = "Reception: Receiving (last 5 minutes)";
     } else if (diag.last_packet_at == null && uptime < 300) {
@@ -1682,6 +1736,9 @@ DASHBOARD_HTML = """<!doctype html>
         " monitor subscriber" + (status.monitor_subscribers === 1 ? "" : "s");
       var diag = status.diagnostics;
       updateReceptionHealth(status.connected, diag);
+      showReceptionAlert(
+        status.connected && diag ? diag.watchdog : null
+      );
 
       if (diag) {
         renderActivityHistory(diag.activity_history);
@@ -1712,6 +1769,7 @@ DASHBOARD_HTML = """<!doctype html>
       statusDetail.textContent = err.message || String(err);
       diagnosticsDetail.textContent = "Diagnostics unavailable";
       renderActivityHistory(null);
+      showReceptionAlert(null);
       var receptionHealth = document.getElementById("receptionHealth");
       receptionHealth.className = "unavailable";
       receptionHealth.textContent =

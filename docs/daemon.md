@@ -31,6 +31,7 @@ defaults:
 | `--beacon-comment` | `KAMXL_BEACON_COMMENT` | *(empty, max 43 chars)* |
 | `--beacon-interval` | `KAMXL_BEACON_INTERVAL` | `30` minutes (min 10) |
 | `--beacon` | `KAMXL_BEACON=1` | *(off)* |
+| `--watchdog-minutes` | `KAMXL_WATCHDOG_MINUTES` | `30` (`0` = off, min 5) |
 
 `--callsign` is this station's APRS callsign, exactly as the KAM-XL's
 MYCALL (SSID included, e.g. `N5BA` or `N5BA-10`). It decides which
@@ -51,6 +52,13 @@ The position beacon needs `--latitude` and `--longitude` (decimal
 degrees, west/south negative). `--beacon` starts it at boot; it can
 also be switched on/off or fired once from the dashboard. All beacon
 settings are validated before the serial port is opened.
+
+The reception watchdog warns (in the log and as a dashboard banner)
+when nothing has been heard on Port 2 for `--watchdog-minutes`, or
+when only this station's own callsigns (any SSID of `--callsign`,
+e.g. a handheld) have been heard -- the symptom of a desensed
+receiver or a digipeater outage. It logs once on entering the alert
+and once on recovery.
 
 `--port` has no hardcoded default on purpose: a wrong or missing
 serial device should fail immediately with a clear error, not

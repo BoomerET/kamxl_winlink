@@ -635,6 +635,16 @@ while a terminal/connected/PBBS/Winlink session may be open. "Beacon
 now" is operator-initiated and re-checks the TNC regardless. A failed
 beacon transmission turns the periodic beacon off.
 
+### Reception watchdog
+
+`GET /status` → `diagnostics.watchdog`: `state` (`starting`, `ok`,
+`only_own`, `silent`, `disabled`), `message`, `threshold_minutes`,
+`last_other_packet_at`, `last_other_source`, `last_own_packet_at`,
+`minutes_since_other`. "Own" means any SSID of the daemon's callsign;
+everything else (including digipeaters and iGates) counts as the
+network. Only Port 2 is considered. The dashboard shows a banner
+above the cards while the state is `only_own` or `silent`.
+
 ## Testing
 
 `tests/test_rest.py` runs a real `KAMDaemon` (wired to the same
