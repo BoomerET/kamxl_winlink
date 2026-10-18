@@ -13,6 +13,7 @@
   document.getElementById("pbbsLink").href = authedUrl("/pbbs");
   document.getElementById("mapLink").href = authedUrl("/map");
   document.getElementById("winlinkLink").href = authedUrl("/winlink");
+  document.getElementById("logLink").href = authedUrl("/log");
   document.getElementById("mapAction").href = authedUrl("/map");
   document.getElementById("pbbsAction").href = authedUrl("/pbbs");
   document.getElementById("winlinkAction").href = authedUrl("/winlink");

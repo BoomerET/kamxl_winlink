@@ -18,6 +18,7 @@
   document.getElementById("terminalLink").href = authedUrl("/terminal");
   document.getElementById("pbbsLink").href = authedUrl("/pbbs");
   document.getElementById("winlinkLink").href = authedUrl("/winlink");
+  document.getElementById("logLink").href = authedUrl("/log");
 
   var map = L.map("map").setView([0, 0], 2);
   L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
@@ -523,7 +524,10 @@
       var history = station.history || [];
 
       var html = "<div class='detailActions'>" +
-        messageLinkHtml(station.callsign) + "</div>";
+        messageLinkHtml(station.callsign) + " &nbsp; " +
+        "<a class='messageStation' href='" + escapeHtml(authedUrl(
+          "/log?callsign=" + encodeURIComponent(station.callsign) +
+          "&days=30")) + "'>Packet log &rarr;</a></div>";
 
       function detail(label, value) {
         html += "<div class='detailRow'>" +

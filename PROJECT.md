@@ -2144,3 +2144,39 @@ as much as the antenna, so compare setups over similar periods.
 
 Tests: `tests/test_coverage.py` (13).
 
+### Packet log search
+
+A sixth page, `kamxl_web/log/` at `/log`, linked from every header and
+from a station's details on the map ("Packet log").
+`ReceptionHistory.search_packets()` filters stored packets by sender
+(exact, any SSID, or `W5N*` prefix; also the originator inside a
+gated `}` packet), digipeater anywhere in the path (`json_each` over
+the stored path), literal payload text, period and setup; newest
+first, paged by row id. `station_summary()` answers "when did I last
+hear X and through which digipeater": first/last heard, count, how
+many direct, SSIDs seen, and the transmitting digipeater of each copy.
+
+"Transmitting digipeater" is now `aprs_coverage.last_hop()`: the last
+*callsign* among the used hops, because in `W5NGU-3,WIDE1*,WIDE2-1`
+the starred WIDE1 is an alias W5NGU-3 used up. The beacon/message
+"Heard back" display uses it too (falling back to the alias when no
+callsign was inserted); before, that path would have said "WIDE1".
+
+The page keeps the search in the URL (back button, bookmarks, links
+from other pages), makes callsigns and digipeaters clickable to
+search for them, highlights the matched text, and lays each packet out
+as two lines so it reads on a phone. RPC `packets.search`, REST
+`GET /packets/search`.
+
+Sizing, measured: about 150 bytes per stored packet including indexes
+(100,000 packets = 15 MB), and a text search over 100,000 rows takes
+~15 ms, so SQLite is nowhere near its limits here. Considered and
+rejected: moving to PostgreSQL/MariaDB (one writer, one machine,
+millions of rows at most -- a server adds administration and a
+failure point for no gain) and SQLite FTS5 full-text search
+(tokenizes words, which suits prose but not substring searches on
+callsigns and APRS payloads; LIKE is fast enough).
+
+Tests: `tests/test_packet_log.py` (14), `last_hop` cases in
+`tests/test_coverage.py`.
+

@@ -52,6 +52,28 @@ def first_hop(digipeaters: Iterable[str]) -> Optional[str]:
     return "" if is_alias(first) else first
 
 
+def last_hop(digipeaters: Iterable[str]) -> Optional[str]:
+    """
+    The digipeater that transmitted the copy we heard, or None if the
+    packet wasn't digipeated.
+
+    That's the last used hop -- but in a path like
+    ``W5NGU-3,WIDE1*,WIDE2-1`` the starred WIDE1 is an alias that
+    W5NGU-3 used up (inserting its own callsign before it), so the
+    station is the last *callsign* among the used hops. Returns ""
+    when every used hop is an alias (an unidentified digipeater).
+    """
+    hops = [h for h in (digipeaters or ()) if h]
+    starred = [i for i, h in enumerate(hops) if h.endswith("*")]
+    if not starred:
+        return None
+    for hop in reversed(hops[:starred[-1] + 1]):
+        bare = hop.rstrip("*").upper()
+        if not is_alias(bare):
+            return bare
+    return ""
+
+
 def normalize_setup(value) -> str:
     """Validate a setup label: free text, up to 40 printable characters."""
     if value is None:

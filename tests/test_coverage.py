@@ -8,7 +8,7 @@ import tempfile
 import time
 import unittest
 
-from aprs_coverage import distance_miles, first_hop, normalize_setup
+from aprs_coverage import distance_miles, first_hop, last_hop, normalize_setup
 from fakes import ScriptedSerial, make_kam
 from kamxl_daemon import KAMDaemon
 from packet import Packet
@@ -53,6 +53,20 @@ class HelperTests(unittest.TestCase):
         for digis, expected in cases:
             with self.subTest(digis=digis):
                 self.assertEqual(first_hop(digis), expected)
+
+    def test_last_hop(self):
+        cases = [
+            (("W5NGU-3*",), "W5NGU-3"),
+            (("W5NGU-3", "WIDE1*", "WIDE2-1"), "W5NGU-3"),
+            (("W5NGU-3", "K5DNT-4*"), "K5DNT-4"),
+            (("W5NGU-3", "WIDE1", "K5DNT-4", "WIDE2*"), "K5DNT-4"),
+            (("WIDE1*", "WIDE2-1"), ""),
+            (("WIDE1-1", "WIDE2-1"), None),
+            ((), None),
+        ]
+        for digis, expected in cases:
+            with self.subTest(digis=digis):
+                self.assertEqual(last_hop(digis), expected)
 
     def test_normalize_setup(self):
         self.assertEqual(normalize_setup("  J-pole   16 ft "), "J-pole 16 ft")

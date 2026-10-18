@@ -164,6 +164,9 @@ WINLINK_HTML = load_page("winlink")
 # app.js) -- see kamxl_web/__init__.py.
 MAP_HTML = load_page("map")
 
+# Packet log search page: kamxl_web/log/.
+LOG_HTML = load_page("log")
+
 logger = logging.getLogger("kamxl_rest")
 logger.addHandler(logging.NullHandler())
 
@@ -359,6 +362,8 @@ ROUTES: Tuple[Tuple[str, "re.Pattern", str], ...] = (
     ("GET", re.compile(r"^/notify$"), "_h_notify_status"),
     ("POST", re.compile(r"^/notify/test$"), "_h_notify_test"),
     ("GET", re.compile(r"^/coverage$"), "_h_coverage_report"),
+    ("GET", re.compile(r"^/log$"), "_h_log_page"),
+    ("GET", re.compile(r"^/packets/search$"), "_h_packets_search"),
     ("POST", re.compile(r"^/coverage/setup$"), "_h_coverage_set_setup"),
     ("GET", re.compile(r"^/stations/(?P<callsign>[A-Za-z0-9\-]+)$"), "_h_stations_get"),
     ("POST", re.compile(r"^/winlink/check$"), "_h_winlink_check_mail"),
@@ -812,6 +817,37 @@ class RESTRequestHandler(BaseHTTPRequestHandler):
 
     def _h_objects_list(self, params: Dict[str, str], query: Dict[str, Any]) -> None:
         self._relay("objects.list")
+
+    def _h_log_page(self, params: Dict[str, str], query: Dict[str, Any]) -> None:
+        body = LOG_HTML.encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _h_packets_search(self, params: Dict[str, str], query: Dict[str, Any]) -> None:
+        """
+        Search the packet log: ?callsign=&via=&text=&days=&setup=
+        &before_id=&limit= (see packets.search). No TNC access.
+        """
+        search: Dict[str, Any] = {}
+        for name in ("callsign", "via", "text", "setup"):
+            if name in query:
+                search[name] = query[name][0]
+        try:
+            for name, kind in (("days", float), ("before_id", int),
+                               ("limit", int)):
+                if name in query and query[name][0] != "":
+                    search[name] = kind(query[name][0])
+        except ValueError:
+            self._send_json(400, {
+                "ok": False,
+                "error": {"type": "InvalidParam",
+                          "message": "days, before_id and limit must be numbers"},
+            })
+            return
+        self._relay("packets.search", _socket_timeout=30, **search)
 
     def _h_coverage_report(self, params: Dict[str, str], query: Dict[str, Any]) -> None:
         """Per-setup coverage (?days=N, default 30). No TNC access."""

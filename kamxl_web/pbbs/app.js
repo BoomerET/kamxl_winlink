@@ -14,6 +14,7 @@
   document.getElementById("terminalLink").href = authedUrl("/terminal");
   document.getElementById("mapLink").href = authedUrl("/map");
   document.getElementById("winlinkLink").href = authedUrl("/winlink");
+  document.getElementById("logLink").href = authedUrl("/log");
 
   function escapeHtml(text) {
     var div = document.createElement("div");
