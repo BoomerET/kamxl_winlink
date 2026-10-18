@@ -533,6 +533,48 @@ endpoint. All three endpoints (and the underlying `winlink_api.py`
 module) are themselves unverified against the live API with a real
 key -- see PROJECT.md's "Winlink Web Service API" milestone.
 
+## APRS messaging and acknowledgments
+
+`POST /aprs/send` submits one APRS message on VHF Port 2. Body:
+`addressee`, `message`, `path` (must be `""`), and the three explicit
+confirmations `confirm_transmit`, `confirm_vhf_port2_radio_ready`,
+`confirm_hf_port1_disconnected` (all `true`, every call -- nothing is
+cached).
+
+Every message now goes out with an APRS message ID appended
+(`:W1ABC-7  :Hello{0A1F`), which asks the recipient to reply with
+`ack0A1F`. The response includes `message_id` and an `outbound`
+record. IDs are four base-36 characters seeded from the clock, so a
+daemon restart doesn't reuse recent ones.
+
+`GET /aprs/outbox` lists messages sent since the daemon started
+(newest first, last 200, in memory only) with their `status`:
+
+| status | meaning |
+| --- | --- |
+| `pending` | submitted to the TNC; no ack heard yet |
+| `acked` | `ackID` heard from the addressee (`acked_by`, `acked_at`) |
+| `rejected` | `rejID` heard from the addressee |
+
+An incoming ack is matched only when it is addressed to this station
+(`APRS_STATION_CALLSIGN` in `kamxl_daemon.py`, currently `N5BA`), sent
+by the station the message was addressed to (exact SSID), and carries
+the assigned ID. Also recognized: acks that arrive via an iGate as
+APRS third-party packets (`}ANSRVR>...::N5BA     :ack0A1F`), APRS 1.1
+reply-acks (`text{MM}0A1F`), and `ack0A1F}`. Matching is passive --
+it never touches the TNC. Each match is also pushed to
+`/monitor/stream` subscribers as an `{"event": "aprs_outbound"}` event.
+
+There is deliberately **no automatic retry** (consistent with every
+other transmit path here). To retry by hand, `POST /aprs/send` with
+`resend_id` instead of `addressee`/`message` (same three
+confirmations). The resend reuses the original ID, so a late ack for
+the first attempt still counts and the recipient can discard the
+duplicate; resending an already-acked/rejected message is refused.
+The dashboard's "Sent Messages" list shows each message's status,
+polls `/aprs/outbox` every 10 s while anything is pending, and offers
+a Resend button.
+
 ## Testing
 
 `tests/test_rest.py` runs a real `KAMDaemon` (wired to the same

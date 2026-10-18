@@ -1637,3 +1637,37 @@ AX.25/APRS packets.
 
 This feature does not change milestone 7's in-memory APRS station
 database or introduce historical station-position tracking.
+
+## APRS acknowledgments for sent messages
+
+Outgoing APRS messages from the dashboard now request and track
+acknowledgments.
+
+- `format_aprs_message(..., message_id=...)` appends `{ID`; the live
+  TX path's canonical-payload check accepts it. Every send gets an ID
+  from the new `aprs_outbox.OutboundAprsTracker` (4 base-36 chars,
+  clock-seeded so restarts don't reuse recent IDs).
+- The monitor thread matches incoming `ackID`/`rejID` -- addressed to
+  `APRS_STATION_CALLSIGN`, from the original addressee, with our ID --
+  and marks the message `acked`/`rejected`. Passive only: no serial
+  I/O, wrapped so a bookkeeping error can't kill the monitor thread.
+- Also handled: third-party (`}`) packets from iGates (how replies
+  from APRS-IS services and phone apps reach RF -- also now unwrapped
+  for the received-messages inbox, which previously dropped them),
+  APRS 1.1 reply-acks (`{MM}AA`), and `ackID}`.
+- `aprs.outbox` daemon method / `GET /aprs/outbox`; manual resend via
+  `resend_id` on `aprs.send_message` / `POST /aprs/send`, reusing the
+  same ID and still requiring all three per-call confirmations. No
+  automatic retries.
+- Dashboard "Sent Messages" list with Awaiting ack / Acknowledged /
+  Rejected badges and a Resend button.
+- Sent-message state is in memory only (lost on daemon restart);
+  acks themselves are still persisted in `aprs_messages` when
+  `--history-db` is on.
+- Not yet verified on real hardware/RF.
+- Known gap left alone: automatic ACKs (`aprs.ack_enable`) still only
+  answer direct RF messages, not third-party ones gated from APRS-IS.
+  Changing what triggers an automatic RF transmission felt like a
+  decision for Dave, not a side effect of this change.
+
+Tests: `tests/test_aprs_outbox.py` (45).

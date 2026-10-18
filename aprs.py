@@ -530,16 +530,24 @@ def parse_position(
         timestamp,
         payload,
     )
+_MESSAGE_ID_RE = re.compile(r"[A-Za-z0-9]{1,5}")
+
+
 def format_aprs_message(
     addressee: str,
     message: str,
     paclen: int = 128,
+    message_id: Optional[str] = None,
 ) -> str:
     """
     Format an APRS message information field for an AX.25 UI frame.
 
     Does not include AX.25 source, destination, digipeater path,
     or the TNC's SENDPAC carriage return.
+
+    ``message_id`` (1-5 alphanumerics) is appended as ``{ID``, which
+    asks the recipient to acknowledge with ``ackID``. Without it the
+    message is sent "unacknowledged" and no ack will ever arrive.
 
     This function performs no hardware I/O.
     """
@@ -565,6 +573,14 @@ def format_aprs_message(
 
     payload = f":{addressee:<9}:{message}"
 
+    if message_id is not None:
+        if not isinstance(message_id, str) or not _MESSAGE_ID_RE.fullmatch(
+            message_id
+        ):
+            raise ValueError("Invalid APRS message ID")
+
+        payload += "{" + message_id
+
     if len(payload.encode("ascii")) > paclen:
         raise ValueError(
             f"APRS payload exceeds PACLEN ({paclen} bytes)"
@@ -581,6 +597,9 @@ class AprsMessage:
     message_id: Optional[str]
     kind: str
     raw: str
+    # APRS 1.1 "reply-ack" (``text{MM}AA``): an ack for our message
+    # ID ``AA`` piggybacked on the sender's own message ``MM``.
+    reply_ack: Optional[str] = None
 
 
 def parse_aprs_message(payload: str) -> Optional[AprsMessage]:
@@ -615,9 +634,14 @@ def parse_aprs_message(payload: str) -> Optional[AprsMessage]:
     # APRS acknowledgment/rejection: ackID or rejID.
     for prefix, kind in (("ack", "ack"), ("rej", "rej")):
         if content.startswith(prefix):
-            message_id = content[len(prefix):]
+            message_id = content[len(prefix):].rstrip()
 
-            if re.fullmatch(r"[A-Za-z0-9]{1,5}", message_id):
+            # Reply-ack capable stations may send ``ackMM}`` or
+            # ``ackMM}AA``; the acknowledged ID is MM either way.
+            if "}" in message_id:
+                message_id = message_id.split("}", 1)[0]
+
+            if _MESSAGE_ID_RE.fullmatch(message_id):
                 return AprsMessage(
                     addressee=addressee,
                     text="",
@@ -627,12 +651,24 @@ def parse_aprs_message(payload: str) -> Optional[AprsMessage]:
                 )
 
     message_id = None
+    reply_ack = None
     text = content
 
     if "{" in content:
         text, message_id = content.rsplit("{", 1)
+        message_id = message_id.rstrip()
 
-        if not re.fullmatch(r"[A-Za-z0-9]{1,5}", message_id):
+        # APRS 1.1 reply-ack: ``{MM}`` or ``{MM}AA``.
+        if "}" in message_id:
+            message_id, reply_ack = message_id.split("}", 1)
+            reply_ack = reply_ack or None
+
+            if reply_ack is not None and not _MESSAGE_ID_RE.fullmatch(
+                reply_ack
+            ):
+                return None
+
+        if not _MESSAGE_ID_RE.fullmatch(message_id):
             return None
 
     if not text:
@@ -644,6 +680,7 @@ def parse_aprs_message(payload: str) -> Optional[AprsMessage]:
         message_id=message_id,
         kind="message",
         raw=payload,
+        reply_ack=reply_ack,
     )
 
 def format_aprs_ack(addressee: str, message_id: str) -> str:
@@ -658,3 +695,31 @@ def format_aprs_ack(addressee: str, message_id: str) -> str:
         message=f"ack{message_id}",
         paclen=128,
     )
+
+
+_THIRD_PARTY_RE = re.compile(
+    r"^\}(?P<source>[A-Za-z0-9]{1,6}(?:-[A-Za-z0-9]{1,2})?)>"
+    r"[^:]*:(?P<payload>.*)$",
+    re.DOTALL,
+)
+
+
+def unwrap_third_party(source: str, payload: str):
+    """
+    Unwrap an APRS third-party (``}``) packet into (source, payload).
+
+    Messages that reach RF from the internet (APRS-IS services such as
+    ANSRVR or a phone app, gated by an iGate) arrive as
+    ``}W1ABC>APRS,TCPIP,IGATE*::N5BA     :ack12`` -- the RF source is
+    the iGate, the real originator is inside. Returns the inputs
+    unchanged for ordinary packets or a malformed header.
+    """
+    if not isinstance(payload, str) or not payload.startswith("}"):
+        return source, payload
+
+    match = _THIRD_PARTY_RE.match(payload)
+
+    if match is None:
+        return source, payload
+
+    return match.group("source").upper(), match.group("payload")
