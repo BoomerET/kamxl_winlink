@@ -59,7 +59,7 @@ class LoadPageTests(unittest.TestCase):
         for name, const in (
             ("dashboard", "DASHBOARD_HTML"), ("terminal", "TERMINAL_HTML"),
             ("pbbs", "PBBS_HTML"), ("winlink", "WINLINK_HTML"),
-            ("map", "MAP_HTML"),
+            ("map", "MAP_HTML"), ("log", "LOG_HTML"),
         ):
             self.assertEqual(getattr(kamxl_rest, const), kamxl_web.load_page(name))
 

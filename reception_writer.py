@@ -262,6 +262,14 @@ class ReceptionWriter:
     def packets_since(self, since, limit=20000):
         return self._with_history(lambda h: h.packets_since(since, limit))
 
+    def search_packets(self, **filters):
+        return self._with_history(lambda h: h.search_packets(**filters))
+
+    def station_summary(self, callsign, since=None, until=None):
+        return self._with_history(
+            lambda h: h.station_summary(callsign, since, until)
+        )
+
     def get_setting(self, key):
         return self._with_history(lambda h: h.get_setting(key))
 

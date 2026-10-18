@@ -1,0 +1,119 @@
+
+  html, body {
+    margin: 0;
+    min-height: 100%;
+    background: #0b0f10;
+    color: #d4f7d4;
+    font-family: "Courier New", Courier, monospace;
+  }
+  .paneHeader {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    align-items: center;
+    justify-content: space-between;
+    padding: 4px 10px;
+    background: #101617;
+    border-bottom: 1px solid #234;
+    font-size: 12px;
+    letter-spacing: 0.05em;
+    color: #888;
+    box-sizing: border-box;
+  }
+  .paneHeader a {
+    border: 1px solid #345;
+    color: #9c9;
+    font-size: 11px;
+    padding: 2px 8px;
+    text-decoration: none;
+  }
+  .paneHeader a:hover { border-color: #5a8; color: #cfc; }
+  #content { padding: 12px; max-width: 1100px; }
+
+  #searchForm {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px 14px;
+    align-items: flex-end;
+  }
+  #searchForm label {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    color: #789;
+    font-size: 11px;
+    flex: 1 1 150px;
+  }
+  #searchForm input, #searchForm select {
+    background: #101617;
+    color: #d4f7d4;
+    border: 1px solid #345;
+    font: inherit;
+    font-size: 13px;
+    padding: 5px 7px;
+    min-width: 0;
+  }
+  #searchForm input:focus, #searchForm select:focus { outline: 1px solid #5a8; }
+  button {
+    background: none;
+    border: 1px solid #345;
+    color: #9c9;
+    font: inherit;
+    font-size: 12px;
+    padding: 5px 12px;
+    cursor: pointer;
+  }
+  button:hover { border-color: #5a8; color: #cfc; }
+  button:disabled { opacity: 0.5; cursor: default; }
+  .buttons { display: flex; gap: 6px; }
+
+  #status { margin: 12px 0 8px; color: #9ab; font-size: 12px; }
+  #status.err { color: #f77; }
+
+  #summary {
+    border: 1px solid #234;
+    border-radius: 4px;
+    background: #101617;
+    padding: 10px 12px;
+    margin-bottom: 12px;
+    font-size: 13px;
+    line-height: 1.6;
+  }
+  #summary h2 { margin: 0 0 4px; font-size: 15px; color: #9f9; font-weight: normal; }
+  #summary .label { color: #789; }
+  #summary a { color: #3388ff; }
+
+  .pkt {
+    border-bottom: 1px solid #1a2a2e;
+    padding: 6px 0;
+    font-size: 13px;
+  }
+  .pktHead { display: flex; flex-wrap: wrap; gap: 2px 12px; align-items: baseline; }
+  .pktTime { color: #789; font-size: 12px; white-space: nowrap; }
+  .pktPath { color: #9ab; font-size: 12px; }
+  .pktSetup { color: #678; font-size: 11px; margin-left: auto; }
+  .pktBody {
+    margin-top: 3px;
+    color: #cfc;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+  .pktBody.missing { color: #567; font-style: italic; }
+  mark { background: #3a5a20; color: #efe; }
+
+  a.call {
+    color: #8cf;
+    text-decoration: none;
+    cursor: pointer;
+  }
+  a.call:hover { text-decoration: underline; }
+  .src { font-weight: bold; }
+  .dim { color: #678; }
+
+  #moreBtn { margin: 14px 0 30px; }
+
+  @media (max-width: 600px) {
+    #content { padding: 8px; }
+    #searchForm input, #searchForm select { font-size: 16px; }
+    .pktSetup { margin-left: 0; }
+  }

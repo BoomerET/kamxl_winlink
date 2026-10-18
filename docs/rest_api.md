@@ -795,6 +795,29 @@ Coverage card shows setups side by side; its "map" link opens
 `/map?coverage=<setup>&days=N`, which draws lines to each digipeater
 colored by how often it heard you.
 
+### Packet log
+
+`GET /log` is the packet log page (also linked as "log" from every
+page's header, and as "Packet log" from a station's details on the
+map). It searches `GET /packets/search`, which takes any of:
+
+| Parameter | Meaning |
+|---|---|
+| `callsign` | Sender. `W5NGU-3` exact, `W5NGU` any SSID, `W5N*` prefix. Also matches the originator of a message gated from APRS-IS (`}W1ABC>...`). |
+| `via` | A digipeater anywhere in the path, same forms. |
+| `text` | Case-insensitive text inside the packet (literal; `%` and `_` are not wildcards). |
+| `days` | How far back; default 7, `0` = everything. |
+| `setup` | Station setup label (see Coverage); `""` = none. |
+| `before_id`, `limit` | Paging: pass the last `id` of a page to get older packets; `limit` 1-1000, default 200. |
+
+Returns `{packets, more, days}`, newest first; each packet has `id`,
+`received_at`, `source`, `destination`, `digipeaters`, `port`,
+`frame_type`, `payload` (`null` for packets stored before payloads
+were saved) and `setup`. A `callsign` search's first page also has a
+`summary`: `packets`, `first_heard`, `last_heard`, `direct`, the
+`sources` (SSIDs) seen, and `via` -- the digipeaters it was heard
+through (the station that transmitted each copy) with counts.
+
 ## Testing
 
 `tests/test_rest.py` runs a real `KAMDaemon` (wired to the same

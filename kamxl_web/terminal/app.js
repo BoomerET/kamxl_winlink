@@ -67,6 +67,7 @@
   document.getElementById("pbbsLink").href = authedUrl("/pbbs");
   document.getElementById("mapLink").href = authedUrl("/map");
   document.getElementById("winlinkLink").href = authedUrl("/winlink");
+  document.getElementById("logLink").href = authedUrl("/log");
 
   // -- Live monitor (milestone 5) ------------------------------------
   //

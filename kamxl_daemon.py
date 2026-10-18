@@ -60,7 +60,7 @@ from reception_stats import ReceptionStats
 from reception_writer import ReceptionWriter
 from aprs import format_aprs_message, parse_aprs_message, unwrap_third_party
 from aprs_outbox import OutboundAprsTracker
-from aprs_coverage import SETUP_KEY, first_hop, normalize_setup
+from aprs_coverage import SETUP_KEY, first_hop, last_hop, normalize_setup
 
 # Stations and objects not heard for this long drop off the map. Also
 # how much stored history is replayed into the map at startup.
@@ -359,6 +359,7 @@ class KAMDaemon:
             "monitor.unsubscribe": self._m_monitor_unsubscribe,
             "stations.list": self._m_stations_list,
             "coverage.status": self._m_coverage_status,
+            "packets.search": self._m_packets_search,
             "coverage.set_setup": self._m_coverage_set_setup,
             "coverage.report": self._m_coverage_report,
             "objects.list": self._m_objects_list,
@@ -2404,10 +2405,17 @@ class KAMDaemon:
 
     @staticmethod
     def _transmitting_digipeater(packet: Packet) -> Optional[str]:
-        """The digipeater that sent this copy (last path entry marked *)."""
-        for hop in reversed(packet.digipeaters or ()):
-            if hop.endswith("*"):
-                return hop.rstrip("*").upper()
+        """
+        The digipeater that sent this copy: the last callsign among the
+        used hops (see aprs_coverage.last_hop). Falls back to the last
+        starred alias (e.g. "WIDE1") when no callsign was inserted.
+        """
+        hop = last_hop(packet.digipeaters)
+        if hop:
+            return hop
+        for entry in reversed(packet.digipeaters or ()):
+            if entry.endswith("*"):
+                return entry.rstrip("*").upper()
         return None
 
     def _observe_own_packet(self, packet: Packet) -> None:
@@ -2470,6 +2478,69 @@ class KAMDaemon:
                 )
         except Exception:
             logger.exception("Own-packet tracking failed")
+
+    # -- Packet log search -----------------------------------------------
+
+    _SEARCH_CALL_RE = re.compile(r"^[A-Z0-9]{1,6}(-[A-Z0-9]{1,2})?\*?$|^[A-Z0-9]{1,6}\*$")
+
+    def _m_packets_search(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Search stored packets. Filters (all optional, combined with
+        AND): ``callsign`` (sender; "W5NGU" any SSID, "W5N*" prefix),
+        ``via`` (a digipeater in the path, same forms), ``text``
+        (payload substring), ``days`` (look back; default 7, 0 = all),
+        ``setup`` (station setup label). Page with ``before_id``.
+        A callsign search also returns a ``summary`` of that station.
+        """
+        if self._reception_writer is None:
+            raise ValueError(
+                "The packet log needs the history database (KAMXL_HISTORY_DB)"
+            )
+
+        def call_param(name):
+            value = params.get(name)
+            if value in (None, ""):
+                return None
+            if not isinstance(value, str):
+                raise ValueError(f"{name} must be text")
+            value = value.strip().upper()
+            if not self._SEARCH_CALL_RE.match(value):
+                raise ValueError(
+                    f"{name} must be a callsign like W5NGU-3, W5NGU or W5N*"
+                )
+            return value
+
+        callsign, via = call_param("callsign"), call_param("via")
+        text = params.get("text") or None
+        if text is not None and (not isinstance(text, str) or len(text) > 100):
+            raise ValueError("text must be at most 100 characters")
+        days = params.get("days", 7)
+        if isinstance(days, bool) or not isinstance(days, (int, float)) \
+                or not 0 <= days <= 3650:
+            raise ValueError("days must be a number from 0 (all) to 3650")
+        setup = params.get("setup")
+        if setup is not None and not isinstance(setup, str):
+            raise ValueError("setup must be text")
+        before_id = params.get("before_id")
+        if before_id is not None and (
+                isinstance(before_id, bool) or not isinstance(before_id, int)):
+            raise ValueError("before_id must be an integer")
+        limit = params.get("limit", 200)
+        if isinstance(limit, bool) or not isinstance(limit, int) \
+                or not 1 <= limit <= 1000:
+            raise ValueError("limit must be from 1 to 1000")
+
+        since = int(time.time() - days * 86400) if days else None
+        packets, more = self._reception_writer.search_packets(
+            callsign=callsign, text=text, via=via, since=since, setup=setup,
+            before_id=before_id, limit=limit,
+        )
+        result = {"packets": packets, "more": more, "days": days}
+        if callsign and before_id is None:
+            result["summary"] = self._reception_writer.station_summary(
+                callsign, since
+            )
+        return result
 
     # -- Coverage (see aprs_coverage.py) ---------------------------------
 

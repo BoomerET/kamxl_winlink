@@ -272,6 +272,166 @@ class ReceptionHistory:
             ))
         return packets
 
+    # -- packet log search ----------------------------------------------
+
+    @staticmethod
+    def _callsign_clause(column: str, callsign: str):
+        """
+        SQL matching ``column`` against a callsign search term:
+        "W5NGU-3" exact, "W5NGU" any SSID, "W5N*" prefix.
+        """
+        call = callsign.strip().upper()
+        if call.endswith("*"):
+            prefix = call.rstrip("*").replace("\\", "").replace("%", "").replace("_", "\\_")
+            return f"{column} LIKE ? ESCAPE '\\'", [prefix + "%"]
+        if "-" in call:
+            return f"{column} = ?", [call]
+        return f"({column} = ? OR {column} LIKE ? ESCAPE '\\')", [
+            call, call.replace("_", "\\_") + "-%"
+        ]
+
+    def _search_where(self, callsign=None, text=None, via=None, since=None,
+                      until=None, setup=None):
+        clauses, args = [], []
+        if since is not None:
+            clauses.append("received_at >= ?")
+            args.append(int(since))
+        if until is not None:
+            clauses.append("received_at < ?")
+            args.append(int(until))
+        if callsign:
+            clause, a = self._callsign_clause("source", callsign)
+            # Also messages gated from APRS-IS, where the originator
+            # is inside a third-party header: "}W1ABC-9>APRS,...".
+            inner, b = self._callsign_clause(
+                "substr(payload, 2, instr(payload, '>') - 2)", callsign
+            )
+            clauses.append(
+                f"({clause} OR (payload LIKE '}}%' AND {inner}))"
+            )
+            args += a + b
+        if via:
+            clause, a = self._callsign_clause(
+                "upper(rtrim(json_each.value, '*'))", via
+            )
+            clauses.append(
+                "EXISTS (SELECT 1 FROM json_each(received_packets.digipeaters)"
+                f" WHERE {clause})"
+            )
+            args += a
+        if text:
+            escaped = (text.replace("\\", "\\\\").replace("%", "\\%")
+                       .replace("_", "\\_"))
+            clauses.append("payload LIKE ? ESCAPE '\\'")
+            args.append("%" + escaped + "%")
+        if setup is not None:
+            clauses.append("COALESCE(setup, '') = ?")
+            args.append(setup)
+        return (" AND ".join(clauses) or "1"), args
+
+    def search_packets(self, callsign=None, text=None, via=None, since=None,
+                       until=None, setup=None, before_id=None, limit=200):
+        """
+        Stored packets matching every given filter, newest first.
+
+        ``callsign`` matches the sender (or the originator of a gated
+        third-party packet); ``via`` a digipeater in the path; ``text``
+        a case-insensitive substring of the payload. Page with
+        ``before_id`` (the last id of the previous page). Returns
+        (rows, more).
+        """
+        where, args = self._search_where(
+            callsign, text, via, since, until, setup
+        )
+        if before_id is not None:
+            where += " AND id < ?"
+            args.append(int(before_id))
+        limit = max(1, min(int(limit), 1000))
+        cursor = self._connection.execute(
+            f"""
+            SELECT id, received_at, source, destination, frame_type, port,
+                   digipeaters, payload, setup
+            FROM received_packets
+            WHERE {where}
+            ORDER BY id DESC
+            LIMIT ?
+            """,
+            args + [limit + 1],
+        )
+        rows = []
+        for (row_id, received_at, source, dest, frame_type, port, digis,
+             payload, setup_value) in cursor:
+            try:
+                digipeaters = json.loads(digis or "[]")
+            except ValueError:
+                digipeaters = []
+            rows.append({
+                "id": row_id,
+                "received_at": received_at,
+                "source": source,
+                "destination": dest,
+                "frame_type": frame_type,
+                "port": port,
+                "digipeaters": digipeaters,
+                "payload": payload,
+                "setup": setup_value,
+            })
+        more = len(rows) > limit
+        return rows[:limit], more
+
+    def station_summary(self, callsign, since=None, until=None):
+        """
+        When and how a callsign has been heard: packet count, first and
+        last heard, how many were heard directly, and which
+        digipeaters we heard it through (the station that transmitted
+        each copy, see aprs_coverage.last_hop), most frequent first.
+        """
+        from aprs_coverage import last_hop
+
+        where, args = self._search_where(
+            callsign=callsign, since=since, until=until
+        )
+        count = first = last = 0
+        direct = 0
+        via = {}
+        sources = {}
+        for received_at, source, digis in self._connection.execute(
+            f"SELECT received_at, source, digipeaters FROM received_packets "
+            f"WHERE {where}", args,
+        ):
+            count += 1
+            first = received_at if not first else min(first, received_at)
+            last = max(last, received_at)
+            sources[source] = sources.get(source, 0) + 1
+            try:
+                hops = json.loads(digis or "[]")
+            except ValueError:
+                hops = []
+            hop = last_hop(hops)
+            if hop is None:
+                direct += 1
+                continue
+            hop = hop or "(unidentified)"
+            entry = via.setdefault(hop, [0, 0])
+            entry[0] += 1
+            entry[1] = max(entry[1], received_at)
+        return {
+            "callsign": callsign.strip().upper(),
+            "packets": count,
+            "first_heard": first or None,
+            "last_heard": last or None,
+            "direct": direct,
+            "sources": sorted(
+                ({"callsign": c, "packets": n} for c, n in sources.items()),
+                key=lambda e: (-e["packets"], e["callsign"]),
+            )[:10],
+            "via": sorted(
+                ({"callsign": c, "packets": n, "last_heard": t}
+                 for c, (n, t) in via.items()),
+                key=lambda e: (-e["packets"], e["callsign"]),
+            )[:10],
+        }
+
     # -- settings and coverage ------------------------------------------
 
     def get_setting(self, key: str) -> Optional[str]:
