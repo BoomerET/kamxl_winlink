@@ -529,11 +529,6 @@ class KAMDaemon:
         )
 
         with self._kam_lock:
-            if self._aprs_session_uncertain or self._aprs_safety_state == "unsafe":
-                raise APRSTransmitError(
-                    "APRS session unverified; initialize with radios "
-                    "disconnected before attempting live transmission"
-                )
             if not self.kam.is_connected or (
                 getattr(self.kam.serial, "exclusive", None) is not True
             ):
@@ -542,6 +537,13 @@ class KAMDaemon:
                 self._monitor_thread is None or
                 not self._monitor_thread.is_alive()):
                 raise APRSTransmitError("APRS monitor thread not healthy")
+
+            # After a daemon restart, terminal use, a config change, etc.
+            # the TNC's mode is unknown. Re-verify it here (Ctrl-C +
+            # STATUS, no RF) rather than making the operator run a
+            # separate initialize step.
+            if self._aprs_session_uncertain or self._aprs_safety_state == "unsafe":
+                self._verify_aprs_session_locked()
 
             # Mark unsafe before the first potentially state-changing write.
             self._aprs_session_uncertain = True
@@ -841,15 +843,6 @@ class KAMDaemon:
             )
 
         with self._kam_lock:
-            if (
-                self._aprs_session_uncertain
-                or self._aprs_safety_state == "unsafe"
-            ):
-                raise APRSTransmitError(
-                    "APRS session unverified; automatic ACKs "
-                    "cannot be enabled"
-                )
-
             if not self.kam.is_connected or (
                 getattr(self.kam.serial, "exclusive", None) is not True
             ):
@@ -865,6 +858,12 @@ class KAMDaemon:
                 raise APRSTransmitError(
                     "APRS monitor thread not healthy"
                 )
+
+            if (
+                self._aprs_session_uncertain
+                or self._aprs_safety_state == "unsafe"
+            ):
+                self._verify_aprs_session_locked()
 
             with self._aprs_ack_lock:
                 if (
@@ -969,31 +968,22 @@ class KAMDaemon:
         self, params: Dict[str, Any]
     ) -> Dict[str, Any]:
         """
-        Explicit operator-authorized APRS session initialization.
+        Verify the TNC is back in command mode with stream A/2 idle.
 
-        Requires external confirmation that radio interfaces are
-        disconnected. Never authorizes RF transmission.
+        Sends only Ctrl-C and STATUS -- nothing that can key a radio --
+        so radios may stay connected. Never authorizes RF transmission.
+        (``aprs.send_message`` runs this same check itself when needed,
+        so calling it separately is optional.)
         """
-        from aprs_tx import APRSTransmitError, recover_aprs_command_mode
-
-        if params.get("confirm_radio_disconnected") is not True:
-            raise APRSTransmitError(
-                "Initialization requires explicit confirmation "
-                "that all radio interfaces are disconnected"
-            )
+        from aprs_tx import APRSTransmitError
 
         with self._kam_lock:
-            # Assume uncertainty until verification completes.
-            self._aprs_session_uncertain = True
-            self._invalidate_aprs_safety(
-                "APRS initialization in progress"
-            )
-
             if (
                 self._monitor_stop.is_set()
                 or self._monitor_thread is None
                 or not self._monitor_thread.is_alive()
             ):
+                self._aprs_session_uncertain = True
                 self._invalidate_aprs_safety(
                     "APRS initialization blocked: monitor thread not healthy"
                 )
@@ -1001,26 +991,7 @@ class KAMDaemon:
                     "APRS initialization requires a running monitor thread"
                 )
 
-            try:
-                result = recover_aprs_command_mode(self.kam)
-            except Exception:
-                self._aprs_session_uncertain = True
-                self._invalidate_aprs_safety(
-                    "APRS initialization failed; TNC state uncertain"
-                )
-                logger.exception(
-                    "APRS initialization failed during "
-                    "command-mode recovery"
-                )
-                raise
-
-            # Both command mode and disconnected A/2 were verified.
-            self._aprs_session_uncertain = False
-            self._aprs_safety_state = "unknown"
-            self._aprs_safety_reason = (
-                "Command mode and disconnected A/2 verified; "
-                "RF prerequisites not fully established"
-            )
+            result = self._verify_aprs_session_locked()
 
             return {
                 **result,
@@ -1030,6 +1001,44 @@ class KAMDaemon:
                 "rf_enabled": False,
                 "transmitted": False,
             }
+
+    def _verify_aprs_session_locked(self) -> Dict[str, Any]:
+        """
+        Ctrl-C back to command mode and confirm A/2 is disconnected.
+
+        Caller must hold _kam_lock. Writes only Ctrl-C and STATUS.
+        On success the session is marked verified (state "unknown",
+        i.e. verified but not RF-authorized); on failure it stays
+        latched unsafe and the error says why.
+        """
+        from aprs_tx import APRSTransmitError, recover_aprs_command_mode
+
+        # Assume uncertainty until verification completes.
+        self._aprs_session_uncertain = True
+        self._invalidate_aprs_safety("APRS session verification in progress")
+
+        try:
+            result = recover_aprs_command_mode(self.kam)
+        except Exception as exc:
+            self._invalidate_aprs_safety(
+                "APRS session verification failed; TNC state uncertain"
+            )
+            logger.exception("APRS session verification failed")
+            raise APRSTransmitError(
+                "Could not verify the KAM-XL is idle in command mode "
+                "(is a connected AX.25 session still open on stream A?). "
+                "Nothing was transmitted."
+            ) from exc
+
+        self._aprs_session_uncertain = False
+        self._aprs_safety_state = "unknown"
+        self._aprs_safety_reason = (
+            "Command mode and disconnected A/2 verified; "
+            "RF prerequisites not fully established"
+        )
+        logger.info("APRS session verified (command mode, A/2 idle)")
+
+        return result
 
     def _m_aprs_tx_recover(
         self, params: Dict[str, Any]
