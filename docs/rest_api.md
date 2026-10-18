@@ -581,7 +581,9 @@ the first attempt still counts and the recipient can discard the
 duplicate; resending an already-acked/rejected message is refused.
 The dashboard's "Sent Messages" list shows each message's status,
 polls `/aprs/outbox` every 10 s while anything is pending, and offers
-a Resend button.
+a Resend button. The dashboard uses a single "Transmit now" checkbox
+that supplies all three confirmations; the API still takes the three
+fields separately.
 
 ## Testing
 
