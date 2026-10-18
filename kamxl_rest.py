@@ -197,6 +197,27 @@ DASHBOARD_HTML = """<!doctype html>
     line-height: 1.5;
     overflow-wrap: anywhere;
   }
+  #aprsOutbox { margin-top: 16px; }
+  #aprsOutbox h3, #aprsInbox h3 { font-size: 13px; color: #9ab; margin: 0 0 6px; }
+  .outboxEntry {
+    padding: 8px 0;
+    border-bottom: 1px solid #234;
+    font-size: 12px;
+  }
+  .outboxHead { color: #9ab; display: flex; gap: 8px; flex-wrap: wrap; }
+  .outboxText { margin-top: 4px; overflow-wrap: anywhere; }
+  .outboxStatus { margin-top: 4px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .ackBadge {
+    display: inline-block;
+    padding: 1px 6px;
+    border-radius: 3px;
+    border: 1px solid #456;
+    font-size: 11px;
+  }
+  .ackBadge.pending { color: #cc6; border-color: #665; }
+  .ackBadge.acked { color: #6f6; border-color: #3a5; }
+  .ackBadge.rejected { color: #f77; border-color: #844; }
+  .outboxEntry button.action { margin-top: 0; padding: 2px 8px; font-size: 11px; }
   #statusDot.live::before { content: "\\25CF "; color: #6f6; }
   #statusDot.down::before { content: "\\2715 "; color: #f66; }
   #statusDot.checking::before { content: "\\25CB "; color: #cc6; }
@@ -510,6 +531,15 @@ DASHBOARD_HTML = """<!doctype html>
          role="status" aria-live="polite">
       No message submitted.
     </div>
+    <div id="aprsOutbox">
+      <h3>Sent Messages</h3>
+      <div class="sub" id="aprsOutboxStatus"
+           role="status" aria-live="polite">
+        Nothing sent this session.
+      </div>
+      <div id="aprsOutboxMessages"></div>
+    </div>
+
     <div id="aprsInbox">
       <h3>Received Messages</h3>
 
@@ -734,8 +764,11 @@ DASHBOARD_HTML = """<!doctype html>
 
       if (payload.ok) {
         aprsSendStatus.textContent =
-          "Message submitted to TNC. RF delivery is not confirmed.";
+          "Message #" + payload.result.message_id +
+          " submitted to TNC. Waiting for " + recipient +
+          " to acknowledge it.";
         document.getElementById("aprsMessageText").value = "";
+        refreshAprsOutbox();
       } else {
         aprsSendStatus.textContent =
           "APRS submission failed: " +
@@ -751,6 +784,161 @@ DASHBOARD_HTML = """<!doctype html>
       aprsSendBtn.disabled = false;
     }
   });
+
+  // -- Sent messages / acknowledgments --------------------------------
+  //
+  // Each sent message carries an APRS message ID; the daemon matches
+  // incoming ackID/rejID replies to it. Polled only while something is
+  // still awaiting an ack -- this never touches the TNC.
+
+  var aprsOutboxStatus = document.getElementById("aprsOutboxStatus");
+  var aprsOutboxMessages = document.getElementById("aprsOutboxMessages");
+  var aprsOutboxTimer = null;
+
+  function aprsConfirmationsChecked() {
+    return document.getElementById("aprsConfirmTransmit").checked &&
+      document.getElementById("aprsConfirmVhf").checked &&
+      document.getElementById("aprsConfirmHf").checked;
+  }
+
+  function clearAprsConfirmations() {
+    document.getElementById("aprsConfirmTransmit").checked = false;
+    document.getElementById("aprsConfirmVhf").checked = false;
+    document.getElementById("aprsConfirmHf").checked = false;
+  }
+
+  async function resendAprsMessage(messageId, button) {
+    if (!aprsConfirmationsChecked()) {
+      aprsSendStatus.textContent =
+        "To resend #" + messageId +
+        ", tick the three transmit confirmations above first.";
+      return;
+    }
+
+    button.disabled = true;
+    aprsSendStatus.textContent = "Resending message #" + messageId + "...";
+
+    try {
+      var res = await fetch(authedUrl("/aprs/send"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          resend_id: messageId,
+          path: "",
+          confirm_transmit: true,
+          confirm_vhf_port2_radio_ready: true,
+          confirm_hf_port1_disconnected: true
+        })
+      });
+      var payload = await res.json();
+
+      aprsSendStatus.textContent = payload.ok
+        ? "Message #" + messageId + " resubmitted to TNC."
+        : "Resend failed: " +
+          ((payload.error && payload.error.message) || "Unknown error");
+    } catch (err) {
+      aprsSendStatus.textContent = "Resend request failed: " + String(err);
+    } finally {
+      clearAprsConfirmations();
+      refreshAprsOutbox();
+    }
+  }
+
+  function renderOutboxEntry(msg) {
+    var entry = document.createElement("div");
+    entry.className = "outboxEntry";
+
+    var head = document.createElement("div");
+    head.className = "outboxHead";
+    var to = document.createElement("span");
+    to.textContent = "To " + msg.addressee;
+    var when = document.createElement("span");
+    when.textContent = new Date(msg.sent_at * 1000).toLocaleString();
+    var id = document.createElement("span");
+    id.textContent = "#" + msg.message_id;
+    head.appendChild(to);
+    head.appendChild(when);
+    head.appendChild(id);
+
+    var text = document.createElement("div");
+    text.className = "outboxText";
+    text.textContent = msg.text;
+
+    var status = document.createElement("div");
+    status.className = "outboxStatus";
+    var badge = document.createElement("span");
+    badge.className = "ackBadge " + msg.status;
+
+    if (msg.status === "acked") {
+      badge.textContent = "Acknowledged";
+    } else if (msg.status === "rejected") {
+      badge.textContent = "Rejected";
+    } else {
+      badge.textContent = "Awaiting ack";
+    }
+    status.appendChild(badge);
+
+    var detail = document.createElement("span");
+    if (msg.status === "pending") {
+      detail.textContent = "sent " +
+        relativeTime(msg.last_sent_at || msg.sent_at) +
+        (msg.attempts > 1 ? " (" + msg.attempts + " attempts)" : "");
+    } else {
+      detail.textContent = "by " + msg.acked_by + ", " +
+        relativeTime(msg.acked_at);
+    }
+    status.appendChild(detail);
+
+    if (msg.status === "pending") {
+      var resend = document.createElement("button");
+      resend.type = "button";
+      resend.className = "action";
+      resend.textContent = "Resend";
+      resend.addEventListener("click", function () {
+        resendAprsMessage(msg.message_id, resend);
+      });
+      status.appendChild(resend);
+    }
+
+    entry.appendChild(head);
+    entry.appendChild(text);
+    entry.appendChild(status);
+    return entry;
+  }
+
+  async function refreshAprsOutbox() {
+    var pending = 0;
+
+    try {
+      var result = await apiGet("/aprs/outbox");
+      var messages = result.messages || [];
+
+      aprsOutboxMessages.replaceChildren();
+      messages.forEach(function (msg) {
+        if (msg.status === "pending") pending++;
+        aprsOutboxMessages.appendChild(renderOutboxEntry(msg));
+      });
+
+      if (!messages.length) {
+        aprsOutboxStatus.textContent = "Nothing sent this session.";
+      } else {
+        aprsOutboxStatus.textContent = messages.length +
+          " sent, " + pending + " awaiting acknowledgment.";
+      }
+    } catch (err) {
+      aprsOutboxStatus.textContent =
+        "Unable to load sent messages: " + String(err);
+    }
+
+    // Keep checking only while something is still unacknowledged.
+    if (aprsOutboxTimer !== null) {
+      clearTimeout(aprsOutboxTimer);
+      aprsOutboxTimer = null;
+    }
+    if (pending > 0) {
+      aprsOutboxTimer = setTimeout(refreshAprsOutbox, 10000);
+    }
+  }
 
   var aprsInboxBtn = document.getElementById("aprsRefreshInbox");
   var aprsInboxStatus = document.getElementById("aprsInboxStatus");
@@ -1508,6 +1696,7 @@ DASHBOARD_HTML = """<!doctype html>
   refreshStations();
   refreshReceptionStats();
   refreshPersistentHistory();
+  refreshAprsOutbox();
 
   setInterval(refreshStatus, 15000);
   setInterval(refreshStations, 15000);
@@ -3552,6 +3741,7 @@ ROUTES: Tuple[Tuple[str, "re.Pattern", str], ...] = (
     ("GET", re.compile(r"^/aprs/history$"), "_h_aprs_history"),
     ("GET", re.compile(r"^/aprs/messages$"), "_h_aprs_messages"),
     ("POST", re.compile(r"^/aprs/send$"), "_h_aprs_send_message"),
+    ("GET", re.compile(r"^/aprs/outbox$"), "_h_aprs_outbox"),
 )
 
 
@@ -4074,7 +4264,24 @@ class RESTRequestHandler(BaseHTTPRequestHandler):
         """Submit one explicitly authorized APRS message to the daemon."""
         body = self._read_json_body()
 
-        for field in ("addressee", "message"):
+        resend_id = body.get("resend_id")
+
+        if resend_id is not None and (
+            not isinstance(resend_id, str) or not resend_id
+        ):
+            self._send_json(400, {
+                "ok": False,
+                "error": {
+                    "type": "InvalidParam",
+                    "message": "resend_id must be a nonempty string",
+                },
+            })
+            return
+
+        # A resend takes addressee/text from the original message.
+        required = () if resend_id is not None else ("addressee", "message")
+
+        for field in required:
             if not isinstance(body.get(field), str) or not body[field]:
                 self._send_json(400, {
                     "ok": False,
@@ -4085,10 +4292,14 @@ class RESTRequestHandler(BaseHTTPRequestHandler):
                 })
                 return
 
+        extra = {"resend_id": resend_id} if resend_id is not None else {
+            "addressee": body["addressee"],
+            "message": body["message"],
+        }
+
         self._relay(
             "aprs.send_message",
-            addressee=body["addressee"],
-            message=body["message"],
+            **extra,
             path=body.get("path", ""),
             confirm_transmit=body.get("confirm_transmit") is True,
             confirm_vhf_port2_radio_ready=(
@@ -4099,6 +4310,14 @@ class RESTRequestHandler(BaseHTTPRequestHandler):
             ),
             _socket_timeout=45,
         )
+
+    def _h_aprs_outbox(
+        self,
+        params: Dict[str, str],
+        query: Dict[str, Any],
+    ) -> None:
+        """Sent APRS messages and their ack status (no TNC access)."""
+        self._relay("aprs.outbox")
 
     # -- Winlink (milestone 8) -------------------------------------------
     #

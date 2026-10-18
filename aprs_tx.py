@@ -371,8 +371,14 @@ def _execute_aprs_tx_transaction(kam, payload: str, path: str = "") -> dict:
 
     addressee = payload[1:10].strip()
     message = payload[11:]
+    message_id = None
 
-    if format_aprs_message(addressee, message) != payload:
+    # A trailing {ID requests an acknowledgment; re-validate it
+    # separately, since "{" is otherwise reserved in message text.
+    if "{" in message:
+        message, message_id = message.rsplit("{", 1)
+
+    if format_aprs_message(addressee, message, message_id=message_id) != payload:
         raise APRSTransmitError("Noncanonical APRS message")
 
     # Validate path before touching hardware.

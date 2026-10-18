@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Optional
 
 from packet import Packet
-from aprs import parse_aprs_message
+from aprs import parse_aprs_message, unwrap_third_party
 
 
 class ReceptionHistory:
@@ -75,8 +75,14 @@ class ReceptionHistory:
             else int(received_at)
         )
 
+        # Messages gated from APRS-IS arrive wrapped in a third-party
+        # header; store the real originator, not the iGate.
+        message_source, message_payload = unwrap_third_party(
+            packet.source, packet.payload
+        )
+
         aprs_message = (
-            parse_aprs_message(packet.payload)
+            parse_aprs_message(message_payload)
             if packet.port == 2
             and packet.frame_type in ("UI", None)
             else None
@@ -120,7 +126,7 @@ class ReceptionHistory:
                     """,
                     (
                         timestamp,
-                        packet.source,
+                        message_source,
                         aprs_message.addressee,
                         aprs_message.text,
                         aprs_message.message_id,

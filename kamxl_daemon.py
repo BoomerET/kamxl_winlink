@@ -57,7 +57,8 @@ from winlink import OutgoingMessage
 from collections import deque
 from reception_stats import ReceptionStats
 from reception_writer import ReceptionWriter
-from aprs import format_aprs_message
+from aprs import format_aprs_message, parse_aprs_message, unwrap_third_party
+from aprs_outbox import OutboundAprsTracker
 
 DEFAULT_SOCKET_PATH = "/tmp/kamxl.sock"
 DEFAULT_BAUDRATE = 19200  # matches KAMXL's own constructor default
@@ -70,6 +71,11 @@ DEFAULT_BAUDRATE = 19200  # matches KAMXL's own constructor default
 # otherwise print WARNING-and-above messages (missing params, command
 # errors) straight to stderr during the offline test run.
 logger = logging.getLogger("kamxl_daemon")
+
+# This station's APRS callsign: the addressee our inbox shows, the
+# callsign automatic ACKs answer for, and the addressee incoming
+# acks for our own sent messages must carry.
+APRS_STATION_CALLSIGN = "N5BA"
 logger.addHandler(logging.NullHandler())
 
 
@@ -123,6 +129,10 @@ class KAMDaemon:
         self._aprs_ack_queue = queue.Queue(maxsize=100)
         self._aprs_ack_stop = threading.Event()
         self._aprs_ack_thread = None
+
+        # Messages we sent, keyed by the {ID we appended, so incoming
+        # ackID/rejID replies can be matched back to them.
+        self._outbox = OutboundAprsTracker(APRS_STATION_CALLSIGN)
 
         # Track recently handled message IDs for duplicate detection.
         self._aprs_ack_recent = {}
@@ -186,6 +196,7 @@ class KAMDaemon:
             "aprs.ack_disable": self._m_aprs_ack_disable,
             "aprs.preview_message": self._m_aprs_preview_message,
             "aprs.send_message": self._m_aprs_send_message,
+            "aprs.outbox": self._m_aprs_outbox,
             "aprs.tx_safety": self._m_aprs_tx_safety,
             "aprs.tx_preflight": self._m_aprs_tx_preflight,
             "aprs.tx_get_unproto": self._m_aprs_tx_get_unproto,
@@ -484,11 +495,37 @@ class KAMDaemon:
         if params.get("path", "") != "":
             raise APRSTransmitError("First live APRS transmission must be direct")
 
+        # Every message carries a {ID so the recipient acknowledges it.
+        # A resend reuses the original ID: a late ack for the first
+        # attempt still matches, and the recipient can drop the dupe.
+        resend_id = params.get("resend_id")
+
+        if resend_id is not None:
+            original = self._outbox.get(str(resend_id))
+
+            if original is None:
+                raise APRSTransmitError(
+                    f"No sent APRS message with ID {resend_id!r}"
+                )
+            if original.status != "pending":
+                raise APRSTransmitError(
+                    f"APRS message {resend_id!r} was already {original.status}"
+                )
+
+            addressee, text = original.addressee, original.text
+            message_id = original.message_id
+        else:
+            addressee, text = params["addressee"], params["message"]
+            # Validate before consuming an ID.
+            format_aprs_message(addressee=addressee, message=text, paclen=128)
+            message_id = self._outbox.allocate_id()
+
         # Validate payload before touching serial or changing session state.
         payload = format_aprs_message(
-            addressee=params["addressee"],
-            message=params["message"],
+            addressee=addressee,
+            message=text,
             paclen=128,
+            message_id=message_id,
         )
 
         with self._kam_lock:
@@ -528,7 +565,30 @@ class KAMDaemon:
                 "APRS submission completed; command mode and UNPROTO "
                 "restored; RF delivery not confirmed"
             )
-            return {**result, "payload": payload, "state": "unknown"}
+            record = self._outbox.register(
+                message_id=message_id,
+                addressee=addressee,
+                text=text,
+                payload=payload,
+            )
+
+            return {
+                **result,
+                "payload": payload,
+                "state": "unknown",
+                "message_id": message_id,
+                "outbound": record.to_dict(),
+            }
+
+    def _m_aprs_outbox(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """Messages sent this daemon session and their ack status.
+
+        Never touches the TNC.
+        """
+        return {
+            "station": APRS_STATION_CALLSIGN,
+            "messages": self._outbox.list(),
+        }
 
     def _m_aprs_tx_preflight(
         self, params: Dict[str, Any]
@@ -718,7 +778,7 @@ class KAMDaemon:
     def _m_aprs_messages(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """Return stored APRS messages without accessing the TNC."""
 
-        addressee = params.get("addressee", "N5BA")
+        addressee = params.get("addressee", APRS_STATION_CALLSIGN)
         limit = params.get("limit", 100)
 
         if self._reception_writer is None:
@@ -1375,11 +1435,11 @@ class KAMDaemon:
             return None
 
         # Only acknowledge messages addressed to this station.
-        if message.addressee != "N5BA":
+        if message.addressee != APRS_STATION_CALLSIGN:
             return None
 
         # Never acknowledge our own transmissions.
-        if packet.source.upper() == "N5BA":
+        if packet.source.upper() == APRS_STATION_CALLSIGN:
             return None
 
         return packet.source, message.message_id
@@ -1444,10 +1504,44 @@ class KAMDaemon:
                         logger.warning(
                             "APRS ACK queue full; acknowledgment dropped"
                         )
+        self._observe_outbound_reply(packet)
+
         with self._stations_lock:
             self._stations.update(packet)
 
         self._broadcast_packet(packet)
+
+    def _observe_outbound_reply(self, packet: Packet) -> None:
+        """Match an incoming ack/rej against messages we sent."""
+        if packet.port != 2 or packet.frame_type not in ("UI", None):
+            return
+
+        try:
+            source, payload = unwrap_third_party(
+                packet.source, packet.payload
+            )
+            message = parse_aprs_message(payload)
+
+            if message is None:
+                return
+
+            updated = self._outbox.observe(source, message)
+        except Exception:
+            # Never let ack bookkeeping take down the monitor thread.
+            logger.exception("APRS outbound ack matching failed")
+            return
+
+        if updated is not None:
+            logger.info(
+                "APRS message %s to %s %s",
+                updated.message_id,
+                updated.addressee,
+                updated.status,
+            )
+            self._broadcast_event({
+                "event": "aprs_outbound",
+                "data": updated.to_dict(),
+            })
 
     def _broadcast_packet(self, packet: Packet) -> None:
         event = {
@@ -1455,14 +1549,25 @@ class KAMDaemon:
             "data": dataclasses.asdict(packet),
         }
 
+        self._broadcast_event(
+            event,
+            log_detail=(packet.source, packet.destination, packet.port),
+        )
+
+    def _broadcast_event(
+        self,
+        event: Dict[str, Any],
+        log_detail: Optional[tuple] = None,
+    ) -> None:
         with self._subscribers_lock:
             subscribers = list(self._subscribers)
 
-        logger.debug(
-            "packet: %s -> %s (port %s) to %d subscriber(s)",
-            packet.source, packet.destination, packet.port,
-            len(subscribers)
-        )
+        if log_detail is not None:
+            logger.debug(
+                "packet: %s -> %s (port %s) to %d subscriber(s)",
+                *log_detail,
+                len(subscribers)
+            )
 
         for handler in subscribers:
             handler.send_event(event)
