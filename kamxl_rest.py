@@ -577,6 +577,17 @@ DASHBOARD_HTML = """<!doctype html>
     </div>
   </div>
 
+  <div class="card" id="beaconCard">
+    <h2>Position Beacon</h2>
+    <div class="sub" id="beaconPosition">Loading...</div>
+    <label class="autoAckToggle">
+      <input id="beaconToggle" type="checkbox">
+      Beacon my position automatically (transmits on VHF Port 2)
+    </label>
+    <div class="sub" id="beaconStatus" role="status" aria-live="polite"></div>
+    <button class="action" id="beaconNowBtn" type="button">Beacon now</button>
+  </div>
+
   <div class="card" id="pbbsCard">
     <h2>PBBS</h2>
     <div class="sub" id="pbbsSummary">Not checked this session.</div>
@@ -769,7 +780,6 @@ DASHBOARD_HTML = """<!doctype html>
         body: JSON.stringify({
           addressee: recipient,
           message: message,
-          path: "",
           confirm_transmit: true,
           confirm_vhf_port2_radio_ready: true,
           confirm_hf_port1_disconnected: true
@@ -834,7 +844,6 @@ DASHBOARD_HTML = """<!doctype html>
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           resend_id: messageId,
-          path: "",
           confirm_transmit: true,
           confirm_vhf_port2_radio_ready: true,
           confirm_hf_port1_disconnected: true
@@ -933,7 +942,8 @@ DASHBOARD_HTML = """<!doctype html>
         aprsOutboxStatus.textContent = "Nothing sent this session.";
       } else {
         aprsOutboxStatus.textContent = messages.length +
-          " sent, " + pending + " awaiting acknowledgment.";
+          " sent, " + pending + " awaiting acknowledgment." +
+          " Path: " + (result.path || "direct") + ".";
       }
     } catch (err) {
       aprsOutboxStatus.textContent =
@@ -1055,6 +1065,121 @@ DASHBOARD_HTML = """<!doctype html>
 
     aprsClearBtn.disabled = false;
     refreshAprsInbox();
+  });
+
+  // -- Position beacon -----------------------------------------------
+
+  var beaconToggle = document.getElementById("beaconToggle");
+  var beaconStatus = document.getElementById("beaconStatus");
+  var beaconPosition = document.getElementById("beaconPosition");
+  var beaconNowBtn = document.getElementById("beaconNowBtn");
+
+  function showBeaconStatus(st) {
+    if (!st.configured) {
+      beaconPosition.textContent =
+        "No position set. Add KAMXL_LATITUDE and KAMXL_LONGITUDE to " +
+        ".env and restart the daemon.";
+      beaconToggle.checked = false;
+      beaconToggle.disabled = true;
+      beaconNowBtn.disabled = true;
+      beaconStatus.textContent = "";
+      return;
+    }
+
+    beaconToggle.disabled = false;
+    beaconNowBtn.disabled = false;
+    beaconPosition.textContent =
+      st.position.latitude.toFixed(4) + ", " +
+      st.position.longitude.toFixed(4) +
+      (st.position.comment ? " \u2014 " + st.position.comment : "") +
+      " (via " + (st.path || "direct") + ", every " +
+      st.interval_minutes + " min)";
+    beaconToggle.checked = !!st.enabled;
+
+    var parts = [];
+    if (st.enabled && st.paused) {
+      beaconStatus.className = "sub paused";
+      parts.push("Beacon paused: a terminal or connected session may be " +
+        "open; resumes after the next APRS send");
+    } else if (st.enabled) {
+      beaconStatus.className = "sub on";
+      parts.push("Beacon on");
+      if (st.next_beacon_at) {
+        var mins = Math.max(0, Math.round(
+          (st.next_beacon_at - Date.now() / 1000) / 60));
+        parts.push("next in " + mins + " min");
+      }
+    } else {
+      beaconStatus.className = "sub off";
+      parts.push("Beacon off" +
+        (st.disabled_reason ? " (" + st.disabled_reason + ")" : ""));
+    }
+    if (st.last_beacon_at) {
+      parts.push("last sent " + relativeTime(st.last_beacon_at));
+    }
+    beaconStatus.textContent = parts.join(", ") + ".";
+  }
+
+  async function refreshBeacon() {
+    try {
+      showBeaconStatus(await apiGet("/aprs/beacon"));
+    } catch (err) {
+      beaconStatus.textContent = "Unable to read beacon status: " + String(err);
+    }
+  }
+
+  beaconToggle.addEventListener("change", async function () {
+    var wanted = beaconToggle.checked;
+    beaconToggle.disabled = true;
+    beaconStatus.className = "sub";
+    beaconStatus.textContent = wanted ? "Turning beacon on..." :
+      "Turning beacon off...";
+
+    try {
+      var res = await fetch(authedUrl("/aprs/beacon"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled: wanted })
+      });
+      var payload = await res.json();
+      if (!payload.ok) {
+        beaconStatus.textContent = "Could not change beacon: " +
+          ((payload.error && payload.error.message) || "Unknown error");
+        beaconToggle.checked = !wanted;
+        return;
+      }
+      showBeaconStatus(payload.result);
+    } catch (err) {
+      beaconStatus.textContent = "Beacon request failed: " + String(err);
+      beaconToggle.checked = !wanted;
+    } finally {
+      beaconToggle.disabled = false;
+    }
+  });
+
+  beaconNowBtn.addEventListener("click", async function () {
+    beaconNowBtn.disabled = true;
+    beaconStatus.className = "sub";
+    beaconStatus.textContent = "Sending beacon...";
+
+    try {
+      var res = await fetch(authedUrl("/aprs/beacon/now"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: "{}"
+      });
+      var payload = await res.json();
+      if (!payload.ok) {
+        beaconStatus.textContent = "Beacon failed: " +
+          ((payload.error && payload.error.message) || "Unknown error");
+        return;
+      }
+      showBeaconStatus(payload.result.status);
+    } catch (err) {
+      beaconStatus.textContent = "Beacon request failed: " + String(err);
+    } finally {
+      beaconNowBtn.disabled = false;
+    }
   });
 
   // -- Automatic acknowledgments ------------------------------------
@@ -1812,8 +1937,10 @@ DASHBOARD_HTML = """<!doctype html>
   refreshAprsOutbox();
   refreshAprsInbox();
   refreshAutoAck();
+  refreshBeacon();
 
   setInterval(refreshStatus, 15000);
+  setInterval(refreshBeacon, 15000);
   setInterval(refreshAprsInbox, 15000);
   setInterval(refreshAutoAck, 15000);
   setInterval(refreshStations, 15000);
@@ -3862,6 +3989,9 @@ ROUTES: Tuple[Tuple[str, "re.Pattern", str], ...] = (
     ("GET", re.compile(r"^/aprs/ack$"), "_h_aprs_ack_status"),
     ("POST", re.compile(r"^/aprs/ack$"), "_h_aprs_ack_set"),
     ("POST", re.compile(r"^/aprs/messages/clear$"), "_h_aprs_clear_messages"),
+    ("GET", re.compile(r"^/aprs/beacon$"), "_h_aprs_beacon_status"),
+    ("POST", re.compile(r"^/aprs/beacon$"), "_h_aprs_beacon_set"),
+    ("POST", re.compile(r"^/aprs/beacon/now$"), "_h_aprs_beacon_now"),
 )
 
 
@@ -4418,10 +4548,13 @@ class RESTRequestHandler(BaseHTTPRequestHandler):
             "message": body["message"],
         }
 
+        # Path: the daemon's configured one unless the body names one.
+        if body.get("path") is not None:
+            extra["path"] = body["path"]
+
         self._relay(
             "aprs.send_message",
             **extra,
-            path=body.get("path", ""),
             confirm_transmit=body.get("confirm_transmit") is True,
             confirm_vhf_port2_radio_ready=(
                 body.get("confirm_vhf_port2_radio_ready") is True
@@ -4482,6 +4615,62 @@ class RESTRequestHandler(BaseHTTPRequestHandler):
             confirm_vhf_port2_radio_ready=True,
             confirm_hf_port1_disconnected=True,
             _socket_timeout=30,
+        )
+
+    def _h_aprs_beacon_status(
+        self,
+        params: Dict[str, str],
+        query: Dict[str, Any],
+    ) -> None:
+        """Position beacon status (no TNC access)."""
+        self._relay("aprs.beacon_status")
+
+    def _h_aprs_beacon_set(
+        self,
+        params: Dict[str, str],
+        query: Dict[str, Any],
+    ) -> None:
+        """Turn the periodic beacon on/off: body {"enabled": true|false}.
+
+        Turning it on is the operator's authorization for beacon
+        transmissions, so it supplies the daemon's confirmations.
+        """
+        body = self._read_json_body()
+        enabled = body.get("enabled")
+
+        if not isinstance(enabled, bool):
+            self._send_json(400, {
+                "ok": False,
+                "error": {
+                    "type": "InvalidParam",
+                    "message": "'enabled' must be true or false",
+                },
+            })
+            return
+
+        if not enabled:
+            self._relay("aprs.beacon_disable")
+            return
+
+        self._relay(
+            "aprs.beacon_enable",
+            confirm_transmit=True,
+            confirm_vhf_port2_radio_ready=True,
+            confirm_hf_port1_disconnected=True,
+        )
+
+    def _h_aprs_beacon_now(
+        self,
+        params: Dict[str, str],
+        query: Dict[str, Any],
+    ) -> None:
+        """Send one beacon now (the button press is the authorization)."""
+        self._relay(
+            "aprs.beacon_now",
+            confirm_transmit=True,
+            confirm_vhf_port2_radio_ready=True,
+            confirm_hf_port1_disconnected=True,
+            _socket_timeout=45,
         )
 
     def _h_aprs_clear_messages(

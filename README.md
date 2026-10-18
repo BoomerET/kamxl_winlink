@@ -92,6 +92,11 @@ KAMXL_PORT=/dev/kam-xl
 KAMXL_CALLSIGN=N0CALL                # your KAM-XL's MYCALL, SSID included
 KAMXL_HISTORY_DB=/var/lib/kamxl/reception.sqlite3   # optional: inbox + history
 KAMXL_AUTO_ACK=1                     # optional: auto-ack received messages
+KAMXL_APRS_PATH=WIDE1-1,WIDE2-1      # optional: digipeater path (DIRECT = none)
+KAMXL_LATITUDE=33.2275               # optional: position beacon
+KAMXL_LONGITUDE=-97.1273
+KAMXL_BEACON_COMMENT=KAM-XL
+KAMXL_BEACON=1                       # optional: beacon automatically
 ```
 
 The library accepts an explicit serial port on all platforms.

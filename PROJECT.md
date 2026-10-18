@@ -1753,3 +1753,42 @@ Tests: `tests/test_auto_ack_and_inbox.py` (13).
 
 Tests: `tests/test_callsign_and_igate.py` (11).
 
+### Digipeater path for transmissions, and a position beacon
+
+Prompted by the 2026-10-18 reception log: nearly everything N5BA
+hears arrives via the W5NGU-3 digipeater, yet everything we sent went
+out direct (the original "first live transmission must be direct"
+rule), so messages and ACKs only reached stations/iGates in direct
+range.
+
+- `KAMXL_APRS_PATH` / `--aprs-path` (default `WIDE1-1,WIDE2-1`,
+  `DIRECT` for none) now applies to messages, resends, auto-ACKs and
+  beacons; `aprs.send_message` accepts a per-request `path` override.
+  `aprs_tx.validate_aprs_path()` validates it (max 8 digis, no
+  injection); digis without an SSID are now allowed.
+- `validate_unproto()` now accepts a `VIA` path on either side of the
+  multi-port `/` (e.g. `APRS VIA WIDE1-1,WIDE2-1/APRS VIA ...`). Before,
+  a VIA read-back on both ports would have been rejected *as a
+  read-back failure*, which skips UNPROTO restoration.
+- **Unverified on hardware:** exactly how the KAM-XL displays a
+  two-port UNPROTO with a VIA path. If it differs from the expected
+  `X/X` form, the transaction refuses to transmit and restores the
+  original UNPROTO (covered by a test with a one-port fake). If that
+  happens on the real unit, capture `UNPROTO`'s output after
+  `UNPROTO APRS VIA WIDE1-1,WIDE2-1` in the terminal and adjust.
+- Position beacon: `aprs.format_aprs_position()` builds an
+  uncompressed `=DDMM.mmN/DDDMM.mmW<sym>comment` report (`=` = can
+  receive messages, which also lets iGates know to gate messages to
+  N5BA). Configured by `KAMXL_LATITUDE`, `KAMXL_LONGITUDE`,
+  `KAMXL_BEACON_SYMBOL` (`/-`), `KAMXL_BEACON_COMMENT`,
+  `KAMXL_BEACON_INTERVAL` (30 min, min 10), `KAMXL_BEACON=1` to start
+  at boot. Daemon methods `aprs.beacon_status/enable/disable/now`,
+  REST `GET/POST /aprs/beacon`, `POST /aprs/beacon/now`, and a
+  dashboard "Position Beacon" card. The TX path now accepts this one
+  position format alongside messages.
+- Scheduler thread `kamxl-aprs-beacon`: same pause rule as auto-ACK
+  (skip and retry in 60 s while a session may be open), fail-closed
+  on a failed transmission.
+
+Tests: `tests/test_path_and_beacon.py` (30).
+

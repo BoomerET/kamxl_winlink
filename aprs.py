@@ -723,3 +723,68 @@ def unwrap_third_party(source: str, payload: str):
         return source, payload
 
     return match.group("source").upper(), match.group("payload")
+
+
+def format_aprs_position(
+    latitude: float,
+    longitude: float,
+    symbol_table: str = "/",
+    symbol_code: str = "-",
+    comment: str = "",
+    messaging: bool = True,
+) -> str:
+    """
+    Build an uncompressed APRS position report (no timestamp).
+
+    ``=DDMM.mmN/DDDMM.mmW-comment`` -- the ``=`` data type says this
+    station can receive APRS messages (``!`` if ``messaging`` is
+    False). Default symbol ``/-`` is a house. Performs no I/O.
+    """
+    for name, value, limit in (
+        ("latitude", latitude, 90.0), ("longitude", longitude, 180.0)
+    ):
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            raise ValueError(f"APRS {name} must be a number")
+        if not math.isfinite(value) or abs(value) > limit:
+            raise ValueError(f"APRS {name} out of range")
+
+    if symbol_table not in ("/", "\\") and not re.fullmatch(
+        r"[0-9A-Z]", symbol_table or ""
+    ):
+        raise ValueError("Invalid APRS symbol table")
+
+    if (
+        not isinstance(symbol_code, str)
+        or len(symbol_code) != 1
+        or not 0x21 <= ord(symbol_code) <= 0x7E
+    ):
+        raise ValueError("Invalid APRS symbol code")
+
+    if not isinstance(comment, str):
+        raise ValueError("APRS comment must be a string")
+
+    if len(comment) > 43:
+        raise ValueError("APRS position comment exceeds 43 characters")
+
+    if not all(0x20 <= ord(char) <= 0x7E for char in comment):
+        raise ValueError("APRS comment must contain printable ASCII only")
+
+    if any(char in comment for char in ("|", "~")):
+        raise ValueError("APRS comment contains reserved characters")
+
+    def _dm(value: float, degree_digits: int, hemis: str) -> str:
+        # Work in hundredths of a minute so 59.999' rounds up cleanly
+        # into the next degree instead of printing "60.00".
+        total = int(round(abs(value) * 6000))
+        degrees, hundredths = divmod(total, 6000)
+        minutes = hundredths / 100
+        hemisphere = hemis[0] if value >= 0 else hemis[1]
+        return f"{degrees:0{degree_digits}d}{minutes:05.2f}{hemisphere}"
+
+    lat = _dm(latitude, 2, "NS")
+    lon = _dm(longitude, 3, "EW")
+
+    return (
+        f"{'=' if messaging else '!'}{lat}{symbol_table}{lon}"
+        f"{symbol_code}{comment}"
+    )
