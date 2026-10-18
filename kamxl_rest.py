@@ -960,7 +960,7 @@ DASHBOARD_HTML = """<!doctype html>
 
     try {
       var result = await apiGet(
-        "/aprs/messages?addressee=N5BA&limit=100"
+        "/aprs/messages?limit=100"
       );
 
       if (!result.enabled) {
@@ -4309,7 +4309,8 @@ class RESTRequestHandler(BaseHTTPRequestHandler):
     ) -> None:
         """Return stored APRS messages without transmitting."""
 
-        addressee = query.get("addressee", ["N5BA"])[0]
+        # Default: the daemon's own configured station callsign.
+        addressee = query.get("addressee", [None])[0]
 
         try:
             limit = int(query.get("limit", ["100"])[0])

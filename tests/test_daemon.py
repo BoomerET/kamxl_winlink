@@ -96,7 +96,7 @@ class DaemonTestCase(unittest.TestCase):
         tmp_dir = tempfile.mkdtemp()
         socket_path = os.path.join(tmp_dir, "kamxl.sock")
 
-        daemon = KAMDaemon(kam, socket_path)
+        daemon = KAMDaemon(kam, socket_path, station_callsign="N5BA")
 
         thread = threading.Thread(
             target=daemon.serve_forever,
@@ -2140,6 +2140,7 @@ class ReceptionHistoryIntegrationTests(DaemonTestCase):
                 kam1,
                 str(Path(tmp) / "daemon1.sock"),
                 history_db=database_path,
+                station_callsign="N5BA",
             )
 
             try:
@@ -2171,6 +2172,7 @@ class ReceptionHistoryIntegrationTests(DaemonTestCase):
                 kam2,
                 str(Path(tmp) / "daemon2.sock"),
                 history_db=database_path,
+                station_callsign="N5BA",
             )
 
             try:
@@ -2189,6 +2191,7 @@ class ReceptionHistoryIntegrationTests(DaemonTestCase):
         daemon = KAMDaemon(
             make_kam(ScriptedSerial({})),
             "/tmp/kamxl-history-disabled-test.sock",
+            station_callsign="N5BA",
         )
 
         try:
@@ -2207,6 +2210,7 @@ class ReceptionHistoryIntegrationTests(DaemonTestCase):
                 make_kam(ScriptedSerial({})),
                 str(Path(tmp) / "daemon.sock"),
                 history_db=database_path,
+                station_callsign="N5BA",
             )
 
             packet = Packet(
@@ -2247,6 +2251,7 @@ class ReceptionHistoryIntegrationTests(DaemonTestCase):
                 make_kam(ScriptedSerial({})),
                 str(Path(tmp) / "daemon.sock"),
                 history_db=str(Path(tmp) / "history.sqlite3"),
+                station_callsign="N5BA",
             )
 
             try:

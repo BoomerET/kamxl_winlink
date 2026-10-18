@@ -56,6 +56,7 @@ class RestTestCase(unittest.TestCase):
             kam,
             socket_path,
             history_db=database_path,
+            station_callsign="N5BA",
         )
 
         daemon_thread = threading.Thread(
