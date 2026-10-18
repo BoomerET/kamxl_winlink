@@ -201,6 +201,24 @@ class PacketParser:
 
         if match is None:
             if self._pending is not None:
+                # A blank line terminates a complete APRS message.
+                # Leave other packet types and multiline payloads
+                # under the existing next-header/flush behavior.
+                if line == "":
+                    pending = self._pending
+                    if (
+                        pending["port"] == 2
+                        and pending["frame_type"] in ("UI", None)
+                        and len(pending["payload_lines"]) == 1
+                    ):
+                        from aprs import parse_aprs_message
+
+                        message = parse_aprs_message(
+                            pending["payload_lines"][0]
+                        )
+                        if message is not None:
+                            return self._finalize_pending()
+
                 self._pending["payload_lines"].append(line)
 
             return None

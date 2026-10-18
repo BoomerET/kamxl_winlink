@@ -13,6 +13,62 @@ class PacketParserTests(unittest.TestCase):
     clean synthetic lines.
     """
 
+    def test_aprs_message_completes_without_next_header(self):
+        parser = PacketParser()
+
+        packets = parser.feed(
+            "N5BA-7>APRS/2: <UI>:\r\n"
+            ":N5BA     :Hello from TH-D75A{01\r\n\r\n"
+        )
+
+        self.assertEqual(len(packets), 1)
+        self.assertEqual(packets[0].source, "N5BA-7")
+        self.assertEqual(packets[0].port, 2)
+        self.assertEqual(packets[0].frame_type, "UI")
+        self.assertEqual(
+            packets[0].payload,
+            ":N5BA     :Hello from TH-D75A{01",
+        )
+
+    def test_aprs_message_waits_for_complete_terminator(self):
+        parser = PacketParser()
+
+        packets = parser.feed(
+            "N5BA-7>APRS/2: <UI>:\r\n"
+            ":N5BA     :Hello from TH-D75A{"
+        )
+        self.assertEqual(packets, [])
+
+        packets = parser.feed("01\r\n")
+        self.assertEqual(packets, [])
+
+        packets = parser.feed("\r\n")
+        self.assertEqual(len(packets), 1)
+        self.assertEqual(
+            packets[0].payload,
+            ":N5BA     :Hello from TH-D75A{01",
+        )
+
+    def test_multiline_packet_not_finalized_by_blank_line(self):
+        parser = PacketParser()
+
+        packets = parser.feed(
+            "KD5EOC-10>BEACON/2: <UI>:\r\n"
+            "First line\r\n"
+            "\r\n"
+            "Second line\r\n"
+        )
+
+        self.assertEqual(packets, [])
+
+        packets = parser.flush()
+
+        self.assertEqual(len(packets), 1)
+        self.assertEqual(
+            packets[0].payload,
+            "First line\n\nSecond line",
+        )
+
     def test_single_clean_chunk(self):
         parser = PacketParser()
 
