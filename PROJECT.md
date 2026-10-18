@@ -1696,3 +1696,20 @@ unworkable. The verification itself only ever writes Ctrl-C and
   terminal/PBBS use auto-ACKs stay blocked until the next manual send
   (or `aprs.tx_initialize`) re-verifies the TNC.
 
+### Dashboard auto-ACK switch and Clear Inbox
+
+- Auto-ACK can now be turned on/off from the dashboard (`GET/POST
+  /aprs/ack`) or at startup (`--auto-ack`, `KAMXL_AUTO_ACK=1`), with a
+  status line (on / paused / off + why, ACKs sent, last ACK).
+- The ACK worker now re-verifies the TNC itself when its state is
+  unknown -- unless `_aprs_link_may_be_active` says a terminal,
+  connected-mode, PBBS or Winlink session may still be open, in which
+  case it pauses rather than Ctrl-C'ing into it. A successful
+  verification, disconnect, or self-contained PBBS/Winlink cycle
+  clears that flag; a failed verification sets it.
+- `POST /aprs/messages/clear` / `aprs.clear_messages` deletes stored
+  received messages for this station. Inbox auto-loads, refreshes
+  every 15 s, and hides ack/rej rows.
+
+Tests: `tests/test_auto_ack_and_inbox.py` (13).
+

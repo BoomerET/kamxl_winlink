@@ -585,6 +585,29 @@ a Resend button. The dashboard uses a single "Transmit now" checkbox
 that supplies all three confirmations; the API still takes the three
 fields separately.
 
+### Automatic ACKs and the inbox
+
+`GET /aprs/ack` reports automatic-ACK status: `enabled`, `paused`
+(+ `paused_reason`), `disabled_reason`, `acks_sent`, `last_ack`.
+`POST /aprs/ack` with `{"enabled": true|false}` turns it on or off;
+turning it on is the operator's authorization for ACK transmissions on
+VHF Port 2 and runs the same Ctrl-C + `STATUS` TNC check as a send.
+`--auto-ack` / `KAMXL_AUTO_ACK=1` turns it on at daemon startup.
+
+When the TNC state is unknown the ACK worker re-checks the TNC itself
+before transmitting -- except after a web-terminal command, a connect,
+PBBS or Winlink, where a session may still be open and a Ctrl-C would
+interrupt it. Then auto-ACK reports `paused` and skips ACKs until the
+next APRS send (or turning it off and on) re-verifies the TNC. A
+failed ACK transmission still turns auto-ACK off.
+
+`POST /aprs/messages/clear` deletes every stored received message
+addressed to this station (`deleted` = count). Packet history and
+station data are untouched. The dashboard's "Clear Inbox" button asks
+for confirmation first. The dashboard inbox now loads on its own,
+refreshes every 15 s, and leaves out acks/rejects (those appear under
+Sent Messages).
+
 ## Testing
 
 `tests/test_rest.py` runs a real `KAMDaemon` (wired to the same

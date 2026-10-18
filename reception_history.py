@@ -219,5 +219,19 @@ class ReceptionHistory:
             for row in rows
         ]
 
+    def clear_aprs_messages(self, addressee: str) -> int:
+        """Delete stored APRS messages addressed to a callsign."""
+
+        if not isinstance(addressee, str) or not addressee.strip():
+            raise ValueError("An APRS addressee is required")
+
+        with self._connection:
+            cursor = self._connection.execute(
+                "DELETE FROM aprs_messages WHERE addressee = ?",
+                (addressee.strip().upper(),),
+            )
+
+        return cursor.rowcount
+
     def close(self) -> None:
         self._connection.close()
