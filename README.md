@@ -85,7 +85,8 @@ finally:
     kam.disconnect()
 ```
 
-For the background daemon, set the following in `.env`:
+For the background daemon and the web dashboard, set the following in
+`.env` (one file for both; see `.env.sample` for every setting):
 
 ```dotenv
 KAMXL_PORT=/dev/kam-xl
@@ -99,6 +100,7 @@ KAMXL_BEACON_COMMENT=KAM-XL
 KAMXL_BEACON=1                       # optional: beacon automatically
 KAMXL_WATCHDOG_MINUTES=30            # optional: reception alert after N quiet min (0 = off)
 KAMXL_AUTO_RETRY=1                   # optional: resend unacknowledged messages
+KAMXL_REST_API_KEY=change-me         # web dashboard / API token
 ```
 
 The library accepts an explicit serial port on all platforms.

@@ -2266,3 +2266,50 @@ class ReceptionHistoryIntegrationTests(DaemonTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class RestDotenvTests(unittest.TestCase):
+    """kamxl_rest.py reads the same .env as the daemon."""
+
+    def _run_main(self, env_text, environ):
+        import kamxl_rest
+
+        tmp = tempfile.mkdtemp()
+        with open(os.path.join(tmp, ".env"), "w") as f:
+            f.write(env_text)
+
+        captured = {}
+
+        def fake_serve(socket_path, host, port, api_key):
+            captured.update(socket=socket_path, host=host, port=port,
+                            api_key=api_key)
+            raise SystemExit(0)
+
+        cwd = os.getcwd()
+        os.chdir(tmp)
+        try:
+            with patch.dict(os.environ, environ, clear=True), \
+                 patch.object(kamxl_rest, "serve", fake_serve):
+                with self.assertRaises(SystemExit):
+                    kamxl_rest.main([])
+        finally:
+            os.chdir(cwd)
+        return captured
+
+    def test_settings_come_from_dotenv(self):
+        got = self._run_main(
+            "KAMXL_REST_API_KEY=from-dotenv\n"
+            "KAMXL_REST_PORT=8099\n"
+            "KAMXL_SOCKET=/tmp/other.sock\n",
+            {},
+        )
+        self.assertEqual(got["api_key"], "from-dotenv")
+        self.assertEqual(got["port"], 8099)
+        self.assertEqual(got["socket"], "/tmp/other.sock")
+
+    def test_real_environment_still_wins(self):
+        got = self._run_main(
+            "KAMXL_REST_API_KEY=from-dotenv\n",
+            {"KAMXL_REST_API_KEY": "from-systemd"},
+        )
+        self.assertEqual(got["api_key"], "from-systemd")
