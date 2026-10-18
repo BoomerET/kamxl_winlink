@@ -708,6 +708,18 @@ shows weather in station pop-ups and details, plus temperature labels
 next to weather stations ("Show Temperatures" toggle, remembered per
 browser).
 
+### Bulletins
+
+`GET /aprs/bulletins?days=7` (1-365) lists broadcasts heard: `BLN0`-`BLN9`
+bulletins, `BLNA`-`BLNZ` announcements, `BLN#GROUP` group bulletins
+(e.g. `BLN1ARES`) and `NWS-*`/`NWS_*` weather bulletins. One entry per
+(`source`, `addressee`) with `kind`, the latest `text`, `first_heard`,
+`last_heard` and `count`, newest first. Requires `--history-db`.
+`POST /aprs/bulletins/clear` deletes them. Bulletins are never acked,
+and their repeated copies are pruned with the packet history
+(`KAMXL_HISTORY_DAYS`). The dashboard's Bulletins card groups them by
+sender, marks new ones, and chimes when alerts are on.
+
 ## Testing
 
 `tests/test_rest.py` runs a real `KAMDaemon` (wired to the same

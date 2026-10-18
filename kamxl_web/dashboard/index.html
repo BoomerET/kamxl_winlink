@@ -118,6 +118,24 @@
     </div>
   </div>
 
+  <div class="card" id="bulletinCard">
+    <h2>Bulletins <span id="bulletinNewBadge" hidden></span></h2>
+    <div class="bulletinControls">
+      <label for="bulletinDays">Heard in the last</label>
+      <select id="bulletinDays">
+        <option value="1">day</option>
+        <option value="7" selected>7 days</option>
+        <option value="30">30 days</option>
+      </select>
+      <button class="action" id="bulletinMarkRead" type="button">Mark all read</button>
+      <button class="action" id="bulletinClear" type="button">Clear</button>
+    </div>
+    <div class="sub" id="bulletinStatus" role="status" aria-live="polite">
+      Loading bulletins...
+    </div>
+    <div id="bulletinList"></div>
+  </div>
+
   <div class="card" id="beaconCard">
     <h2>Position Beacon</h2>
     <div class="sub" id="beaconPosition">Loading...</div>

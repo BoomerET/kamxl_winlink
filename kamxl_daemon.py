@@ -351,6 +351,8 @@ class KAMDaemon:
             "aprs.retry_enable": self._m_aprs_retry_enable,
             "aprs.retry_disable": self._m_aprs_retry_disable,
             "aprs.clear_outbox": self._m_aprs_clear_outbox,
+            "aprs.bulletins": self._m_aprs_bulletins,
+            "aprs.clear_bulletins": self._m_aprs_clear_bulletins,
             "aprs.tx_safety": self._m_aprs_tx_safety,
             "aprs.tx_preflight": self._m_aprs_tx_preflight,
             "aprs.tx_get_unproto": self._m_aprs_tx_get_unproto,
@@ -1484,6 +1486,30 @@ class KAMDaemon:
                 "APRS message %s to %s resent automatically (attempt %d)",
                 record.message_id, record.addressee, record.attempts + 1,
             )
+
+    def _m_aprs_bulletins(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """Bulletins/announcements heard in the last ``days`` (default 7)."""
+        days = params.get("days", 7)
+        if isinstance(days, bool) or not isinstance(days, (int, float)) \
+                or not 0 < days <= 365:
+            raise ValueError("'days' must be between 1 and 365")
+
+        if self._reception_writer is None:
+            return {"enabled": False, "bulletins": []}
+
+        since = int(time.time() - days * 86400)
+        return {
+            "enabled": True,
+            "days": days,
+            "bulletins": self._reception_writer.list_bulletins(since=since),
+        }
+
+    def _m_aprs_clear_bulletins(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        if self._reception_writer is None:
+            return {"enabled": False, "deleted": 0}
+        deleted = self._reception_writer.clear_bulletins()
+        logger.info("Cleared %d stored bulletin copy(ies)", deleted)
+        return {"enabled": True, "deleted": deleted}
 
     def _m_aprs_clear_messages(
         self, params: Dict[str, Any]

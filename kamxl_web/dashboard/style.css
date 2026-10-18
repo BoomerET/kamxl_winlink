@@ -486,3 +486,40 @@
       grid-template-columns: 1fr;
     }
   }
+
+  /* Bulletins card */
+  #bulletinCard { flex: 1 1 340px; }
+  #bulletinNewBadge {
+    background: #f1c40f; color: #0b0f10; border-radius: 8px;
+    padding: 0 6px; font-size: 11px; margin-left: 4px;
+  }
+  .bulletinControls {
+    display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+    font-size: 12px; color: #9ab;
+  }
+  .bulletinControls select {
+    background: #0b0f10; color: #d4f7d4; border: 1px solid #234;
+    font: inherit; padding: 2px 4px;
+  }
+  .bulletinControls button.action { margin-top: 0; }
+  #bulletinList { margin-top: 8px; max-height: 360px; overflow-y: auto; }
+  .bulletinGroup { border-top: 1px solid #234; padding: 6px 0; }
+  .bulletinFrom { color: #9ab; font-size: 12px; }
+  .bulletinFrom b { color: #cfc; }
+  .bulletinRow {
+    display: flex; gap: 8px; align-items: baseline;
+    font-size: 12px; margin-top: 4px;
+  }
+  .bulletinTag {
+    flex: 0 0 auto; border: 1px solid #456; border-radius: 3px;
+    padding: 0 5px; font-size: 11px; color: #9ab; white-space: nowrap;
+  }
+  .bulletinTag.announcement { color: #8cf; border-color: #357; }
+  .bulletinTag.group { color: #cfc; border-color: #3a5; }
+  .bulletinTag.nws { color: #ff7777; border-color: #844; }
+  .bulletinText { flex: 1 1 auto; overflow-wrap: anywhere; }
+  .bulletinRow.new .bulletinText::before {
+    content: "\25CF "; color: #f1c40f;
+  }
+  .bulletinSeen { color: #678; font-size: 11px; white-space: nowrap; }
+

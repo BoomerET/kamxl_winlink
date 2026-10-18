@@ -1954,3 +1954,31 @@ served locally (the sandbox can't reach the CDN).
 
 Tests: `tests/test_weather.py` (13).
 
+### Bulletins and announcements
+
+- `aprs.bulletin_kind()` classifies addressees per APRS 1.0.1 ch. 14:
+  `BLN0-9` bulletin, `BLNA-Z` announcement, `BLN<digit><group>` group
+  bulletin, plus `NWS-*`/`NWS_*`.
+- `parse_aprs_message()` now reads any 9-character addressee of
+  letters/digits/`-`/`_` (needed for `BLN1HOTG`, `NWS-WARN`); sending
+  stays strict. Bulletins decode with `kind="bulletin"`, no message
+  ID (a `{` in their text is text), so they are never acked or
+  matched as acks. The exact-case addressee rule is unchanged.
+- They were already being stored in `aprs_messages` (the writer keeps
+  every decoded message). `list_bulletins()` groups by (source,
+  addressee) with latest text, first/last heard and count -- latest
+  text via an explicit subquery, because SQLite's bare-column
+  shortcut is undefined with both `MIN()` and `MAX()` (a test caught
+  this). `aprs.bulletins` / `GET /aprs/bulletins?days=`,
+  `aprs.clear_bulletins` / `POST /aprs/bulletins/clear`.
+- Retention: bulletins repeat every few minutes all day, so their old
+  copies are now pruned along with packet history (an exception to
+  "messages are never pruned", which still holds for messages to or
+  from you).
+- Dashboard: Bulletins card grouped by sender with type tags, "x N"
+  repeat counts, "new" markers (per-browser read state), Mark all
+  read, Clear, 1/7/30-day range, and the conversation alerts' chime
+  and notification for newly heard bulletins.
+
+Tests: `tests/test_bulletins.py` (13).
+

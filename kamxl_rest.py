@@ -374,6 +374,8 @@ ROUTES: Tuple[Tuple[str, "re.Pattern", str], ...] = (
     ("GET", re.compile(r"^/aprs/retry$"), "_h_aprs_retry_status"),
     ("POST", re.compile(r"^/aprs/retry$"), "_h_aprs_retry_set"),
     ("POST", re.compile(r"^/aprs/outbox/clear$"), "_h_aprs_outbox_clear"),
+    ("GET", re.compile(r"^/aprs/bulletins$"), "_h_aprs_bulletins"),
+    ("POST", re.compile(r"^/aprs/bulletins/clear$"), "_h_aprs_bulletins_clear"),
     ("POST", re.compile(r"^/aprs/beacon$"), "_h_aprs_beacon_set"),
     ("POST", re.compile(r"^/aprs/beacon/now$"), "_h_aprs_beacon_now"),
 )
@@ -1042,6 +1044,34 @@ class RESTRequestHandler(BaseHTTPRequestHandler):
             confirm_vhf_port2_radio_ready=True,
             confirm_hf_port1_disconnected=True,
         )
+
+    def _h_aprs_bulletins(
+        self,
+        params: Dict[str, str],
+        query: Dict[str, Any],
+    ) -> None:
+        """Bulletins heard recently (?days=N, default 7). No TNC access."""
+        try:
+            days = float(query.get("days", ["7"])[0])
+        except (TypeError, ValueError):
+            days = None
+        if days is None or not 0 < days <= 365:
+            self._send_json(400, {
+                "ok": False,
+                "error": {
+                    "type": "InvalidParam",
+                    "message": "days must be a number from 1 to 365",
+                },
+            })
+            return
+        self._relay("aprs.bulletins", days=days)
+
+    def _h_aprs_bulletins_clear(
+        self,
+        params: Dict[str, str],
+        query: Dict[str, Any],
+    ) -> None:
+        self._relay("aprs.clear_bulletins")
 
     def _h_aprs_outbox_clear(
         self,

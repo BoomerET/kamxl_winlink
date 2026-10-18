@@ -621,7 +621,10 @@ def parse_aprs_message(payload: str) -> Optional[AprsMessage]:
     address_field = payload[1:10]
     addressee = address_field.strip().upper()
 
-    if not re.fullmatch(r"[A-Z0-9]{1,6}(?:-[0-9]{1,2})?", addressee):
+    # Callsigns, plus the wider 9-character names bulletins and
+    # services use (BLN1HOTG, NWS-WARN, NWS_ADVIS). Sending stays
+    # strict (format_aprs_message); this only affects what we can read.
+    if not re.fullmatch(r"[A-Z0-9][A-Z0-9_-]{0,8}", addressee):
         return None
 
     if address_field != f"{addressee:<9}":
@@ -630,6 +633,17 @@ def parse_aprs_message(payload: str) -> Optional[AprsMessage]:
     content = payload[11:]
     if not content:
         return None
+
+    # Bulletins/announcements carry no message ID and are never acked;
+    # a "{" in their text is just text.
+    if bulletin_kind(addressee) is not None:
+        return AprsMessage(
+            addressee=addressee,
+            text=content.rstrip(),
+            message_id=None,
+            kind="bulletin",
+            raw=payload,
+        )
 
     # APRS acknowledgment/rejection: ackID or rejID.
     for prefix, kind in (("ack", "ack"), ("rej", "rej")):
@@ -682,6 +696,34 @@ def parse_aprs_message(payload: str) -> Optional[AprsMessage]:
         raw=payload,
         reply_ack=reply_ack,
     )
+
+_BULLETIN_RE = re.compile(
+    r"^BLN(?:(?P<line>[0-9])(?P<group>[A-Z0-9]{1,5})?|(?P<ann>[A-Z]))$"
+)
+
+
+def bulletin_kind(addressee: str) -> Optional[str]:
+    """
+    Classify a message addressee as a broadcast (APRS 1.0.1 ch. 14).
+
+    "bulletin"      BLN0-BLN9 (general bulletin, line 0-9)
+    "group"         BLN<digit><group>, e.g. BLN1WX, BLN1HOTG
+    "announcement"  BLNA-BLNZ
+    "nws"           NWS-*/NWS_* weather service bulletins
+    None            anything else (an ordinary addressee)
+    """
+    if not isinstance(addressee, str):
+        return None
+    value = addressee.strip().upper()
+    match = _BULLETIN_RE.match(value)
+    if match:
+        if match.group("ann"):
+            return "announcement"
+        return "group" if match.group("group") else "bulletin"
+    if re.match(r"^NWS[-_][A-Z0-9]{1,5}$", value):
+        return "nws"
+    return None
+
 
 def format_aprs_ack(addressee: str, message_id: str) -> str:
     """Build an APRS acknowledgment payload without transmitting."""
