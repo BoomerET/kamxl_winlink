@@ -1925,3 +1925,32 @@ pyproject). `kamxl_rest.py` is now ~1,400 lines.
 
 Tests: `tests/test_web_pages.py` (6).
 
+### Weather stations on the map
+
+`aprs.parse_weather()` decodes APRS 1.0.1 chapter 12 weather into a
+`WeatherReport`: positionless `_MMDDHHMMcDDDsSSS...` reports and
+position reports with the `_` symbol (`DDD/SSS` wind then fields).
+Fields g/t/r/p/P/h/b/L/l/s are fixed-width, `...`/spaces mean "not
+reported", `h00` = 100 %, `b` is tenths of mb, `l` adds 1000 W/m2.
+Parsing stops at the first thing that isn't a valid field, so the
+unit tag in KC5TIL-3's real `...b10278tRSW` isn't misread as a second
+temperature (regression test uses that captured packet). A report
+must contain at least one real measurement, so stations that merely
+use the WX symbol with a text comment don't decode as empty weather.
+Out-of-range wind direction/temperature/humidity are dropped.
+
+`StationTracker` keeps `weather`/`weather_at` per station. Weather
+from a positionless report for a station with no position yet is held
+(up to an hour, 500 stations) until its position beacon arrives;
+weather-only packets update `weather_at` but not `last_heard`, so
+position age and expiry behave as before.
+
+Map: weather block in pop-ups and the details panel (°F with °C, mb
+with inHg, compass wind direction), a temperature label beside each
+weather station, and a "Show Temperatures" toggle remembered in
+localStorage. A position-WX station's comment line shows only the text
+after the weather fields. Checked in headless Chromium with Leaflet
+served locally (the sandbox can't reach the CDN).
+
+Tests: `tests/test_weather.py` (13).
+

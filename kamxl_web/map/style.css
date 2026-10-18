@@ -183,3 +183,22 @@
     font-size: 12px;
   }
 
+  /* Weather: temperature labels next to WX stations, popup block. */
+  .leaflet-tooltip.wxLabel {
+    background: rgba(11, 15, 16, 0.85);
+    color: #ffd27a;
+    border: 1px solid #5a4a22;
+    border-radius: 3px;
+    padding: 0 4px;
+    font: bold 11px "Courier New", Courier, monospace;
+    box-shadow: none;
+  }
+  .leaflet-tooltip.wxLabel::before { display: none; }
+  .wxBlock {
+    margin: 4px 0;
+    padding: 4px 6px;
+    border-left: 3px solid #f1c40f;
+    background: rgba(241, 196, 15, 0.08);
+  }
+  .wxAge { color: #888; font-weight: normal; }
+

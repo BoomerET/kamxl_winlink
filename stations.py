@@ -23,7 +23,7 @@ import time
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 
-from aprs import parse_position
+from aprs import parse_position, parse_weather
 from packet import Packet
 
 @dataclass(frozen=True)
@@ -72,6 +72,10 @@ class Station:
     packet_count: int
     history: Tuple[PositionPoint, ...] = ()
     recent_packets: Tuple[PacketRecord, ...] = ()
+    # Latest decoded weather (aprs.WeatherReport as a dict) and when it
+    # was heard; None for stations that never sent weather.
+    weather: Optional[dict] = None
+    weather_at: Optional[float] = None
 
 class StationTracker:
     """
@@ -87,8 +91,14 @@ class StationTracker:
     worst. This check happens before parse_position() is even called.
     """
 
+    # Weather from a station we have no position for yet is held this
+    # long, waiting for its first position beacon.
+    PENDING_WEATHER_MAX_AGE = 3600
+    PENDING_WEATHER_MAX_STATIONS = 500
+
     def __init__(self) -> None:
         self._stations: Dict[str, Station] = {}
+        self._pending_weather: Dict[str, Tuple[dict, float]] = {}
 
     def update(
         self, packet: Packet, now: Optional[float] = None
@@ -112,9 +122,19 @@ class StationTracker:
             packet.payload, destination=packet.destination
         )
 
+        weather_report = parse_weather(packet.payload, position)
+        weather = (
+            dataclasses.asdict(weather_report)
+            if weather_report is not None else None
+        )
+
         # A station must first be established by a valid position
-        # report. Non-position APRS packets can then be retained.
+        # report. Non-position APRS packets can then be retained --
+        # weather from a positionless report (e.g. "_10172218c051...")
+        # is held until that station's position beacon arrives.
         if position is None and existing is None:
+            if weather is not None:
+                self._remember_pending_weather(packet.source, weather, now)
             return None
 
         record = PacketRecord(
@@ -132,10 +152,10 @@ class StationTracker:
         )[-25:]
 
         if position is None:
-            station = dataclasses.replace(
-                existing,
-                recent_packets=recent_packets,
-            )
+            changes = {"recent_packets": recent_packets}
+            if weather is not None:
+                changes.update(weather=weather, weather_at=now)
+            station = dataclasses.replace(existing, **changes)
             self._stations[packet.source] = station
             return station
 
@@ -157,6 +177,16 @@ class StationTracker:
         ):
             history = (*history, point)[-25:]
 
+        # Weather: from this packet if it carried any, else keep the
+        # last known (or a pending positionless report).
+        weather_at = now if weather is not None else None
+        if weather is None and existing is not None:
+            weather, weather_at = existing.weather, existing.weather_at
+        if weather is None:
+            pending = self._pending_weather.pop(packet.source, None)
+            if pending and now - pending[1] <= self.PENDING_WEATHER_MAX_AGE:
+                weather, weather_at = pending
+
         station = Station(
             callsign=packet.source,
             latitude=position.latitude,
@@ -168,11 +198,23 @@ class StationTracker:
             packet_count=packet_count,
             history=history,
             recent_packets=recent_packets,
+            weather=weather,
+            weather_at=weather_at,
         )
 
         self._stations[packet.source] = station
 
         return station
+
+    def _remember_pending_weather(
+        self, callsign: str, weather: dict, now: float
+    ) -> None:
+        self._pending_weather[callsign] = (weather, now)
+        if len(self._pending_weather) > self.PENDING_WEATHER_MAX_STATIONS:
+            oldest = min(
+                self._pending_weather, key=lambda c: self._pending_weather[c][1]
+            )
+            del self._pending_weather[oldest]
 
     def list_stations(self) -> List[Station]:
         """
