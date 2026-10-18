@@ -720,6 +720,19 @@ and their repeated copies are pruned with the packet history
 (`KAMXL_HISTORY_DAYS`). The dashboard's Bulletins card groups them by
 sender, marks new ones, and chimes when alerts are on.
 
+### APRS Services card
+
+The dashboard's APRS Services card builds messages for common APRS-IS
+services and drops them into the normal send form (so they get message
+IDs, acks and resends like any message; replies appear under
+Conversations): WXBOT weather (`Denton,TX tomorrow`, `76201`, `KDTO
+metar`), SMSGTE texts (`@9405551234 text`, US/Canada), EMAIL-2
+(`name@example.com text` or a shortcut), ANSRVR groups (`CQ HOTG
+text`, `J HOTG`, `U HOTG`) and WHO-IS callsign lookups. It shows a
+67-character count and won't fill the form if the message is too
+long. Sending to service names with a letter suffix (`WHO-IS`) is now
+allowed by `format_aprs_message()`.
+
 ## Testing
 
 `tests/test_rest.py` runs a real `KAMDaemon` (wired to the same
