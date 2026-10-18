@@ -765,6 +765,36 @@ dashboard shows "via W5NGU-3" / "on APRS-IS" on sent messages and a
 `failed`, `last_error`; never the secrets). `POST /notify/test` sends
 a test notification and reports whether the server accepted it.
 
+### Coverage by station setup
+
+Needs the history database. `POST /coverage/setup` with
+`{"setup": "J-pole 16 ft"}` sets the current station setup (free text,
+up to 40 characters, `""` to clear); it's saved in the database and
+survives restarts. From then on every transmission (beacon, message,
+resend) and every received packet is tagged with it.
+
+`GET /coverage?days=30` (1-365) returns `{enabled, setup, days, home,
+setups: [...]}`, newest-used setup first. Each setup has:
+
+- `tx`: `total`, `beacons`, `messages`, and how many were `heard`
+  back at all, `digipeated`, or `igated` (sent back from APRS-IS).
+- `digipeaters`: each digipeater that heard us directly (the first
+  hop of the copy we heard; `""` if it didn't insert its callsign)
+  with `heard`, `pct` of `tx.total`, `last_heard`, its last known
+  `latitude`/`longitude` and `distance_mi` from `home`.
+- `igates`: iGates that sent our transmissions back to RF.
+- `rx`: `hours` with traffic, `packets`, `packets_per_hour`,
+  `stations`, `direct_stations` (heard without a digipeater) and the
+  five `farthest_direct` stations with `distance_mi`. Our own
+  callsigns are left out.
+
+A copy is credited to the latest matching transmission sent within the
+previous 15 minutes (beacons by payload, messages by message ID).
+Distances need `KAMXL_LATITUDE`/`KAMXL_LONGITUDE`. The dashboard's
+Coverage card shows setups side by side; its "map" link opens
+`/map?coverage=<setup>&days=N`, which draws lines to each digipeater
+colored by how often it heard you.
+
 ## Testing
 
 `tests/test_rest.py` runs a real `KAMDaemon` (wired to the same

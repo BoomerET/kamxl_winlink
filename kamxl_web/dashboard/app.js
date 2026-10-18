@@ -1746,6 +1746,179 @@
     }
   });
 
+  // -- Coverage --------------------------------------------------------
+  //
+  // Which digipeaters hear this station and how well it hears others,
+  // per station setup (radio/antenna), so setups can be compared. The
+  // daemon tags every transmission and received packet with the setup
+  // saved here. Newest-used setup is the leftmost column.
+
+  var setupForm = document.getElementById("setupForm");
+  var setupInput = document.getElementById("setupInput");
+  var setupOptions = document.getElementById("setupOptions");
+  var setupStatus = document.getElementById("setupStatus");
+  var coverageDays = document.getElementById("coverageDays");
+  var coverageStatus = document.getElementById("coverageStatus");
+  var coverageTable = document.getElementById("coverageTable");
+  var setupEditing = false;
+
+  function setupName(name) {
+    return name ? name : "(no setup)";
+  }
+
+  function pctText(n, total) {
+    if (!total) return "<span class='dim'>—</span>";
+    return "<span class='pct'>" + Math.round(100 * n / total) + "%</span>" +
+      " <span class='dim'>(" + n + " of " + total + ")</span>";
+  }
+
+  function shortDate(epoch) {
+    if (!epoch) return "";
+    return new Date(epoch * 1000).toLocaleDateString(undefined,
+      { month: "short", day: "numeric" });
+  }
+
+  function miles(value) {
+    return value == null ? "" : " · " + Math.round(value) + " mi";
+  }
+
+  function renderCoverage(report) {
+    var setups = (report.setups || []).slice(0, 4);
+
+    if (!report.enabled) {
+      coverageStatus.textContent =
+        "Coverage needs the history database (KAMXL_HISTORY_DB).";
+      coverageTable.innerHTML = "";
+      return;
+    }
+
+    setupOptions.innerHTML = (report.setups || [])
+      .filter(function (e) { return e.setup; })
+      .map(function (e) {
+        return "<option value='" + escapeHtml(e.setup) + "'>";
+      }).join("");
+
+    if (!setups.length) {
+      coverageStatus.textContent =
+        "Nothing sent or heard in this period yet.";
+      coverageTable.innerHTML = "";
+      return;
+    }
+
+    coverageStatus.textContent = report.home ? "" :
+      "Distances need your position (KAMXL_LATITUDE / KAMXL_LONGITUDE).";
+
+    function row(label, cell) {
+      return "<tr><th scope='row'>" + label + "</th>" +
+        setups.map(function (e) { return "<td>" + cell(e) + "</td>"; }).join("") +
+        "</tr>";
+    }
+
+    function list(items, render) {
+      if (!items.length) return "<span class='dim'>none</span>";
+      return "<ul class='covList'>" + items.map(function (i) {
+        return "<li>" + render(i) + "</li>";
+      }).join("") + "</ul>";
+    }
+
+    var html = "<table class='covTable'><thead><tr><th></th>" +
+      setups.map(function (e) {
+        var mapHref = authedUrl("/map?coverage=" +
+          encodeURIComponent(e.setup) + "&days=" + report.days);
+        return "<th scope='col'>" + escapeHtml(setupName(e.setup)) +
+          (e.setup === report.setup ? " <span class='now'>● now</span>" : "") +
+          "<br><span class='dim'>" + escapeHtml(shortDate(e.first_used)) +
+          " – " + escapeHtml(shortDate(e.last_used)) + "</span>" +
+          (e.digipeaters.length
+            ? " <a href='" + mapHref + "'>map</a>" : "") +
+          "</th>";
+      }).join("") + "</tr></thead><tbody>";
+
+    html += row("Sent", function (e) {
+      return e.tx.total + " <span class='dim'>(" + e.tx.beacons +
+        " beacon, " + e.tx.messages + " msg)</span>";
+    });
+    html += row("Digipeated", function (e) {
+      return pctText(e.tx.digipeated, e.tx.total);
+    });
+    html += row("Reached APRS-IS", function (e) {
+      return pctText(e.tx.igated, e.tx.total);
+    });
+    html += row("Heard you", function (e) {
+      return list(e.digipeaters.slice(0, 5), function (d) {
+        return escapeHtml(d.callsign || "(unidentified)") + " " +
+          "<span class='pct'>" + Math.round(d.pct) + "%</span>" +
+          "<span class='dim'>" + escapeHtml(miles(d.distance_mi)) + "</span>";
+      });
+    });
+    html += row("Packets heard", function (e) {
+      return e.rx.hours
+        ? e.rx.packets_per_hour + "/hr <span class='dim'>over " +
+          e.rx.hours + " h</span>"
+        : "<span class='dim'>—</span>";
+    });
+    html += row("Stations heard", function (e) {
+      return e.rx.stations + " <span class='dim'>(" +
+        e.rx.direct_stations + " direct)</span>";
+    });
+    html += row("Farthest direct", function (e) {
+      return list(e.rx.farthest_direct.slice(0, 3), function (f) {
+        return escapeHtml(f.callsign) + "<span class='dim'>" +
+          escapeHtml(miles(f.distance_mi)) + "</span>";
+      });
+    });
+
+    coverageTable.innerHTML = html + "</tbody></table>";
+  }
+
+  async function refreshCoverage() {
+    try {
+      var report = await apiGet("/coverage?days=" +
+        encodeURIComponent(coverageDays.value));
+      if (!setupEditing) setupInput.value = report.setup || "";
+      renderCoverage(report);
+    } catch (err) {
+      coverageStatus.textContent = "Unable to load coverage: " + String(err);
+    }
+  }
+
+  setupInput.addEventListener("focus", function () { setupEditing = true; });
+  setupInput.addEventListener("blur", function () { setupEditing = false; });
+  coverageDays.addEventListener("change", refreshCoverage);
+
+  setupForm.addEventListener("submit", async function (e) {
+    e.preventDefault();
+    var value = setupInput.value.trim();
+    document.getElementById("setupSaveBtn").disabled = true;
+    try {
+      var res = await fetch(authedUrl("/coverage/setup"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ setup: value })
+      });
+      var payload = await res.json();
+      if (!payload.ok) {
+        setupStatus.textContent = "Not saved: " +
+          ((payload.error && payload.error.message) || "Unknown error");
+        setupStatus.className = "sub err";
+        return;
+      }
+      setupStatus.className = "sub";
+      setupStatus.textContent = payload.result.setup
+        ? "Now tagging everything sent and heard as \u201c" +
+          payload.result.setup + "\u201d."
+        : "Setup cleared; new traffic is tagged (no setup).";
+      setupEditing = false;
+      setupInput.blur();
+      refreshCoverage();
+    } catch (err) {
+      setupStatus.textContent = "Not saved: " + String(err);
+      setupStatus.className = "sub err";
+    } finally {
+      document.getElementById("setupSaveBtn").disabled = false;
+    }
+  });
+
   // -- Bulletins ------------------------------------------------------
   //
   // Broadcasts heard on the air: BLN0-9 bulletins, BLNA-Z
@@ -1954,6 +2127,8 @@
   setInterval(refreshBulletins, 60000);
   refreshNotify();
   setInterval(refreshNotify, 60000);
+  refreshCoverage();
+  setInterval(refreshCoverage, 120000);
   setInterval(refreshAutoAck, 15000);
   setInterval(refreshStations, 15000);
   setInterval(refreshReceptionStats, 15000);

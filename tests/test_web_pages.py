@@ -28,6 +28,16 @@ class LoadPageTests(unittest.TestCase):
                 self.assertEqual(len(re.findall(r"<style>", html)), 1)
                 self.assertEqual(len(re.findall(r"<script>", html)), 1)
 
+    def test_coverage_card_and_map_overlay_present(self):
+        dashboard = kamxl_web.load_page("dashboard")
+        for marker in ('id="coverageCard"', 'id="setupInput"',
+                       "refreshCoverage", "/coverage/setup"):
+            self.assertIn(marker, dashboard)
+        page = kamxl_web.load_page("map")
+        for marker in ('id="coverageBanner"', "showCoverage",
+                       'params.get("coverage")'):
+            self.assertIn(marker, page)
+
     def test_every_page_has_a_phone_viewport(self):
         # Without it phones draw the page at desktop width and shrink it.
         for name in kamxl_web.PAGE_NAMES:

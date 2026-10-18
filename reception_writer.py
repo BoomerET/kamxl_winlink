@@ -41,6 +41,9 @@ class ReceptionWriter:
         self._failed = False
         self.dropped_packets = 0
         self.write_errors = 0
+        # Current station setup label; stamped on each packet as it is
+        # queued (see aprs_coverage.py).
+        self.setup = None
 
     def start(self) -> None:
         """Start the background SQLite writer."""
@@ -67,7 +70,9 @@ class ReceptionWriter:
                 return False
 
             try:
-                self._queue.put_nowait((packet, int(time.time())))
+                self._queue.put_nowait(
+                    (packet, int(time.time()), self.setup)
+                )
                 return True
             except queue.Full:
                 self.dropped_packets += 1
@@ -103,7 +108,9 @@ class ReceptionWriter:
                 self._maybe_prune(history)
 
                 try:
-                    packet, received_at = self._queue.get(timeout=0.1)
+                    packet, received_at, setup = self._queue.get(
+                        timeout=0.1
+                    )
 
                 except queue.Empty:
                     continue
@@ -112,6 +119,7 @@ class ReceptionWriter:
                     history.record(
                         packet,
                         received_at=received_at,
+                        setup=setup,
                     )
 
                 except Exception:
@@ -253,6 +261,27 @@ class ReceptionWriter:
 
     def packets_since(self, since, limit=20000):
         return self._with_history(lambda h: h.packets_since(since, limit))
+
+    def get_setting(self, key):
+        return self._with_history(lambda h: h.get_setting(key))
+
+    def set_setting(self, key, value):
+        return self._with_history(lambda h: h.set_setting(key, value))
+
+    def log_own_tx(self, sent_at, kind, ref, path, setup):
+        return self._with_history(
+            lambda h: h.log_own_tx(sent_at, kind, ref, path, setup)
+        )
+
+    def record_own_heard(self, heard_at, kind, ref, via, station):
+        return self._with_history(
+            lambda h: h.record_own_heard(heard_at, kind, ref, via, station)
+        )
+
+    def coverage_report(self, since, home=None, is_own=None):
+        return self._with_history(
+            lambda h: h.coverage_report(since, home, is_own)
+        )
 
     def load_outbound(self, limit=200):
         return self._with_history(lambda h: h.list_outbound(limit))

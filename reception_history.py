@@ -71,6 +71,39 @@ class ReceptionHistory:
 
             CREATE INDEX IF NOT EXISTS idx_aprs_outbound_sent_at
                 ON aprs_outbound(sent_at);
+
+            -- Small persistent settings (e.g. the current station setup).
+            CREATE TABLE IF NOT EXISTS settings (
+                key TEXT PRIMARY KEY,
+                value TEXT
+            );
+
+            -- Coverage: every transmission we made (beacon, message,
+            -- resend) with the station setup in use at the time ...
+            CREATE TABLE IF NOT EXISTS own_tx (
+                id INTEGER PRIMARY KEY,
+                sent_at REAL NOT NULL,
+                kind TEXT NOT NULL,
+                ref TEXT NOT NULL,
+                path TEXT,
+                setup TEXT NOT NULL
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_own_tx_sent_at
+                ON own_tx(sent_at);
+
+            -- ... and each time one came back: repeated by a
+            -- digipeater (via='digi', station = the first digipeater,
+            -- the one that heard us; '' if unidentified) or sent back
+            -- from APRS-IS by an iGate (via='igate').
+            CREATE TABLE IF NOT EXISTS own_heard (
+                id INTEGER PRIMARY KEY,
+                tx_id INTEGER NOT NULL,
+                heard_at REAL NOT NULL,
+                via TEXT NOT NULL,
+                station TEXT NOT NULL,
+                UNIQUE (tx_id, via, station)
+            );
         """)
 
         # Added later: the packet's info text, so the map can be
@@ -80,10 +113,12 @@ class ReceptionHistory:
                 "PRAGMA table_info(received_packets)"
             )
         }
-        if "payload" not in columns:
-            self._connection.execute(
-                "ALTER TABLE received_packets ADD COLUMN payload TEXT"
-            )
+        # Also added later: the station setup in use when it was heard.
+        for column in ("payload", "setup"):
+            if column not in columns:
+                self._connection.execute(
+                    f"ALTER TABLE received_packets ADD COLUMN {column} TEXT"
+                )
 
         self._connection.commit()
 
@@ -91,6 +126,7 @@ class ReceptionHistory:
         self,
         packet: Packet,
         received_at: Optional[int] = None,
+        setup: Optional[str] = None,
     ) -> None:
         """Persist metadata for one successfully parsed packet."""
 
@@ -123,9 +159,10 @@ class ReceptionHistory:
                     frame_type,
                     port,
                     digipeaters,
-                    payload
+                    payload,
+                    setup
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     timestamp,
@@ -135,6 +172,7 @@ class ReceptionHistory:
                     packet.port,
                     json.dumps(packet.digipeaters),
                     packet.payload,
+                    setup,
                 ),
             )
             if aprs_message is not None:
@@ -233,6 +271,246 @@ class ReceptionHistory:
                 int(received_at),
             ))
         return packets
+
+    # -- settings and coverage ------------------------------------------
+
+    def get_setting(self, key: str) -> Optional[str]:
+        row = self._connection.execute(
+            "SELECT value FROM settings WHERE key = ?", (key,)
+        ).fetchone()
+        return None if row is None else row[0]
+
+    def set_setting(self, key: str, value: Optional[str]) -> None:
+        with self._connection:
+            self._connection.execute(
+                "INSERT INTO settings (key, value) VALUES (?, ?) "
+                "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                (key, value),
+            )
+
+    def log_own_tx(self, sent_at, kind, ref, path, setup) -> int:
+        with self._connection:
+            cursor = self._connection.execute(
+                "INSERT INTO own_tx (sent_at, kind, ref, path, setup) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (float(sent_at), kind, ref or "", path or "", setup or ""),
+            )
+        return cursor.lastrowid
+
+    def record_own_heard(self, heard_at, kind, ref, via, station) -> bool:
+        """
+        Credit a heard-back copy to the latest matching transmission
+        sent within MATCH_WINDOW_SECONDS before it. Returns True if it
+        was recorded (False: no matching transmission, or that
+        digipeater/iGate was already credited for it).
+        """
+        from aprs_coverage import MATCH_WINDOW_SECONDS
+
+        row = self._connection.execute(
+            """
+            SELECT id FROM own_tx
+            WHERE kind = ? AND ref = ? AND sent_at <= ? AND sent_at >= ?
+            ORDER BY sent_at DESC, id DESC LIMIT 1
+            """,
+            (kind, ref or "", float(heard_at) + 5,
+             float(heard_at) - MATCH_WINDOW_SECONDS),
+        ).fetchone()
+        if row is None:
+            return False
+        with self._connection:
+            cursor = self._connection.execute(
+                "INSERT OR IGNORE INTO own_heard "
+                "(tx_id, heard_at, via, station) VALUES (?, ?, ?, ?)",
+                (row[0], float(heard_at), via, station or ""),
+            )
+        return cursor.rowcount > 0
+
+    def latest_position(self, callsign: str, scan: int = 50):
+        """Most recent stored position report from ``callsign``, or None."""
+        from aprs import parse_position
+
+        rows = self._connection.execute(
+            """
+            SELECT payload, destination FROM received_packets
+            WHERE source = ? AND payload IS NOT NULL
+            ORDER BY received_at DESC, id DESC LIMIT ?
+            """,
+            (callsign, int(scan)),
+        )
+        for payload, destination in rows:
+            position = parse_position(payload, destination=destination)
+            if position is not None:
+                return position
+        return None
+
+    def coverage_report(self, since, home=None, is_own=None):
+        """
+        Per-setup coverage since ``since`` (Unix seconds).
+
+        ``home`` is (latitude, longitude) for distances, or None.
+        ``is_own(callsign)`` marks our own stations (left out of the
+        receive-side numbers). Newest-used setup first.
+        """
+        from aprs import parse_position
+        from aprs_coverage import distance_miles
+
+        is_own = is_own or (lambda _c: False)
+        since = float(since)
+        setups = {}
+
+        def entry(name):
+            name = name or ""
+            if name not in setups:
+                setups[name] = {
+                    "setup": name,
+                    "first_used": None,
+                    "last_used": None,
+                    "tx": {"total": 0, "beacons": 0, "messages": 0,
+                           "heard": 0, "digipeated": 0, "igated": 0},
+                    "digipeaters": [],
+                    "igates": [],
+                    "rx": {"hours": 0, "packets": 0, "packets_per_hour": 0.0,
+                           "stations": 0, "direct_stations": 0,
+                           "farthest_direct": []},
+                }
+            return setups[name]
+
+        def seen(e, t):
+            e["first_used"] = t if e["first_used"] is None else min(e["first_used"], t)
+            e["last_used"] = t if e["last_used"] is None else max(e["last_used"], t)
+
+        # -- getting out ------------------------------------------------
+        tx_rows = self._connection.execute(
+            "SELECT id, sent_at, kind, setup FROM own_tx WHERE sent_at >= ?",
+            (since,),
+        ).fetchall()
+        heard_rows = self._connection.execute(
+            """
+            SELECT h.tx_id, h.heard_at, h.via, h.station
+            FROM own_heard h JOIN own_tx t ON t.id = h.tx_id
+            WHERE t.sent_at >= ?
+            """,
+            (since,),
+        ).fetchall()
+
+        heard_by_tx = {}
+        for tx_id, heard_at, via, station in heard_rows:
+            heard_by_tx.setdefault(tx_id, []).append((via, station, heard_at))
+
+        per_station = {}  # (setup, via, station) -> [count, last_heard]
+        for tx_id, sent_at, kind, setup in tx_rows:
+            e = entry(setup)
+            seen(e, sent_at)
+            tx = e["tx"]
+            tx["total"] += 1
+            tx["beacons" if kind == "beacon" else "messages"] += 1
+            heard = heard_by_tx.get(tx_id, [])
+            if heard:
+                tx["heard"] += 1
+            if any(v == "digi" for v, _, _ in heard):
+                tx["digipeated"] += 1
+            if any(v == "igate" for v, _, _ in heard):
+                tx["igated"] += 1
+            for via, station, heard_at in heard:
+                key = (e["setup"], via, station)
+                count = per_station.setdefault(key, [0, 0.0])
+                count[0] += 1
+                count[1] = max(count[1], heard_at)
+
+        positions = {}
+        for (setup, via, station), (count, last_heard) in per_station.items():
+            e = setups[setup]
+            item = {
+                "callsign": station,
+                "heard": count,
+                "pct": round(100.0 * count / e["tx"]["total"], 1),
+                "last_heard": last_heard,
+            }
+            if via == "digi":
+                if station and station not in positions:
+                    positions[station] = self.latest_position(station)
+                pos = positions.get(station)
+                item["latitude"] = pos.latitude if pos else None
+                item["longitude"] = pos.longitude if pos else None
+                item["distance_mi"] = (
+                    round(distance_miles(home[0], home[1],
+                                         pos.latitude, pos.longitude), 1)
+                    if pos and home else None
+                )
+                e["digipeaters"].append(item)
+            else:
+                e["igates"].append(item)
+
+        for e in setups.values():
+            for key in ("digipeaters", "igates"):
+                e[key].sort(key=lambda i: (-i["heard"], i["callsign"]))
+
+        # -- hearing in -------------------------------------------------
+        rows = self._connection.execute(
+            """
+            SELECT received_at, source, destination, digipeaters, payload,
+                   setup
+            FROM received_packets
+            WHERE received_at >= ? AND port = 2
+            """,
+            (int(since),),
+        )
+        parsed = {}
+        rx = {}  # setup -> accumulators
+        for received_at, source, dest, digis, payload, setup in rows:
+            if is_own(source):
+                continue
+            acc = rx.setdefault(setup or "", {
+                "hours": set(), "packets": 0, "stations": set(),
+                "direct": {},
+            })
+            acc["hours"].add(int(received_at) // 3600)
+            acc["packets"] += 1
+            acc["stations"].add(source)
+            if digis and "*" in digis:
+                continue  # digipeated: not heard directly
+            best = acc["direct"].get(source)
+            if payload is None or home is None:
+                if best is None:
+                    acc["direct"][source] = (None, received_at)
+                continue
+            key = (payload, dest)
+            if key not in parsed:
+                parsed[key] = parse_position(payload, destination=dest)
+            pos = parsed[key]
+            miles = (
+                distance_miles(home[0], home[1], pos.latitude, pos.longitude)
+                if pos is not None else None
+            )
+            if best is None or (miles is not None and (
+                    best[0] is None or miles > best[0])):
+                acc["direct"][source] = (miles, received_at)
+
+        for setup, acc in rx.items():
+            e = entry(setup)
+            hours = len(acc["hours"])
+            for hour in acc["hours"]:
+                seen(e, hour * 3600)
+            far = sorted(
+                ((c, m, t) for c, (m, t) in acc["direct"].items()
+                 if m is not None),
+                key=lambda x: -x[1],
+            )[:5]
+            e["rx"] = {
+                "hours": hours,
+                "packets": acc["packets"],
+                "packets_per_hour": round(acc["packets"] / hours, 1) if hours else 0.0,
+                "stations": len(acc["stations"]),
+                "direct_stations": len(acc["direct"]),
+                "farthest_direct": [
+                    {"callsign": c, "distance_mi": round(m, 1), "heard_at": t}
+                    for c, m, t in far
+                ],
+            }
+
+        return sorted(
+            setups.values(), key=lambda e: -(e["last_used"] or 0)
+        )
 
     def oldest_packet_at(self) -> Optional[int]:
         row = self._connection.execute(

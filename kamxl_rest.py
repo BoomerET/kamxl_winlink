@@ -358,6 +358,8 @@ ROUTES: Tuple[Tuple[str, "re.Pattern", str], ...] = (
     ("GET", re.compile(r"^/objects$"), "_h_objects_list"),
     ("GET", re.compile(r"^/notify$"), "_h_notify_status"),
     ("POST", re.compile(r"^/notify/test$"), "_h_notify_test"),
+    ("GET", re.compile(r"^/coverage$"), "_h_coverage_report"),
+    ("POST", re.compile(r"^/coverage/setup$"), "_h_coverage_set_setup"),
     ("GET", re.compile(r"^/stations/(?P<callsign>[A-Za-z0-9\-]+)$"), "_h_stations_get"),
     ("POST", re.compile(r"^/winlink/check$"), "_h_winlink_check_mail"),
     ("POST", re.compile(r"^/winlink/send$"), "_h_winlink_send_message"),
@@ -810,6 +812,35 @@ class RESTRequestHandler(BaseHTTPRequestHandler):
 
     def _h_objects_list(self, params: Dict[str, str], query: Dict[str, Any]) -> None:
         self._relay("objects.list")
+
+    def _h_coverage_report(self, params: Dict[str, str], query: Dict[str, Any]) -> None:
+        """Per-setup coverage (?days=N, default 30). No TNC access."""
+        try:
+            days = float(query.get("days", ["30"])[0])
+        except (TypeError, ValueError):
+            days = None
+        if days is None or not 0 < days <= 365:
+            self._send_json(400, {
+                "ok": False,
+                "error": {
+                    "type": "InvalidParam",
+                    "message": "days must be a number from 1 to 365",
+                },
+            })
+            return
+        self._relay("coverage.report", days=days, _socket_timeout=30)
+
+    def _h_coverage_set_setup(self, params: Dict[str, str], query: Dict[str, Any]) -> None:
+        """Set the station setup label: {"setup": "J-pole 16 ft"}."""
+        body = self._read_json_body()
+        if not isinstance(body.get("setup", ""), str):
+            self._send_json(400, {
+                "ok": False,
+                "error": {"type": "InvalidParam",
+                          "message": "setup must be text"},
+            })
+            return
+        self._relay("coverage.set_setup", setup=body.get("setup", ""))
 
     def _h_notify_status(self, params: Dict[str, str], query: Dict[str, Any]) -> None:
         """Phone-notification settings and counters (never the secrets)."""
