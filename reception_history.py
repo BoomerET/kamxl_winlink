@@ -73,6 +73,18 @@ class ReceptionHistory:
                 ON aprs_outbound(sent_at);
         """)
 
+        # Added later: the packet's info text, so the map can be
+        # rebuilt after a restart. Older rows have NULL here.
+        columns = {
+            row[1] for row in self._connection.execute(
+                "PRAGMA table_info(received_packets)"
+            )
+        }
+        if "payload" not in columns:
+            self._connection.execute(
+                "ALTER TABLE received_packets ADD COLUMN payload TEXT"
+            )
+
         self._connection.commit()
 
     def record(
@@ -110,9 +122,10 @@ class ReceptionHistory:
                     destination,
                     frame_type,
                     port,
-                    digipeaters
+                    digipeaters,
+                    payload
                 )
-                VALUES (?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     timestamp,
@@ -121,6 +134,7 @@ class ReceptionHistory:
                     packet.frame_type,
                     packet.port,
                     json.dumps(packet.digipeaters),
+                    packet.payload,
                 ),
             )
             if aprs_message is not None:
@@ -176,6 +190,49 @@ class ReceptionHistory:
 
             if cursor.rowcount < batch_size:
                 return deleted
+
+    def packets_since(self, since: int, limit: int = 20000):
+        """
+        Packets received at or after ``since`` (Unix seconds) that have
+        their payload stored, oldest first, as (Packet, received_at)
+        pairs -- for replaying into the station tracker at startup.
+        ``raw`` isn't stored, so it comes back empty. If there are more
+        than ``limit``, the newest ``limit`` are returned.
+        """
+        rows = self._connection.execute(
+            """
+            SELECT received_at, source, destination, frame_type, port,
+                   digipeaters, payload
+            FROM (
+                SELECT * FROM received_packets
+                WHERE received_at >= ? AND payload IS NOT NULL
+                ORDER BY received_at DESC, id DESC
+                LIMIT ?
+            )
+            ORDER BY received_at, id
+            """,
+            (int(since), int(limit)),
+        ).fetchall()
+
+        packets = []
+        for received_at, source, dest, frame_type, port, digis, payload in rows:
+            try:
+                digipeaters = tuple(json.loads(digis or "[]"))
+            except ValueError:
+                digipeaters = ()
+            packets.append((
+                Packet(
+                    source=source,
+                    destination=dest or "",
+                    digipeaters=digipeaters,
+                    port=int(port) if port is not None else 0,
+                    payload=payload,
+                    raw="",
+                    frame_type=frame_type,
+                ),
+                int(received_at),
+            ))
+        return packets
 
     def oldest_packet_at(self) -> Optional[int]:
         row = self._connection.execute(

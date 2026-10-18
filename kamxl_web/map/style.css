@@ -214,3 +214,19 @@
   .detailActions { margin-bottom: 8px; }
   .detailActions a.messageStation, a.messageStation { color: #3388ff; }
 
+
+  /* Phones: the header wraps onto several lines, so show station
+     details as a sheet along the bottom instead of under the header,
+     and use 16px search text so iOS doesn't zoom in. */
+  @media (max-width: 600px) {
+    #stationDetails {
+      top: auto;
+      bottom: 8px;
+      left: 8px;
+      right: 8px;
+      width: auto;
+      max-height: 55vh;
+    }
+    #stationSearch { font-size: 16px; width: 140px; }
+    #digiStationFilter { margin-right: 0; }
+  }

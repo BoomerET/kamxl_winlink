@@ -2,14 +2,15 @@
 In-memory "who's where" station database, built from unconnected
 APRS position-report traffic seen on the KAM-XL's MONITOR stream.
 
-Milestone 7 (APRS mapping). In-memory only, by explicit design choice
-(offered against persisting to SQLite; in-memory won for the MVP) --
-restarting the daemon starts the station list over empty, and it
-rebuilds naturally as new position traffic arrives, the same way a
-real APRS station's own screen would after a power cycle.
+Milestone 7 (APRS mapping). The tracker itself is in-memory. When the
+daemon has a history database, it stores each packet's payload and,
+at startup, replays the last hour (the time a station stays on the
+map) back through update() with the original receive times, so the
+map comes back as it was instead of starting empty. Without a
+database the map starts empty after a restart and fills in as new
+traffic arrives.
 Each station retains its latest known position and up to 25 distinct
-consecutive positions for map trails. History is held in memory only
-and is discarded when the station expires or the daemon restarts.
+consecutive positions for map trails.
 
 StationTracker.update() is meant to be fed every Packet the daemon's
 monitor loop sees (see kamxl_daemon.py) -- it's cheap to call for
@@ -58,8 +59,8 @@ class Station:
     mobile tracker vs the base -1). ``last_heard`` is a time.time()
     epoch timestamp of the packet that produced this state.
     ``packet_count`` is how many position reports this station has
-    contributed since the tracker was created (i.e. since the daemon
-    last started).
+    contributed since the tracker was created (including packets replayed
+    from the history database at startup).
     """
 
     callsign: str
