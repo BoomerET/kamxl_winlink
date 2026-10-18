@@ -1770,12 +1770,12 @@ range.
   multi-port `/` (e.g. `APRS VIA WIDE1-1,WIDE2-1/APRS VIA ...`). Before,
   a VIA read-back on both ports would have been rejected *as a
   read-back failure*, which skips UNPROTO restoration.
-- **Unverified on hardware:** exactly how the KAM-XL displays a
-  two-port UNPROTO with a VIA path. If it differs from the expected
-  `X/X` form, the transaction refuses to transmit and restores the
-  original UNPROTO (covered by a test with a one-port fake). If that
-  happens on the real unit, capture `UNPROTO`'s output after
-  `UNPROTO APRS VIA WIDE1-1,WIDE2-1` in the terminal and adjust.
+- **Verified on hardware 2026-10-18:** the KAM-XL accepted
+  `UNPROTO APRS VIA WIDE1-1,WIDE2-1` and its read-back matched the
+  expected two-port form, so path transmissions go out normally. (If
+  a future firmware ever shows it differently, the transaction refuses
+  to transmit and restores the original UNPROTO -- covered by a test
+  with a one-port fake.)
 - Position beacon: `aprs.format_aprs_position()` builds an
   uncompressed `=DDMM.mmN/DDDMM.mmW<sym>comment` report (`=` = can
   receive messages, which also lets iGates know to gate messages to
@@ -1789,6 +1789,18 @@ range.
 - Scheduler thread `kamxl-aprs-beacon`: same pause rule as auto-ACK
   (skip and retry in 60 s while a session may be open), fail-closed
   on a failed transmission.
+
+- **Verified over the air 2026-10-18** with the TH-D75A (N5BA-7):
+  - Message `39OR` to N5BA-7 via WIDE1-1,WIDE2-1 was acked. It was
+    also iGated to APRS-IS and gated back to RF by W5CGC-10 as a
+    third-party packet, reaching the D75 a second time; the D75
+    acked that copy too.
+  - The D75's ack came back digipeated via KC5JMD-2 and W5NGU-3, and
+    again from APRS-IS through W5CGC-10 as a third-party packet; the
+    duplicate was ignored and the message stayed Acknowledged.
+  - "Beacon now" showed up on aprs.fi as N5BA (house symbol,
+    comment "N5BA KAM-XL"), path `WIDE1-1,WIDE2-1,qAR,W5NGU-3` --
+    heard on RF and gated to APRS-IS by W5NGU-3.
 
 Tests: `tests/test_path_and_beacon.py` (30).
 
