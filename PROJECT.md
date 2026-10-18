@@ -1827,3 +1827,39 @@ software fault until the log was read.
 
 Tests: `tests/test_reception_watchdog.py` (12).
 
+### Conversations, saved sent messages, automatic resend
+
+**Sent messages persist.** With `--history-db`, every change to a sent
+message (send, resend, ack/rej, give-up) is saved to a new
+`aprs_outbound` table (one JSON record per message ID, upserted, so
+new fields need no migration) through the tracker's `on_change` hook,
+and the list is restored at startup. Restored records keep their
+status and still match late acks, and ID allocation continues after
+the newest restored ID. Deliberately, any resend schedule is dropped
+on restore: a restart must never make the radio transmit on its own
+for old messages.
+
+**Optional automatic resend.** `KAMXL_AUTO_RETRY=1` / `--auto-retry`
+or the dashboard toggle (off by default). For messages sent while it
+is on: resend with the same ID after `KAMXL_RETRY_INTERVAL` (60 s),
+then 2x, 4x... up to `KAMXL_RETRY_COUNT` (3) resends; after the last
+one, wait once more and mark the message `gave_up` ("No ack") while
+keeping it pending so a late ack still counts. A matching ack or rej
+cancels the schedule. Resends go through a new shared
+`_guarded_transmit()` (now also used by the beacon) with the same
+rules as the other automatic transmissions: re-verify the TNC when
+its state is unknown, pause for 60 s instead while a terminal /
+connected / PBBS / Winlink session may be open, and turn auto-resend
+off if a transmission fails after touching the TNC.
+
+**Conversation view.** The dashboard's separate Sent and Received
+lists are replaced by threads per station (received + sent, sorted by
+time) with unread counts, a Reply button that fills the send form,
+per-message ack badges and Resend, "Clear all messages", and opt-in
+alerts (two-tone chime plus a desktop notification when the browser
+grants permission). Read state and the alerts preference are
+per-browser conveniences in `localStorage`. Checked in headless
+Chromium at desktop and phone widths.
+
+Tests: `tests/test_conversations_persist_retry.py` (23).
+

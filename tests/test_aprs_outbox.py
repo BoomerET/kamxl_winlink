@@ -601,7 +601,8 @@ class RestOutboxTests(RestTestCase):
         conn.request("GET", "/?token=test-token")
         html = conn.getresponse().read().decode("utf-8")
 
-        self.assertIn('id="aprsOutboxMessages"', html)
+        # Sent messages now live in the conversation view.
+        self.assertIn('id="convMessages"', html)
         self.assertIn('apiGet("/aprs/outbox")', html)
         self.assertIn("resend_id", html)
 

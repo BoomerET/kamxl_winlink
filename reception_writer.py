@@ -182,6 +182,31 @@ class ReceptionWriter:
         finally:
             history.close()
 
+    def _with_history(self, operation):
+        """Run ``operation(history)`` on a separate SQLite connection."""
+
+        if not self.wait_ready():
+            raise RuntimeError(
+                "Reception history database is not ready"
+            )
+
+        history = ReceptionHistory(self.database_path)
+
+        try:
+            return operation(history)
+        finally:
+            history.close()
+
+    def save_outbound(self, record):
+        """Persist one sent-message record (insert or update)."""
+        return self._with_history(lambda h: h.save_outbound(record))
+
+    def load_outbound(self, limit=200):
+        return self._with_history(lambda h: h.list_outbound(limit))
+
+    def clear_outbound(self):
+        return self._with_history(lambda h: h.clear_outbound())
+
     def snapshot(self, since=None):
         """Read persisted history using a separate SQLite connection."""
 
