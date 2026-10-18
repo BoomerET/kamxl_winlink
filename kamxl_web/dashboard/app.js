@@ -1817,6 +1817,32 @@
     refreshBulletins();
   });
 
+  // Opened from the map's "Message" link (/?to=CALL): pre-address the
+  // send form and open that conversation. The parameter is then
+  // dropped from the address bar so a reload doesn't refill the form.
+  (function prefillRecipientFromUrl() {
+    var to = (params.get("to") || "").trim().toUpperCase();
+    if (!/^[A-Z0-9][A-Z0-9-]{0,8}$/.test(to)) return;
+
+    document.getElementById("aprsRecipient").value = to;
+    convState.selected = to;
+    convState.userSelected = true;
+    aprsSendStatus.textContent = "Messaging " + to +
+      " — type your message, tick Transmit now and send.";
+
+    var box = document.getElementById("aprsMessageText");
+    setTimeout(function () {
+      box.focus();
+      box.scrollIntoView({ block: "center" });
+    }, 0);
+
+    try {
+      params.delete("to");
+      var rest = params.toString();
+      history.replaceState(null, "", location.pathname + (rest ? "?" + rest : ""));
+    } catch (e) { /* older browser: harmless */ }
+  })();
+
   refreshConversations();
   refreshAutoAck();
   refreshAutoRetry();

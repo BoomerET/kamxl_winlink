@@ -332,6 +332,7 @@ class KAMDaemon:
             "monitor.subscribe": self._m_monitor_subscribe,
             "monitor.unsubscribe": self._m_monitor_unsubscribe,
             "stations.list": self._m_stations_list,
+            "objects.list": self._m_objects_list,
             "stations.get": self._m_stations_get,
             "aprs.stats": self._m_aprs_stats,
             "aprs.history": self._m_aprs_history,
@@ -1703,6 +1704,14 @@ class KAMDaemon:
                 "reason": self._aprs_safety_reason,
                 "rf_enabled": False,
             }
+
+    def _m_objects_list(self, params: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """APRS objects/items (repeaters, nets, events) heard recently."""
+        with self._stations_lock:
+            self._stations.expire_stale(max_age_seconds=3600)
+            objects = self._stations.list_objects()
+
+        return [dataclasses.asdict(obj) for obj in objects]
 
     def _m_stations_list(self, params: Dict[str, Any]) -> List[Dict[str, Any]]:
         with self._stations_lock:

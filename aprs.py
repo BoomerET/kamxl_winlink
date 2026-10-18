@@ -989,3 +989,124 @@ def parse_weather(
         if k not in ("timestamp", "comment") and v is not None
     ]
     return report if measured else None
+
+
+# ---------------------------------------------------------------------------
+# Objects and items (APRS 1.0.1 chapter 11)
+# ---------------------------------------------------------------------------
+
+@dataclass(frozen=True)
+class AprsObject:
+    """
+    An APRS object (``;NAME_____*DDHHMMz<position>``) or item
+    (``)NAME!<position>``): something a station puts on the map on
+    behalf of something else -- a repeater, a net, an event. ``live``
+    is False for a "killed" object/item (``_`` instead of ``*``/``!``),
+    which means "remove it from the map".
+    """
+
+    name: str
+    kind: str            # "object" or "item"
+    live: bool
+    position: AprsPosition
+
+
+_OBJECT_RE = re.compile(
+    r"^;(?P<name>[\x20-\x7E]{9})(?P<state>[*_])(?P<ts>[0-9]{6}[zh/])(?P<pos>.*)$",
+    re.DOTALL,
+)
+_ITEM_RE = re.compile(
+    r"^\)(?P<name>[\x20-\x7E]{3,9}?)(?P<state>[!_])(?P<pos>.*)$",
+    re.DOTALL,
+)
+
+
+def parse_object(payload: str) -> Optional[AprsObject]:
+    """Decode an APRS object or item report, or return None."""
+    if not isinstance(payload, str):
+        return None
+
+    match = _OBJECT_RE.match(payload)
+    if match:
+        position = parse_position("@" + match.group("ts") + match.group("pos"))
+        kind, live = "object", match.group("state") == "*"
+    else:
+        match = _ITEM_RE.match(payload)
+        if not match or "!" in match.group("name") or "_" in match.group("name"):
+            return None
+        position = parse_position("!" + match.group("pos"))
+        kind, live = "item", match.group("state") == "!"
+
+    name = match.group("name").strip()
+    if position is None or not name:
+        return None
+
+    return AprsObject(name=name, kind=kind, live=live, position=position)
+
+
+# Standard CTCSS tones. APRS frequency objects send only the integer
+# part ("T110" means 110.9 Hz), so map it back to the real tone.
+_CTCSS_TONES = (
+    67.0, 69.3, 71.9, 74.4, 77.0, 79.7, 82.5, 85.4, 88.5, 91.5, 94.8,
+    97.4, 100.0, 103.5, 107.2, 110.9, 114.8, 118.8, 123.0, 127.3, 131.8,
+    136.5, 141.3, 146.2, 151.4, 156.7, 159.8, 162.2, 165.5, 167.9, 171.3,
+    173.8, 177.3, 179.9, 183.5, 186.2, 189.9, 192.8, 196.6, 199.5, 203.5,
+    206.5, 210.7, 218.1, 225.7, 229.1, 233.6, 241.8, 250.3, 254.1,
+)
+_CTCSS_BY_INT = {int(t): t for t in _CTCSS_TONES}
+
+
+def parse_frequency_info(name: str, comment: str) -> Optional[dict]:
+    """
+    Repeater/frequency details from an object, per the APRS frequency
+    spec: name like ``147.000-T`` or ``146.94MHz``, comment like
+    ``T110 -060 R30m`` (tone, offset in 10 kHz units, range).
+
+    Returns a dict (frequency_mhz, offset_khz, tone_hz, dcs_code,
+    range_miles, each possibly None) or None if no frequency is found.
+    """
+    text = f"{name or ''} {comment or ''}"
+    freq = re.search(r"(?<![0-9.])([0-9]{2,4}\.[0-9]{2,4})(?:\s*MHz)?", text)
+    if not freq:
+        return None
+    frequency = float(freq.group(1))
+    # Amateur bands with repeaters (10 m, 6 m, 2 m, 1.25 m, 70 cm,
+    # 33 cm, 23 cm) -- keeps "updated 12.30" style text from reading
+    # as a frequency.
+    bands = ((28.0, 29.7), (50.0, 54.0), (144.0, 148.0), (219.0, 225.0),
+             (420.0, 450.0), (902.0, 928.0), (1240.0, 1300.0))
+    if not any(lo <= frequency <= hi for lo, hi in bands):
+        return None
+
+    info = {
+        "frequency_mhz": frequency,
+        "offset_khz": None,
+        "tone_hz": None,
+        "dcs_code": None,
+        "range_miles": None,
+    }
+
+    tone = re.search(r"(?:^|\s)[TC]([0-9]{3})\b", comment or "")
+    if tone:
+        value = int(tone.group(1))
+        info["tone_hz"] = _CTCSS_BY_INT.get(value, float(value))
+
+    dcs = re.search(r"(?:^|\s)D([0-7]{3})\b", comment or "")
+    if dcs:
+        info["dcs_code"] = dcs.group(1)
+
+    offset = re.search(r"(?:^|\s)([+-][0-9]{3})\b", comment or "")
+    if offset:
+        info["offset_khz"] = int(offset.group(1)) * 10
+    elif re.search(r"[0-9][-+]", name or ""):
+        # Name-only convention "147.000-": standard offset for the band.
+        sign = -1 if "-" in name.split(freq.group(1), 1)[-1][:1] else 1
+        standard = 600 if frequency < 300 else 5000
+        info["offset_khz"] = sign * standard
+
+    rng = re.search(r"(?:^|\s)R([0-9]{2,3})([mk])\b", comment or "")
+    if rng:
+        miles = int(rng.group(1))
+        info["range_miles"] = miles if rng.group(2) == "m" else round(miles * 0.621)
+
+    return info
