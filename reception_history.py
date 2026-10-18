@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Optional
 
 from packet import Packet
+from aprs import parse_aprs_message
 
 
 class ReceptionHistory:
@@ -40,6 +41,23 @@ class ReceptionHistory:
 
             CREATE INDEX IF NOT EXISTS idx_packets_source_time
                 ON received_packets(source, received_at);
+
+            CREATE TABLE IF NOT EXISTS aprs_messages (
+                id INTEGER PRIMARY KEY,
+                received_at INTEGER NOT NULL,
+                source TEXT NOT NULL,
+                addressee TEXT NOT NULL,
+                message_text TEXT NOT NULL,
+                message_id TEXT,
+                kind TEXT NOT NULL,
+                port INTEGER NOT NULL
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_aprs_messages_received_at
+                ON aprs_messages(received_at);
+
+            CREATE INDEX IF NOT EXISTS idx_aprs_messages_addressee_time
+                ON aprs_messages(addressee, received_at);
         """)
 
         self._connection.commit()
@@ -55,6 +73,13 @@ class ReceptionHistory:
             int(time.time())
             if received_at is None
             else int(received_at)
+        )
+
+        aprs_message = (
+            parse_aprs_message(packet.payload)
+            if packet.port == 2
+            and packet.frame_type in ("UI", None)
+            else None
         )
 
         with self._connection:
@@ -79,6 +104,30 @@ class ReceptionHistory:
                     json.dumps(packet.digipeaters),
                 ),
             )
+            if aprs_message is not None:
+                self._connection.execute(
+                    """
+                    INSERT INTO aprs_messages (
+                        received_at,
+                        source,
+                        addressee,
+                        message_text,
+                        message_id,
+                        kind,
+                        port
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        timestamp,
+                        packet.source,
+                        aprs_message.addressee,
+                        aprs_message.text,
+                        aprs_message.message_id,
+                        aprs_message.kind,
+                        packet.port,
+                    ),
+                )
 
     def total_packets(self) -> int:
         """Return the number of persisted packet records."""
@@ -113,6 +162,55 @@ class ReceptionHistory:
                 "packet_count": row[1],
             }
             for row in self._connection.execute(query, parameters)
+        ]
+
+    def list_aprs_messages(
+        self,
+        addressee: str,
+        limit: int = 100,
+    ):
+        """Return recent APRS messages addressed to a callsign."""
+
+        if not isinstance(addressee, str) or not addressee:
+            raise ValueError("An APRS addressee is required")
+
+        if isinstance(limit, bool) or not isinstance(limit, int):
+            raise ValueError("Limit must be an integer")
+
+        if not 1 <= limit <= 500:
+            raise ValueError("Limit must be between 1 and 500")
+
+        rows = self._connection.execute(
+            """
+            SELECT
+                id,
+                received_at,
+                source,
+                addressee,
+                message_text,
+                message_id,
+                kind,
+                port
+            FROM aprs_messages
+            WHERE addressee = ?
+            ORDER BY received_at DESC, id DESC
+            LIMIT ?
+            """,
+            (addressee.strip().upper(), limit),
+        ).fetchall()
+
+        return [
+            {
+                "id": row[0],
+                "received_at": row[1],
+                "source": row[2],
+                "addressee": row[3],
+                "message": row[4],
+                "message_id": row[5],
+                "kind": row[6],
+                "port": row[7],
+            }
+            for row in rows
         ]
 
     def close(self) -> None:

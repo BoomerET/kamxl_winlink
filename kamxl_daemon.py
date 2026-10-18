@@ -44,6 +44,7 @@ import socketserver
 import threading
 import time
 import serial
+import queue
 
 from typing import Any, Callable, Dict, List, Optional, Set
 
@@ -110,6 +111,23 @@ class KAMDaemon:
         self._monitor_thread: Optional[threading.Thread] = None
         self._monitor_stop = threading.Event()
 
+        # Automatic APRS acknowledgments.
+        # Disabled by default; no RF authorization is implied.
+        self._aprs_auto_ack_enabled = False
+
+        # Automatic ACK authorization is never inherited across restarts.
+        # These confirmations must be explicitly supplied by the operator.
+        self._aprs_ack_authorized = False
+        self._aprs_ack_vhf_ready = False
+        self._aprs_ack_hf_disconnected = False
+        self._aprs_ack_queue = queue.Queue(maxsize=100)
+        self._aprs_ack_stop = threading.Event()
+        self._aprs_ack_thread = None
+
+        # Track recently handled message IDs for duplicate detection.
+        self._aprs_ack_recent = {}
+        self._aprs_ack_lock = threading.Lock()
+
         # Milestone 7 (APRS mapping): built passively from whatever
         # MONITOR traffic the daemon happens to see -- see
         # stations.py. Reading _stations doesn't need _kam_lock (it
@@ -162,6 +180,10 @@ class KAMDaemon:
             "stations.get": self._m_stations_get,
             "aprs.stats": self._m_aprs_stats,
             "aprs.history": self._m_aprs_history,
+            "aprs.messages": self._m_aprs_messages,
+            "aprs.ack_status": self._m_aprs_ack_status,
+            "aprs.ack_enable": self._m_aprs_ack_enable,
+            "aprs.ack_disable": self._m_aprs_ack_disable,
             "aprs.preview_message": self._m_aprs_preview_message,
             "aprs.send_message": self._m_aprs_send_message,
             "aprs.tx_safety": self._m_aprs_tx_safety,
@@ -181,6 +203,9 @@ class KAMDaemon:
         # the way monitor broadcasting itself started out (see
         # _monitor_loop()'s docstring below for why this changed).
         self._ensure_monitor_thread()
+
+        # Start the ACK worker, but do not authorize RF transmissions.
+        self._ensure_aprs_ack_worker()
 
     # -----------------------------------------------------------------------
     # Method dispatch
@@ -690,6 +715,29 @@ class KAMDaemon:
         with self._stats_lock:
             return self._reception_stats.snapshot()
 
+    def _m_aprs_messages(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """Return stored APRS messages without accessing the TNC."""
+
+        addressee = params.get("addressee", "N5BA")
+        limit = params.get("limit", 100)
+
+        if self._reception_writer is None:
+            return {
+                "enabled": False,
+                "messages": [],
+            }
+
+        messages = self._reception_writer.list_aprs_messages(
+            addressee=addressee,
+            limit=limit,
+        )
+
+        return {
+            "enabled": True,
+            "addressee": addressee,
+            "messages": messages,
+        }
+
     def _m_aprs_history(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """Return persistent packet reception history."""
         if self._reception_writer is None:
@@ -709,6 +757,128 @@ class KAMDaemon:
         result = self._reception_writer.snapshot(since=since)
         result["enabled"] = True
         return result
+
+    def _m_aprs_ack_enable(
+        self, params: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Explicitly authorize automatic APRS acknowledgments."""
+        from aprs_tx import APRSTransmitError
+
+        if params.get("confirm_transmit") is not True:
+            raise APRSTransmitError(
+                "Explicit confirm_transmit=true required"
+            )
+
+        if params.get("confirm_vhf_port2_radio_ready") is not True:
+            raise APRSTransmitError(
+                "Confirm VHF Port 2 radio, audio, PTT, "
+                "antenna and power are ready"
+            )
+
+        if params.get("confirm_hf_port1_disconnected") is not True:
+            raise APRSTransmitError(
+                "Confirm HF Port 1 radio disconnected"
+            )
+
+        with self._kam_lock:
+            if (
+                self._aprs_session_uncertain
+                or self._aprs_safety_state == "unsafe"
+            ):
+                raise APRSTransmitError(
+                    "APRS session unverified; automatic ACKs "
+                    "cannot be enabled"
+                )
+
+            if not self.kam.is_connected or (
+                getattr(self.kam.serial, "exclusive", None) is not True
+            ):
+                raise APRSTransmitError(
+                    "Exclusive serial connection required"
+                )
+
+            if (
+                self._monitor_stop.is_set()
+                or self._monitor_thread is None
+                or not self._monitor_thread.is_alive()
+            ):
+                raise APRSTransmitError(
+                    "APRS monitor thread not healthy"
+                )
+
+            with self._aprs_ack_lock:
+                if (
+                    self._aprs_ack_stop.is_set()
+                    or self._aprs_ack_thread is None
+                    or not self._aprs_ack_thread.is_alive()
+                ):
+                    raise APRSTransmitError(
+                        "APRS ACK worker not running"
+                    )
+
+                self._aprs_ack_authorized = True
+                self._aprs_ack_vhf_ready = True
+                self._aprs_ack_hf_disconnected = True
+                self._aprs_auto_ack_enabled = True
+
+        logger.info("Automatic APRS ACKs explicitly enabled")
+
+        return {
+            "enabled": True,
+            "pending": self._aprs_ack_queue.qsize(),
+        }
+
+    def _m_aprs_ack_disable(
+        self, params: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Revoke automatic APRS ACK authorization."""
+        # Serialize revocation with the guarded TX path.
+        # Lock order must remain _kam_lock -> _aprs_ack_lock.
+        with self._kam_lock:
+            with self._aprs_ack_lock:
+                self._aprs_auto_ack_enabled = False
+                self._aprs_ack_authorized = False
+                self._aprs_ack_vhf_ready = False
+                self._aprs_ack_hf_disconnected = False
+
+        # Discard requests that have not yet been processed.
+        discarded = 0
+
+        while True:
+            try:
+                self._aprs_ack_queue.get_nowait()
+            except queue.Empty:
+                break
+
+            self._aprs_ack_queue.task_done()
+            discarded += 1
+
+        logger.info(
+            "Automatic APRS ACKs disabled; %d pending requests discarded",
+            discarded,
+        )
+
+        return {
+            "enabled": False,
+            "pending": self._aprs_ack_queue.qsize(),
+            "discarded": discarded,
+        }
+
+    def _m_aprs_ack_status(
+        self, params: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Report automatic APRS ACK status without hardware access."""
+        with self._aprs_ack_lock:
+            enabled = self._aprs_auto_ack_enabled
+
+        return {
+            "enabled": enabled,
+            "pending": self._aprs_ack_queue.qsize(),
+            "worker_running": (
+                self._aprs_ack_thread is not None
+                and self._aprs_ack_thread.is_alive()
+            ),
+        }
 
     def _m_aprs_tx_safety(
         self, params: Dict[str, Any]
@@ -1020,7 +1190,199 @@ class KAMDaemon:
             self._recent_packet_times
             and self._recent_packet_times[0] <= cutoff
         ):
-            self._recent_packet_times.popleft()    
+            self._recent_packet_times.popleft()
+
+    def _ensure_aprs_ack_worker(self) -> None:
+        """Start the APRS ACK worker without enabling transmissions."""
+        if (
+            self._aprs_ack_thread is not None
+            and self._aprs_ack_thread.is_alive()
+        ):
+            return
+
+        if self._aprs_ack_stop.is_set():
+            return
+
+        self._aprs_ack_thread = threading.Thread(
+            target=self._aprs_ack_worker_loop,
+            name="kamxl-aprs-ack",
+            daemon=True,
+        )
+        self._aprs_ack_thread.start()
+
+    def _aprs_ack_is_authorized(self) -> bool:
+        """Check automatic ACK authorization without accessing hardware."""
+        with self._aprs_ack_lock:
+            return (
+                self._aprs_auto_ack_enabled
+                and self._aprs_ack_authorized
+                and self._aprs_ack_vhf_ready
+                and self._aprs_ack_hf_disconnected
+                and not self._aprs_ack_stop.is_set()
+            )
+
+    def _aprs_ack_transmit(self, source: str, message_id: str) -> dict:
+        """Submit one authorized APRS ACK through the guarded TX path."""
+        from aprs import format_aprs_ack
+        from aprs_tx import (
+            APRSTransmitError,
+            _LIVE_APRS_CAPABILITY,
+            execute_live_aprs_tx_transaction,
+        )
+
+        # Validate the payload before acquiring serial access.
+        payload = format_aprs_ack(source, message_id)
+
+        with self._kam_lock:
+            if not self._aprs_ack_is_authorized():
+                raise APRSTransmitError(
+                    "Automatic APRS ACK transmission not authorized"
+                )
+
+            if (
+                self._aprs_session_uncertain
+                or self._aprs_safety_state == "unsafe"
+            ):
+                raise APRSTransmitError(
+                    "APRS session uncertain; ACK transmission blocked"
+                )
+
+            if not self.kam.is_connected or (
+                getattr(self.kam.serial, "exclusive", None) is not True
+            ):
+                raise APRSTransmitError(
+                    "Exclusive serial connection required"
+                )
+
+            if (
+                self._monitor_stop.is_set()
+                or self._monitor_thread is None
+                or not self._monitor_thread.is_alive()
+            ):
+                raise APRSTransmitError(
+                    "APRS monitor thread not healthy"
+                )
+
+            # Mark the session uncertain before touching the TNC.
+            self._aprs_session_uncertain = True
+            self._invalidate_aprs_safety(
+                "Automatic APRS ACK transmission in progress"
+            )
+
+            try:
+                result = execute_live_aprs_tx_transaction(
+                    self.kam,
+                    payload,
+                    _capability=_LIVE_APRS_CAPABILITY,
+                )
+
+            except Exception:
+                self._invalidate_aprs_safety(
+                    "Automatic APRS ACK failed; "
+                    "manual verification required"
+                )
+
+                # Fail closed: revoke automatic transmission
+                # authorization after any uncertain TX outcome.
+                with self._aprs_ack_lock:
+                    self._aprs_auto_ack_enabled = False
+                    self._aprs_ack_authorized = False
+                    self._aprs_ack_vhf_ready = False
+                    self._aprs_ack_hf_disconnected = False
+
+                # Discard pending ACK requests after authorization
+                # has been revoked. Do not acquire _kam_lock again:
+                # this method already holds it.
+                discarded = 0
+                while True:
+                    try:
+                        self._aprs_ack_queue.get_nowait()
+                    except queue.Empty:
+                        break
+
+                    self._aprs_ack_queue.task_done()
+                    discarded += 1
+
+                logger.error(
+                    "Automatic APRS ACKs disabled following "
+                    "transmission failure; discarded %d pending ACKs",
+                    discarded,
+                )
+                raise
+
+            # Command mode and UNPROTO restoration were verified.
+            self._aprs_session_uncertain = False
+            self._aprs_safety_state = "unknown"
+            self._aprs_safety_reason = (
+                "APRS ACK submitted; RF delivery not confirmed"
+            )
+
+            return {**result, "payload": payload}
+
+    def _aprs_ack_worker_loop(self) -> None:
+        """Process queued ACK requests without blocking APRS reception."""
+        while not self._aprs_ack_stop.is_set():
+            try:
+                candidate = self._aprs_ack_queue.get(timeout=0.5)
+            except queue.Empty:
+                continue
+
+            try:
+                # Recheck authorization when processing, not just
+                # when the packet was originally received.
+                with self._aprs_ack_lock:
+                    enabled = self._aprs_auto_ack_enabled
+
+                if not enabled or self._aprs_ack_stop.is_set():
+                    continue
+
+                source, message_id = candidate
+
+                # Submit one ACK through the guarded transmission path.
+                # Authorization and TNC safety are rechecked there.
+                result = self._aprs_ack_transmit(source, message_id)
+
+                logger.info(
+                    "APRS ACK submitted: source=%s message_id=%s "
+                    "submitted_to_tnc=%s",
+                    source,
+                    message_id,
+                    result.get("submitted_to_tnc", False),
+                )
+
+            except Exception:
+                logger.exception("APRS ACK worker processing failed")
+            finally:
+                self._aprs_ack_queue.task_done()
+
+    @staticmethod
+    def _aprs_ack_candidate(packet: Packet):
+        """Identify incoming APRS messages eligible for an ACK."""
+        from aprs import parse_aprs_message
+
+        if packet.port != 2:
+            return None
+
+        if packet.frame_type not in ("UI", None):
+            return None
+
+        message = parse_aprs_message(packet.payload)
+
+        if message is None:
+            return None
+
+        if message.kind != "message" or message.message_id is None:
+            return None
+
+        # Only acknowledge messages addressed to this station.
+        if message.addressee != "N5BA":
+            return None
+
+        # Never acknowledge our own transmissions.
+        if packet.source.upper() == "N5BA":
+            return None
+
+        return packet.source, message.message_id
 
     def _handle_packet(self, packet: Packet) -> None:
         now = time.monotonic()
@@ -1047,6 +1409,41 @@ class KAMDaemon:
                     del self._activity_minutes[old_minute]
         if self._reception_writer is not None:
             self._reception_writer.submit(packet)
+        # Queue APRS acknowledgments without blocking reception.
+        # No ACKs are queued unless explicitly enabled.
+        if self._aprs_ack_is_authorized():
+            candidate = self._aprs_ack_candidate(packet)
+
+            if candidate is not None:
+                now = time.monotonic()
+
+                with self._aprs_ack_lock:
+                    # Suppress rapid duplicate requests, but allow
+                    # later retries if the sender missed our ACK.
+                    last_queued = self._aprs_ack_recent.get(candidate)
+
+                    if (
+                        last_queued is not None
+                        and now - last_queued < 10.0
+                    ):
+                        candidate = None
+                    else:
+                        self._aprs_ack_recent = {
+                            key: timestamp
+                            for key, timestamp
+                            in self._aprs_ack_recent.items()
+                            if now - timestamp < 60.0
+                        }
+
+                        self._aprs_ack_recent[candidate] = now
+
+                if candidate is not None:
+                    try:
+                        self._aprs_ack_queue.put_nowait(candidate)
+                    except queue.Full:
+                        logger.warning(
+                            "APRS ACK queue full; acknowledgment dropped"
+                        )
         with self._stations_lock:
             self._stations.update(packet)
 
@@ -1118,6 +1515,39 @@ class KAMDaemon:
                 return
 
             self._shutdown_done = True
+
+            # Disable automatic acknowledgments before shutdown.
+            with self._aprs_ack_lock:
+                self._aprs_auto_ack_enabled = False
+                self._aprs_ack_authorized = False
+                self._aprs_ack_vhf_ready = False
+                self._aprs_ack_hf_disconnected = False
+
+            self._aprs_ack_stop.set()
+
+            # Discard ACKs waiting in the queue. An ACK already
+            # being processed remains the worker's responsibility.
+            discarded = 0
+            while True:
+                try:
+                    self._aprs_ack_queue.get_nowait()
+                except queue.Empty:
+                    break
+
+                self._aprs_ack_queue.task_done()
+                discarded += 1
+
+            if discarded:
+                logger.info(
+                    "Discarded %d pending APRS ACKs during shutdown",
+                    discarded,
+                )
+
+            if (
+                self._aprs_ack_thread is not None
+                and self._aprs_ack_thread is not threading.current_thread()
+            ):
+                self._aprs_ack_thread.join()
 
             self._monitor_stop.set()
             if (

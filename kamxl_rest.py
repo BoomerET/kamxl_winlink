@@ -141,6 +141,62 @@ DASHBOARD_HTML = """<!doctype html>
   }
   .card a.action:hover, .card button.action:hover { border-color: #5a8; color: #cfc; }
   .card button.action:disabled { opacity: 0.5; cursor: default; }
+  /* APRS Messaging */
+  #aprsMessagingCard {
+    min-width: 300px;
+  }
+
+  #aprsMessageForm {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  #aprsMessageForm > label[for] {
+    display: block;
+    font-size: 12px;
+    color: #9ab;
+    margin-bottom: -4px;
+  }
+
+  #aprsMessageForm > input[type="text"] {
+    display: block;
+    width: 100%;
+    box-sizing: border-box;
+    padding: 7px 9px;
+    background: #0b0f10;
+    color: #d4f7d4;
+    border: 1px solid #345;
+    border-radius: 3px;
+    font: inherit;
+    font-size: 13px;
+  }
+
+  #aprsMessageForm > label:not([for]) {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    font-size: 12px;
+    line-height: 1.5;
+    cursor: pointer;
+  }
+
+  #aprsMessageForm input[type="checkbox"] {
+    flex: 0 0 auto;
+    margin: 2px 0 0;
+    accent-color: #6c9;
+  }
+
+  #aprsMessageForm button.action {
+    align-self: flex-start;
+    margin-top: 8px;
+  }
+
+  #aprsSendStatus {
+    margin-top: 12px;
+    line-height: 1.5;
+    overflow-wrap: anywhere;
+  }
   #statusDot.live::before { content: "\\25CF "; color: #6f6; }
   #statusDot.down::before { content: "\\2715 "; color: #f66; }
   #statusDot.checking::before { content: "\\25CB "; color: #cc6; }
@@ -416,6 +472,61 @@ DASHBOARD_HTML = """<!doctype html>
     <a class="action" href="#" id="mapAction">View map &rarr;</a>
   </div>
 
+  <div class="card" id="aprsMessagingCard">
+    <h2>APRS Messaging</h2>
+
+    <form id="aprsMessageForm">
+      <label for="aprsRecipient">Recipient callsign</label>
+      <input id="aprsRecipient" type="text"
+             placeholder="N5BA-7" maxlength="9" required
+             autocomplete="off">
+
+      <label for="aprsMessageText">Message</label>
+      <input id="aprsMessageText" type="text"
+             placeholder="Your APRS message"
+             maxlength="67" required autocomplete="off">
+
+      <label>
+        <input id="aprsConfirmTransmit" type="checkbox" required>
+        I authorize this RF transmission
+      </label>
+
+      <label>
+        <input id="aprsConfirmVhf" type="checkbox" required>
+        VHF radio is connected and ready on Port 2
+      </label>
+
+      <label>
+        <input id="aprsConfirmHf" type="checkbox" required>
+        HF radio is disconnected from Port 1
+      </label>
+
+      <button class="action" id="aprsSendBtn" type="submit">
+        Send APRS Message
+      </button>
+    </form>
+
+    <div class="sub" id="aprsSendStatus"
+         role="status" aria-live="polite">
+      No message submitted.
+    </div>
+    <div id="aprsInbox">
+      <h3>Received Messages</h3>
+
+      <button class="action" id="aprsRefreshInbox"
+              type="button">
+        Refresh Inbox
+      </button>
+
+      <div class="sub" id="aprsInboxStatus"
+           role="status" aria-live="polite">
+        Inbox not loaded.
+      </div>
+
+      <div id="aprsInboxMessages"></div>
+    </div>
+  </div>
+
   <div class="card" id="pbbsCard">
     <h2>PBBS</h2>
     <div class="sub" id="pbbsSummary">Not checked this session.</div>
@@ -580,6 +691,136 @@ DASHBOARD_HTML = """<!doctype html>
 
     return payload.result;
   }
+
+  var aprsForm = document.getElementById("aprsMessageForm");
+  var aprsSendBtn = document.getElementById("aprsSendBtn");
+  var aprsSendStatus = document.getElementById("aprsSendStatus");
+
+  aprsForm.addEventListener("submit", async function (e) {
+    e.preventDefault();
+
+    var recipient = document.getElementById("aprsRecipient").value.trim().toUpperCase();
+    var message = document.getElementById("aprsMessageText").value.trim();
+
+    var confirmTransmit = document.getElementById("aprsConfirmTransmit");
+    var confirmVhf = document.getElementById("aprsConfirmVhf");
+    var confirmHf = document.getElementById("aprsConfirmHf");
+
+    if (!recipient || !message ||
+        !confirmTransmit.checked ||
+        !confirmVhf.checked ||
+        !confirmHf.checked) {
+      return;
+    }
+
+    aprsSendBtn.disabled = true;
+    aprsSendStatus.textContent = "Submitting APRS message to TNC...";
+
+    try {
+      var res = await fetch(authedUrl("/aprs/send"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          addressee: recipient,
+          message: message,
+          path: "",
+          confirm_transmit: true,
+          confirm_vhf_port2_radio_ready: true,
+          confirm_hf_port1_disconnected: true
+        })
+      });
+
+      var payload = await res.json();
+
+      if (payload.ok) {
+        aprsSendStatus.textContent =
+          "Message submitted to TNC. RF delivery is not confirmed.";
+        document.getElementById("aprsMessageText").value = "";
+      } else {
+        aprsSendStatus.textContent =
+          "APRS submission failed: " +
+          ((payload.error && payload.error.message) || "Unknown error");
+      }
+    } catch (err) {
+      aprsSendStatus.textContent =
+        "APRS request failed: " + String(err);
+    } finally {
+      confirmTransmit.checked = false;
+      confirmVhf.checked = false;
+      confirmHf.checked = false;
+      aprsSendBtn.disabled = false;
+    }
+  });
+
+  var aprsInboxBtn = document.getElementById("aprsRefreshInbox");
+  var aprsInboxStatus = document.getElementById("aprsInboxStatus");
+  var aprsInboxMessages = document.getElementById("aprsInboxMessages");
+
+  async function refreshAprsInbox() {
+    aprsInboxBtn.disabled = true;
+    aprsInboxStatus.textContent = "Loading received messages...";
+
+    try {
+      var result = await apiGet(
+        "/aprs/messages?addressee=N5BA&limit=100"
+      );
+
+      if (!result.enabled) {
+        aprsInboxStatus.textContent = "APRS message storage unavailable.";
+        aprsInboxMessages.replaceChildren();
+        return;
+      }
+
+      var messages = result.messages || [];
+      aprsInboxStatus.textContent =
+        messages.length + " received message(s).";
+
+      aprsInboxMessages.replaceChildren();
+
+      if (!messages.length) {
+        aprsInboxMessages.textContent = "No messages received yet.";
+        return;
+      }
+
+      messages.forEach(function (msg) {
+        var entry = document.createElement("div");
+        entry.style.padding = "8px 0";
+        entry.style.borderBottom = "1px solid #234";
+        entry.style.fontSize = "12px";
+
+        var heading = document.createElement("div");
+        heading.style.color = "#9ab";
+
+        var timestamp = new Date(msg.received_at * 1000);
+        heading.textContent =
+          msg.source + " — " + timestamp.toLocaleString();
+
+        var body = document.createElement("div");
+        body.style.marginTop = "4px";
+        body.style.overflowWrap = "anywhere";
+
+        if (msg.kind === "ack") {
+          body.textContent = "ACK: " + msg.message_id;
+        } else if (msg.kind === "rej") {
+          body.textContent = "REJ: " + msg.message_id;
+        } else {
+          body.textContent = msg.message;
+        }
+
+        entry.appendChild(heading);
+        entry.appendChild(body);
+        aprsInboxMessages.appendChild(entry);
+      });
+
+    } catch (err) {
+      aprsInboxStatus.textContent =
+        "Unable to load inbox: " + String(err);
+    } finally {
+      aprsInboxBtn.disabled = false;
+    }
+  }
+
+  aprsInboxBtn.addEventListener("click", refreshAprsInbox);
 
   function relativeTime(epochSeconds) {
     var deltaSeconds = Math.max(0, (Date.now() / 1000) - epochSeconds);
@@ -3309,6 +3550,8 @@ ROUTES: Tuple[Tuple[str, "re.Pattern", str], ...] = (
     ("GET", re.compile(r"^/winlink$"), "_h_winlink_page"),
     ("GET", re.compile(r"^/aprs/stats$"), "_h_aprs_stats"),
     ("GET", re.compile(r"^/aprs/history$"), "_h_aprs_history"),
+    ("GET", re.compile(r"^/aprs/messages$"), "_h_aprs_messages"),
+    ("POST", re.compile(r"^/aprs/send$"), "_h_aprs_send_message"),
 )
 
 
@@ -3749,6 +3992,43 @@ class RESTRequestHandler(BaseHTTPRequestHandler):
     ) -> None:
         self._relay("aprs.stats")
 
+    def _h_aprs_messages(
+        self,
+        params: Dict[str, str],
+        query: Dict[str, Any],
+    ) -> None:
+        """Return stored APRS messages without transmitting."""
+
+        addressee = query.get("addressee", ["N5BA"])[0]
+
+        try:
+            limit = int(query.get("limit", ["100"])[0])
+        except (ValueError, TypeError):
+            self._send_json(400, {
+                "ok": False,
+                "error": {
+                    "type": "InvalidParam",
+                    "message": "limit must be an integer",
+                },
+            })
+            return
+
+        if not 1 <= limit <= 500:
+            self._send_json(400, {
+                "ok": False,
+                "error": {
+                    "type": "InvalidParam",
+                    "message": "limit must be between 1 and 500",
+                },
+            })
+            return
+
+        self._relay(
+            "aprs.messages",
+            addressee=addressee,
+            limit=limit,
+        )
+
     def _h_aprs_history(
         self,
         params: Dict[str, str],
@@ -3785,6 +4065,40 @@ class RESTRequestHandler(BaseHTTPRequestHandler):
             return
 
         self._relay("aprs.history", since=since)
+
+    def _h_aprs_send_message(
+        self,
+        params: Dict[str, str],
+        query: Dict[str, Any],
+    ) -> None:
+        """Submit one explicitly authorized APRS message to the daemon."""
+        body = self._read_json_body()
+
+        for field in ("addressee", "message"):
+            if not isinstance(body.get(field), str) or not body[field]:
+                self._send_json(400, {
+                    "ok": False,
+                    "error": {
+                        "type": "MissingParam",
+                        "message": f"Missing required body field: {field!r}",
+                    },
+                })
+                return
+
+        self._relay(
+            "aprs.send_message",
+            addressee=body["addressee"],
+            message=body["message"],
+            path=body.get("path", ""),
+            confirm_transmit=body.get("confirm_transmit") is True,
+            confirm_vhf_port2_radio_ready=(
+                body.get("confirm_vhf_port2_radio_ready") is True
+            ),
+            confirm_hf_port1_disconnected=(
+                body.get("confirm_hf_port1_disconnected") is True
+            ),
+            _socket_timeout=45,
+        )
 
     # -- Winlink (milestone 8) -------------------------------------------
     #

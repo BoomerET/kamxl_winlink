@@ -149,6 +149,24 @@ class ReceptionWriter:
         if thread is not None:
             thread.join()
 
+    def list_aprs_messages(self, addressee, limit=100):
+        """Read received APRS messages using a separate SQLite connection."""
+
+        if not self.wait_ready():
+            raise RuntimeError(
+                "Reception history database is not ready"
+            )
+
+        history = ReceptionHistory(self.database_path)
+
+        try:
+            return history.list_aprs_messages(
+                addressee=addressee,
+                limit=limit,
+            )
+        finally:
+            history.close()
+
     def snapshot(self, since=None):
         """Read persisted history using a separate SQLite connection."""
 

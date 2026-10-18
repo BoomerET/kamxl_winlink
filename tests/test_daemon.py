@@ -147,6 +147,54 @@ class DaemonTestCase(unittest.TestCase):
 
         return client
 
+class APRSAutoACKTests(DaemonTestCase):
+    """Automatic APRS ACK safety tests using fake serial hardware."""
+
+    def test_auto_ack_disabled_by_default(self):
+        serial = APRSTransactionFake()
+        daemon, socket_path = self.start_daemon(serial)
+
+        # The worker may run, but RF authorization must be absent.
+        self.assertTrue(daemon._aprs_ack_thread.is_alive())
+        self.assertFalse(daemon._aprs_auto_ack_enabled)
+        self.assertFalse(daemon._aprs_ack_is_authorized())
+        self.assertTrue(daemon._aprs_session_uncertain)
+
+        # An incoming APRS message must not queue an ACK.
+        packet = Packet(
+            source="N5BA-7",
+            destination="APRS",
+            digipeaters=(),
+            port=2,
+            frame_type="UI",
+            payload=":N5BA     :Test message{123",
+            raw="",
+        )
+
+        daemon._handle_packet(packet)
+
+        self.assertTrue(daemon._aprs_ack_queue.empty())
+        self.assertEqual(serial.written, [])
+
+    def test_auto_ack_enable_requires_explicit_confirmations(self):
+        serial = APRSTransactionFake()
+        daemon, socket_path = self.start_daemon(serial)
+        client = self.connect(socket_path)
+
+        response = client.call("aprs.ack_enable")
+
+        self.assertFalse(response["ok"])
+        self.assertEqual(
+            response["error"]["type"],
+            "APRSTransmitError",
+        )
+
+        self.assertFalse(daemon._aprs_auto_ack_enabled)
+        self.assertFalse(daemon._aprs_ack_is_authorized())
+
+        # Rejection must not access the TNC.
+        self.assertEqual(serial.written, [])
+
 class APRSPreviewTests(DaemonTestCase):
     """APRS preview must validate input without accessing the TNC."""
 

@@ -571,3 +571,90 @@ def format_aprs_message(
         )
 
     return payload
+
+@dataclass(frozen=True)
+class AprsMessage:
+    """Decoded APRS message, acknowledgment, or rejection."""
+
+    addressee: str
+    text: str
+    message_id: Optional[str]
+    kind: str
+    raw: str
+
+
+def parse_aprs_message(payload: str) -> Optional[AprsMessage]:
+    """
+    Parse a standard APRS message information field.
+
+    Returns None for non-message or malformed payloads.
+    Does not perform hardware I/O or generate acknowledgments.
+    """
+    if not isinstance(payload, str):
+        return None
+
+    # APRS message format:
+    # :ADDRESSEE:message text{ID
+    # The addressee occupies exactly nine characters.
+    if len(payload) < 11 or payload[0] != ":" or payload[10] != ":":
+        return None
+
+    address_field = payload[1:10]
+    addressee = address_field.strip().upper()
+
+    if not re.fullmatch(r"[A-Z0-9]{1,6}(?:-[0-9]{1,2})?", addressee):
+        return None
+
+    if address_field != f"{addressee:<9}":
+        return None
+
+    content = payload[11:]
+    if not content:
+        return None
+
+    # APRS acknowledgment/rejection: ackID or rejID.
+    for prefix, kind in (("ack", "ack"), ("rej", "rej")):
+        if content.startswith(prefix):
+            message_id = content[len(prefix):]
+
+            if re.fullmatch(r"[A-Za-z0-9]{1,5}", message_id):
+                return AprsMessage(
+                    addressee=addressee,
+                    text="",
+                    message_id=message_id,
+                    kind=kind,
+                    raw=payload,
+                )
+
+    message_id = None
+    text = content
+
+    if "{" in content:
+        text, message_id = content.rsplit("{", 1)
+
+        if not re.fullmatch(r"[A-Za-z0-9]{1,5}", message_id):
+            return None
+
+    if not text:
+        return None
+
+    return AprsMessage(
+        addressee=addressee,
+        text=text,
+        message_id=message_id,
+        kind="message",
+        raw=payload,
+    )
+
+def format_aprs_ack(addressee: str, message_id: str) -> str:
+    """Build an APRS acknowledgment payload without transmitting."""
+    if not isinstance(message_id, str) or not re.fullmatch(
+        r"[A-Za-z0-9]{1,5}", message_id
+    ):
+        raise ValueError("Invalid APRS acknowledgment message ID")
+
+    return format_aprs_message(
+        addressee=addressee,
+        message=f"ack{message_id}",
+        paclen=128,
+    )
