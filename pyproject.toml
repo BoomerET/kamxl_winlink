@@ -63,4 +63,10 @@ py-modules = [
     "lzhuf",
     "kamxl_daemon",
     "kamxl_rest",
+    "envfile",
+    "aprs_tx",
+    "aprs_outbox",
+    "reception_history",
+    "reception_writer",
+    "reception_stats",
 ]

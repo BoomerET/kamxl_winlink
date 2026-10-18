@@ -21,6 +21,16 @@ python3 kamxl_rest.py --daemon-socket /tmp/kamxl.sock --port 8080
 | `--port` | `KAMXL_REST_PORT` | `8080` |
 | `--api-key` | `KAMXL_REST_API_KEY` | random, generated and printed at startup |
 
+Like the daemon, `kamxl_rest.py` reads a `.env` file from the folder
+it's started in, so one `.env` configures both programs (a real
+environment variable still wins). With `KAMXL_REST_API_KEY` set
+there, a systemd unit needs no flags at all:
+
+```
+WorkingDirectory=/home/you/kamxl_winlink
+ExecStart=/path/to/python3 -u kamxl_rest.py
+```
+
 `Ctrl-C`/`SIGTERM` shuts down cleanly, same as the daemon.
 
 ## Authentication

@@ -1863,3 +1863,16 @@ Chromium at desktop and phone widths.
 
 Tests: `tests/test_conversations_persist_retry.py` (23).
 
+### One .env for both programs
+
+`kamxl_rest.py` now reads the project's `.env` too, through a shared
+`envfile.load_dotenv()` (moved out of `kamxl_daemon.py`, which keeps
+`_load_dotenv` as an alias). The web settings (`KAMXL_REST_API_KEY`,
+`KAMXL_REST_HOST`, `KAMXL_REST_PORT`, `KAMXL_SOCKET`) now live in the
+same file as the daemon's, so the separate `/etc/kamxl/web.env` and
+`web.env.sample` are no longer needed. Real environment variables
+still win, so an existing `EnvironmentFile=` keeps working. Also
+fixed a packaging gap found on the way: `pyproject.toml`'s
+`py-modules` was missing modules the daemon imports (`aprs_tx`,
+`aprs_outbox`, `reception_*`) plus the new `envfile`.
+

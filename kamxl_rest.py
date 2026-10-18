@@ -37,6 +37,8 @@ import threading
 
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, Callable, Dict, Optional, Tuple
+
+from envfile import load_dotenv as _load_dotenv
 from urllib.parse import urlparse, parse_qs
 
 
@@ -5320,6 +5322,11 @@ def serve(
 
 
 def main(argv: Optional[list] = None) -> None:
+    # Same .env file as the daemon (read from the working directory;
+    # real environment variables still win), so one file configures
+    # both: KAMXL_REST_API_KEY, KAMXL_REST_PORT, KAMXL_SOCKET, ...
+    _load_dotenv()
+
     parser = argparse.ArgumentParser(
         description="REST API for kamxl_daemon.py"
     )
