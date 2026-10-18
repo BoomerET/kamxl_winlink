@@ -788,3 +788,159 @@ def format_aprs_position(
         f"{'=' if messaging else '!'}{lat}{symbol_table}{lon}"
         f"{symbol_code}{comment}"
     )
+
+
+# ---------------------------------------------------------------------------
+# Weather reports (APRS 1.0.1 chapter 12)
+# ---------------------------------------------------------------------------
+
+@dataclass(frozen=True)
+class WeatherReport:
+    """
+    Decoded APRS weather data. Every field is None when the station
+    didn't report it (or sent the spec's "..."/spaces placeholder).
+    Units are as transmitted: degrees, mph, °F, inches, percent, mb.
+    """
+
+    wind_direction: Optional[int] = None
+    wind_speed_mph: Optional[int] = None
+    wind_gust_mph: Optional[int] = None
+    temperature_f: Optional[int] = None
+    rain_1h_in: Optional[float] = None
+    rain_24h_in: Optional[float] = None
+    rain_since_midnight_in: Optional[float] = None
+    humidity_pct: Optional[int] = None
+    pressure_mb: Optional[float] = None
+    luminosity_wm2: Optional[int] = None
+    snow_24h_in: Optional[float] = None
+    # MMDDHHMM from a positionless report, verbatim (no year/timezone).
+    timestamp: Optional[str] = None
+    # Whatever followed the weather fields (software/unit type, text).
+    comment: str = ""
+
+
+# key -> (width, signed)
+_WX_FIELDS = {
+    "g": (3, False), "t": (3, True), "r": (3, False), "p": (3, False),
+    "P": (3, False), "h": (2, False), "b": (5, False), "L": (3, False),
+    "l": (3, False), "s": (3, False), "#": (3, False),
+}
+
+_POSITIONLESS_WX_RE = re.compile(
+    r"^_(?P<ts>[0-9]{8})c(?P<c>[0-9. ]{3})s(?P<s>[0-9. ]{3})(?P<rest>.*)$",
+    re.DOTALL,
+)
+_WIND_PREFIX_RE = re.compile(r"^(?P<c>[0-9. ]{3})/(?P<s>[0-9. ]{3})")
+
+
+def _wx_int(text: str, signed: bool = False) -> Optional[int]:
+    """Parse one fixed-width value; None for the missing-value forms."""
+    if text.strip(". ") == "":
+        return None
+    pattern = r"-?[0-9]+" if signed else r"[0-9]+"
+    if not re.fullmatch(pattern, text.strip()):
+        raise ValueError(text)
+    return int(text.strip())
+
+
+def _parse_wx_fields(rest: str, values: dict) -> str:
+    """Consume gNNNtNNN... fields into ``values``; return what's left."""
+    while rest:
+        key = rest[0]
+        spec = _WX_FIELDS.get(key)
+        if spec is None:
+            break
+        width, signed = spec
+        raw = rest[1:1 + width]
+        if len(raw) < width or key in values:
+            break
+        try:
+            value = _wx_int(raw, signed)
+        except ValueError:
+            break  # not a weather field after all, e.g. "tRSW" unit tag
+        values[key] = value
+        rest = rest[1 + width:]
+    return rest
+
+
+def parse_weather(
+    payload: str, position: Optional["AprsPosition"] = None
+) -> Optional[WeatherReport]:
+    """
+    Decode an APRS weather report, or return None.
+
+    Handles the two common forms:
+
+    * Positionless: ``_MMDDHHMMcDDDsSSSgGGGtTTTrRRRpPPPPPPhHHbBBBBB...``
+      (position comes from the station's separate beacons).
+    * Position report with the weather symbol ``_``: the comment starts
+      ``DDD/SSS`` (wind direction/speed) followed by ``gGGGtTTT...``.
+      Pass the already-decoded ``position``.
+
+    Requires at least one real measurement so ordinary stations that
+    happen to use the WX symbol don't decode as empty weather.
+    """
+    if not isinstance(payload, str):
+        return None
+
+    values: dict = {}
+    wind_dir = wind_speed = None
+    timestamp = None
+
+    try:
+        match = _POSITIONLESS_WX_RE.match(payload)
+        if match:
+            timestamp = match.group("ts")
+            wind_dir = _wx_int(match.group("c"))
+            wind_speed = _wx_int(match.group("s"))
+            rest = match.group("rest")
+        elif position is not None and position.symbol_code == "_":
+            rest = position.comment
+            wind = _WIND_PREFIX_RE.match(rest)
+            if wind:
+                wind_dir = _wx_int(wind.group("c"))
+                wind_speed = _wx_int(wind.group("s"))
+                rest = rest[wind.end():]
+        else:
+            return None
+    except ValueError:
+        return None
+
+    rest = _parse_wx_fields(rest, values)
+
+    def hundredths(key):
+        return None if values.get(key) is None else values[key] / 100
+
+    humidity = values.get("h")
+    if humidity == 0:
+        humidity = 100  # the spec's "h00" means 100%
+
+    luminosity = values.get("L")
+    if values.get("l") is not None:
+        luminosity = values["l"] + 1000
+
+    report = WeatherReport(
+        wind_direction=wind_dir if wind_dir is None or wind_dir <= 360 else None,
+        wind_speed_mph=wind_speed,
+        wind_gust_mph=values.get("g"),
+        temperature_f=(
+            values.get("t")
+            if values.get("t") is None or -99 <= values["t"] <= 199
+            else None
+        ),
+        rain_1h_in=hundredths("r"),
+        rain_24h_in=hundredths("p"),
+        rain_since_midnight_in=hundredths("P"),
+        humidity_pct=humidity if humidity is None or humidity <= 100 else None,
+        pressure_mb=None if values.get("b") is None else values["b"] / 10,
+        luminosity_wm2=luminosity,
+        snow_24h_in=None if values.get("s") is None else values["s"] / 10,
+        timestamp=timestamp,
+        comment=rest.strip(),
+    )
+
+    measured = [
+        v for k, v in vars(report).items()
+        if k not in ("timestamp", "comment") and v is not None
+    ]
+    return report if measured else None

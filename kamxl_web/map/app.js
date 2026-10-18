@@ -224,6 +224,135 @@
     });
   }
 
+  // -- Weather ---------------------------------------------------------
+
+  var COMPASS = ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE",
+                 "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW"];
+
+  function compass(degrees) {
+    return COMPASS[Math.round((degrees % 360) / 22.5) % 16];
+  }
+
+  function hasValue(v) {
+    return v !== null && v !== undefined;
+  }
+
+  // Plain-text lines describing a weather report (caller escapes).
+  function weatherLines(w) {
+    var lines = [];
+    var first = [];
+
+    if (hasValue(w.temperature_f)) {
+      var c = Math.round((w.temperature_f - 32) * 5 / 9);
+      first.push(w.temperature_f + "\u00b0F (" + c + "\u00b0C)");
+    }
+    if (hasValue(w.humidity_pct)) first.push("humidity " + w.humidity_pct + "%");
+    if (hasValue(w.pressure_mb)) {
+      first.push(w.pressure_mb.toFixed(1) + " mb (" +
+        (w.pressure_mb * 0.02953).toFixed(2) + " inHg)");
+    }
+    if (first.length) lines.push(first.join(", "));
+
+    var wind = [];
+    if (hasValue(w.wind_speed_mph)) {
+      wind.push(w.wind_speed_mph === 0
+        ? "calm"
+        : (hasValue(w.wind_direction) ? "from " + compass(w.wind_direction) + " " : "") +
+          w.wind_speed_mph + " mph");
+    }
+    if (hasValue(w.wind_gust_mph) && w.wind_gust_mph > 0) {
+      wind.push("gusts " + w.wind_gust_mph + " mph");
+    }
+    if (wind.length) lines.push("Wind " + wind.join(", "));
+
+    var rain = [];
+    if (hasValue(w.rain_1h_in)) rain.push(w.rain_1h_in.toFixed(2) + " in last hour");
+    if (hasValue(w.rain_since_midnight_in)) {
+      rain.push(w.rain_since_midnight_in.toFixed(2) + " in since midnight");
+    }
+    if (hasValue(w.rain_24h_in)) rain.push(w.rain_24h_in.toFixed(2) + " in 24 h");
+    if (rain.length) lines.push("Rain " + rain.join(", "));
+
+    if (hasValue(w.snow_24h_in) && w.snow_24h_in > 0) {
+      lines.push("Snow " + w.snow_24h_in.toFixed(1) + " in 24 h");
+    }
+    if (hasValue(w.luminosity_wm2)) {
+      lines.push("Solar " + w.luminosity_wm2 + " W/m\u00b2");
+    }
+    return lines;
+  }
+
+  function weatherHtml(station) {
+    if (!station.weather) return "";
+    var lines = weatherLines(station.weather);
+    if (!lines.length) return "";
+    return "<div class='wxBlock'><b>Weather</b>" +
+      (station.weather_at ? " <span class='wxAge'>(" +
+        relativeTime(station.weather_at) + ")</span>" : "") +
+      "<br>" + lines.map(escapeHtml).join("<br>") + "</div>";
+  }
+
+  // A weather station's position comment is mostly the raw weather
+  // fields ("220/012g018t068..."); show just what follows them.
+  function displayComment(station) {
+    var c = station.comment || "";
+    var w = station.weather;
+    if (w && station.symbol_code === "_" && typeof w.comment === "string" &&
+        c !== w.comment && c.slice(c.length - w.comment.length) === w.comment) {
+      return w.comment;
+    }
+    return c;
+  }
+
+  function temperatureLabel(station) {
+    var w = station.weather;
+    if (!w || !hasValue(w.temperature_f)) return null;
+    return w.temperature_f + "\u00b0F";
+  }
+
+  var showTemps = document.getElementById("showTemps");
+
+  try {
+    var savedTemps = window.localStorage.getItem("kamxl.map.showTemps");
+    if (savedTemps !== null) showTemps.checked = savedTemps === "1";
+  } catch (e) { /* storage unavailable: default on */ }
+
+  function applyTemperatureLabel(marker, station) {
+    var text = showTemps.checked ? temperatureLabel(station) : null;
+    var tooltip = marker.getTooltip();
+
+    if (!text) {
+      if (tooltip) marker.unbindTooltip();
+      return;
+    }
+    if (tooltip) {
+      marker.setTooltipContent(escapeHtml(text));
+    } else {
+      marker.bindTooltip(escapeHtml(text), {
+        permanent: true,
+        direction: "right",
+        offset: [APRS_ICON_SIZE / 2, 0],
+        className: "wxLabel",
+        interactive: false
+      });
+    }
+  }
+
+  var lastStations = [];
+
+  showTemps.addEventListener("change", function () {
+    try {
+      window.localStorage.setItem(
+        "kamxl.map.showTemps", showTemps.checked ? "1" : "0"
+      );
+    } catch (e) {}
+    lastStations.forEach(function (station) {
+      if (markers[station.callsign]) {
+        applyTemperatureLabel(markers[station.callsign], station);
+      }
+    });
+  });
+
   function popupHtml(station) {
     // escapeHtml() added alongside the overlay-badge work above --
     // used here too now that it exists, since this popup content
@@ -231,7 +360,9 @@
     // trusted markup.
     var html = "<b>" + escapeHtml(station.callsign) + "</b><br>";
     html += station.latitude.toFixed(5) + ", " + station.longitude.toFixed(5) + "<br>";
-    if (station.comment) html += escapeHtml(station.comment) + "<br>";
+    var comment = displayComment(station);
+    if (comment) html += escapeHtml(comment) + "<br>";
+    html += weatherHtml(station);
     html += "symbol: " + escapeHtml(station.symbol_table) + escapeHtml(station.symbol_code) + "<br>";
     html += "heard " + relativeTime(station.last_heard) +
       " (" + station.packet_count + " report" +
@@ -293,7 +424,19 @@
       detail("Latitude", Number(station.latitude).toFixed(5));
       detail("Longitude", Number(station.longitude).toFixed(5));
       detail("Symbol", station.symbol_table + station.symbol_code);
-      detail("Comment", station.comment || "(none)");
+      detail("Comment", displayComment(station) || "(none)");
+
+      if (station.weather) {
+        var wxLines = weatherLines(station.weather);
+        if (wxLines.length) {
+          html += "<h3>Weather" + (station.weather_at
+            ? " (" + escapeHtml(relativeTime(station.weather_at)) + ")"
+            : "") + "</h3>";
+          wxLines.forEach(function (line) {
+            html += "<div class='detailRow'>" + escapeHtml(line) + "</div>";
+          });
+        }
+      }
 
       html += "<h3>Position History (" + history.length + ")</h3>";
 
@@ -558,6 +701,7 @@
       empty.style.display = stations.length ? "none" : "block";
 
       var seen = {};
+      lastStations = stations;
 
       stations.forEach(function (station) {
         seen[station.callsign] = true;
@@ -580,6 +724,7 @@
           var marker = icon ? L.marker(latLng, { icon: icon }) : L.marker(latLng);
           markers[station.callsign] = marker.addTo(map).bindPopup(popupHtml(station));
         }
+        applyTemperatureLabel(markers[station.callsign], station);
         // Draw a trail when at least two distinct positions exist.
         var history = station.history || [];
 

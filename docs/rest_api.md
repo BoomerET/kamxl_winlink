@@ -692,6 +692,22 @@ above the cards while the state is `only_own` or `silent`.
 `oldest_packet_at`, `last_pruned_at` and `last_pruned_rows`. The
 dashboard's history card shows how long history is kept.
 
+### Weather stations
+
+`GET /stations` and `GET /stations/{callsign}` include `weather` (or
+`null`) and `weather_at`. `weather` carries `temperature_f`,
+`humidity_pct`, `pressure_mb`, `wind_direction`, `wind_speed_mph`,
+`wind_gust_mph`, `rain_1h_in`, `rain_24h_in`,
+`rain_since_midnight_in`, `snow_24h_in`, `luminosity_wm2` (each
+`null` when not reported), plus `timestamp` (positionless reports'
+`MMDDHHMM`) and `comment` (whatever followed the fields, e.g.
+`tRSW`). Both APRS forms are decoded: positionless `_MMDDHHMMc...s...`
+reports (held up to an hour until the station's position beacon
+arrives) and position reports with the `_` weather symbol. The map
+shows weather in station pop-ups and details, plus temperature labels
+next to weather stations ("Show Temperatures" toggle, remembered per
+browser).
+
 ## Testing
 
 `tests/test_rest.py` runs a real `KAMDaemon` (wired to the same
