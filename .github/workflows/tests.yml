@@ -1,0 +1,61 @@
+name: Tests
+
+# Runs the offline test suite (no KAM-XL hardware needed) on every pull
+# request and every push to main, so a PR shows a green check or red X
+# before it's merged.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Python ${{ matrix.python-version }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.9", "3.11", "3.13"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      # Node runs the dashboard JavaScript checks in the suite.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install dependencies
+        run: python -m pip install "pyserial>=3.5"
+
+      - name: Check dashboard JavaScript syntax
+        run: |
+          python - <<'PY'
+          import re, kamxl_rest
+          for name in dir(kamxl_rest):
+              if name.endswith("_HTML"):
+                  html = getattr(kamxl_rest, name)
+                  js = "\n".join(re.findall(r"<script>(.*?)</script>", html, re.S))
+                  if js.strip():
+                      open(f"/tmp/{name}.js", "w").write(js)
+          PY
+          for f in /tmp/*_HTML.js; do echo "node --check $f"; node --check "$f"; done
+
+      - name: Run test suite
+        run: python run_tests.py
