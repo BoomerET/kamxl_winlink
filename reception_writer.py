@@ -19,8 +19,19 @@ class ReceptionWriter:
         self,
         database_path: str,
         queue_size: int = 10000,
+        retention_days: float = 0,
+        prune_interval: float = 24 * 3600,
+        clock=time.time,
     ) -> None:
         self.database_path = database_path
+        # Packet rows older than this many days are deleted at startup
+        # and then once per prune_interval. 0 = keep everything.
+        self.retention_days = float(retention_days or 0)
+        self._prune_interval = float(prune_interval)
+        self._clock = clock
+        self._next_prune_at = 0.0  # first pass right after startup
+        self.last_pruned_at = None
+        self.last_pruned_rows = 0
         self._queue = queue.Queue(maxsize=queue_size)
         self._thread = None
         self._lock = threading.Lock()
@@ -89,6 +100,8 @@ class ReceptionWriter:
                 not self._stop_event.is_set()
                 or not self._queue.empty()
             ):
+                self._maybe_prune(history)
+
                 try:
                     packet, received_at = self._queue.get(timeout=0.1)
 
@@ -112,6 +125,41 @@ class ReceptionWriter:
 
         finally:
             history.close()
+
+    def _maybe_prune(self, history) -> None:
+        """Delete old packet rows if retention is on and a pass is due.
+
+        Runs on the writer thread, which owns the inserting connection,
+        so pruning and recording never compete for the database.
+        """
+        if not self.retention_days:
+            return
+
+        now = self._clock()
+
+        if now < self._next_prune_at:
+            return
+
+        self._next_prune_at = now + self._prune_interval
+        cutoff = int(now - self.retention_days * 86400)
+
+        try:
+            deleted = history.prune_packets(cutoff)
+        except Exception:
+            logger.exception("Failed to prune reception history")
+            with self._lock:
+                self.write_errors += 1
+            return
+
+        with self._lock:
+            self.last_pruned_at = now
+            self.last_pruned_rows = deleted
+
+        if deleted:
+            logger.info(
+                "Reception history: deleted %d packet record(s) older "
+                "than %g days", deleted, self.retention_days,
+            )
 
     def _discard_pending(self) -> None:
         """Discard pending records after initialization failure."""
@@ -218,10 +266,18 @@ class ReceptionWriter:
         history = ReceptionHistory(self.database_path)
 
         try:
+            with self._lock:
+                last_pruned_at = self.last_pruned_at
+                last_pruned_rows = self.last_pruned_rows
+
             return {
                 "scope": "persistent",
                 "total_packets": history.total_packets(),
                 "hourly_counts": history.hourly_counts(since=since),
+                "retention_days": self.retention_days,
+                "oldest_packet_at": history.oldest_packet_at(),
+                "last_pruned_at": last_pruned_at,
+                "last_pruned_rows": last_pruned_rows,
             }
 
         finally:

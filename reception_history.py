@@ -148,6 +148,41 @@ class ReceptionHistory:
                     ),
                 )
 
+    def prune_packets(self, older_than: int, batch_size: int = 5000) -> int:
+        """
+        Delete received_packets rows received before ``older_than``
+        (Unix seconds). Works in small batches so the monitor's own
+        inserts never wait long on the database lock. Received and
+        sent *messages* are left alone (the dashboard has Clear for
+        those). Returns the number of rows deleted.
+        """
+        deleted = 0
+
+        while True:
+            with self._connection:
+                cursor = self._connection.execute(
+                    """
+                    DELETE FROM received_packets
+                    WHERE id IN (
+                        SELECT id FROM received_packets
+                        WHERE received_at < ?
+                        LIMIT ?
+                    )
+                    """,
+                    (int(older_than), int(batch_size)),
+                )
+
+            deleted += cursor.rowcount
+
+            if cursor.rowcount < batch_size:
+                return deleted
+
+    def oldest_packet_at(self) -> Optional[int]:
+        row = self._connection.execute(
+            "SELECT MIN(received_at) FROM received_packets"
+        ).fetchone()
+        return None if row[0] is None else int(row[0])
+
     def total_packets(self) -> int:
         """Return the number of persisted packet records."""
 

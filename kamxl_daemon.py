@@ -116,6 +116,7 @@ class KAMDaemon:
         watchdog_minutes: float = 30,
         retry_count: int = 3,
         retry_interval_seconds: float = 60,
+        history_retention_days: float = 0,
     ) -> None:
         from aprs_tx import validate_aprs_path
 
@@ -183,7 +184,9 @@ class KAMDaemon:
         self._reception_writer = None
 
         if history_db is not None:
-            self._reception_writer = ReceptionWriter(history_db)
+            self._reception_writer = ReceptionWriter(
+                history_db, retention_days=history_retention_days
+            )
             self._reception_writer.start()
         self._kam_lock = threading.RLock()
         # APRS RF safety latch. Never assume command mode merely
@@ -2655,6 +2658,18 @@ def main(argv: Optional[list] = None) -> None:
     )
 
     parser.add_argument(
+        "--history-days",
+        type=float,
+        default=float(os.environ.get("KAMXL_HISTORY_DAYS", "90")),
+        help=(
+            "Delete packet history older than this many days (checked at "
+            "startup and daily); 0 keeps everything, otherwise at least "
+            "31 so the 30-day chart stays complete (default: "
+            "$KAMXL_HISTORY_DAYS, or 90). Messages are never pruned."
+        ),
+    )
+
+    parser.add_argument(
         "--aprs-path",
         default=os.environ.get("KAMXL_APRS_PATH", "WIDE1-1,WIDE2-1"),
         help=(
@@ -2814,6 +2829,8 @@ def main(argv: Optional[list] = None) -> None:
         parser.error("--retry-count must be between 1 and 5")
     if args.retry_interval < 30:
         parser.error("--retry-interval must be at least 30 seconds")
+    if args.history_days and args.history_days < 31:
+        parser.error("--history-days must be 0 (keep all) or at least 31")
     if args.beacon_interval < 10:
         parser.error("--beacon-interval must be at least 10 minutes")
 
@@ -2837,6 +2854,7 @@ def main(argv: Optional[list] = None) -> None:
         watchdog_minutes=args.watchdog_minutes,
         retry_count=args.retry_count,
         retry_interval_seconds=args.retry_interval,
+        history_retention_days=args.history_days,
     )
 
     if args.auto_retry:
