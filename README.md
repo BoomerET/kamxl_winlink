@@ -1,5 +1,7 @@
 # kamxl
 
+[![Tests](https://github.com/BoomerET/kamxl_winlink/actions/workflows/tests.yml/badge.svg)](https://github.com/BoomerET/kamxl_winlink/actions/workflows/tests.yml)
+
 <p align="center">
   <img
     src="examples/certified-95.9-ai.png"
