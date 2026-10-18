@@ -2053,9 +2053,18 @@ only from the environment/.env, are never logged or returned by
 iGate; repeated bulletins) are suppressed for 15 minutes. HTTP
 401/403 errors mention the Cloudflare token as the likely cause.
 `notify.status` / `GET /notify`, `notify.test` / `POST /notify/test`,
-and a dashboard card with a "Send test notification" button. Not yet
-tried against the real server (needs Dave's Cloudflare service
-token); tested with a fake HTTP opener.
+and a dashboard card with a "Send test notification" button.
+
+**Verified 2026-10-18** against Dave's self-hosted ntfy server
+(notify.n5ba.net) behind Cloudflare Access, using a Cloudflare Access
+service token (`KAMXL_NTFY_CF_ACCESS_CLIENT_ID` / `_SECRET` in
+`.env`): the dashboard's "Send test notification" was delivered to his
+phone. The same day a real APRS message sent over the air from the
+TH-D75A (N5BA-7) triggered the incoming-message alert on his phone
+within seconds: the complete RF -> KAM-XL -> daemon -> ntfy ->
+phone path works, with exactly one alert. (Duplicate copies of a message, such as a digipeated
+or iGated repeat, are suppressed by the 15-minute dedupe; covered by
+unit tests.)
 
 Tests: `tests/test_heard_back_and_notify.py` (20).
 
