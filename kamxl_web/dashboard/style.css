@@ -552,6 +552,32 @@
   #notifyStatus { line-height: 1.5; }
 
 
+  /* Coverage card */
+  #coverageCard { flex: 2 1 520px; }
+  .setupForm { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+  .setupForm label { color: #9ab; font-size: 12px; }
+  .setupForm input {
+    flex: 1 1 180px; min-width: 0;
+    background: #0b0f10; color: #d4f7d4; border: 1px solid #345;
+    font: inherit; font-size: 13px; padding: 4px 6px;
+  }
+  .setupForm button.action { margin-top: 0; }
+  #setupStatus { margin: 6px 0 10px; line-height: 1.4; }
+  #coverageTable { overflow-x: auto; margin-top: 8px; }
+  .covTable { border-collapse: collapse; font-size: 12px; min-width: 100%; }
+  .covTable th, .covTable td {
+    border-bottom: 1px solid #1a2a2e; padding: 5px 8px;
+    text-align: left; vertical-align: top;
+  }
+  .covTable thead th { color: #cfc; font-weight: normal; white-space: nowrap; }
+  .covTable tbody th { color: #789; font-weight: normal; white-space: nowrap; }
+  .covTable .now { color: #8f8; font-size: 11px; }
+  .covTable .dim { color: #678; }
+  .covTable .pct { color: #cfc; }
+  .covTable a { color: #3388ff; font-size: 11px; }
+  .covList { margin: 0; padding: 0; list-style: none; }
+  .covList li { white-space: nowrap; }
+
   /* Phones: full-width cards, tighter margins, and 16px form text so
      iOS doesn't zoom in when a field is tapped. */
   @media (max-width: 600px) {

@@ -60,6 +60,7 @@ from reception_stats import ReceptionStats
 from reception_writer import ReceptionWriter
 from aprs import format_aprs_message, parse_aprs_message, unwrap_third_party
 from aprs_outbox import OutboundAprsTracker
+from aprs_coverage import SETUP_KEY, first_hop, normalize_setup
 
 # Stations and objects not heard for this long drop off the map. Also
 # how much stored history is replayed into the map at startup.
@@ -243,6 +244,19 @@ class KAMDaemon:
             except Exception:
                 logger.exception("Could not restore sent APRS messages")
 
+        # Coverage: the current station setup (radio/antenna) label,
+        # stamped on every transmission and received packet. Persisted
+        # in the history database; "" = not set.
+        self._setup = ""
+        if self._reception_writer is not None:
+            try:
+                self._setup = normalize_setup(
+                    self._reception_writer.get_setting(SETUP_KEY) or ""
+                )
+            except Exception:
+                logger.exception("Could not load the station setup")
+            self._reception_writer.setup = self._setup
+
         # Automatic resend state. Off by default; Lock order:
         # _kam_lock -> _retry_lock.
         self._retry_lock = threading.Lock()
@@ -344,6 +358,9 @@ class KAMDaemon:
             "monitor.subscribe": self._m_monitor_subscribe,
             "monitor.unsubscribe": self._m_monitor_unsubscribe,
             "stations.list": self._m_stations_list,
+            "coverage.status": self._m_coverage_status,
+            "coverage.set_setup": self._m_coverage_set_setup,
+            "coverage.report": self._m_coverage_report,
             "objects.list": self._m_objects_list,
             "notify.status": self._m_notify_status,
             "notify.test": self._m_notify_test,
@@ -888,6 +905,7 @@ class KAMDaemon:
                 payload=payload,
                 path=path,
             )
+            self._log_own_tx("message", message_id, path)
 
             if resend_id is None:
                 with self._retry_lock:
@@ -1342,6 +1360,7 @@ class KAMDaemon:
                 self._beacon_failed()
             raise
 
+        self._log_own_tx("beacon", "", self.aprs_path)
         now = time.time()
         with self._beacon_lock:
             self._beacons_sent += 1
@@ -1503,6 +1522,7 @@ class KAMDaemon:
                 record.message_id, record.addressee, record.text,
                 record.payload, record.path,
             )
+            self._log_own_tx("message", record.message_id, record.path)
             if current is not None and current.status == "pending":
                 self._outbox.retry_sent(record.message_id, self._retry_interval)
 
@@ -2421,7 +2441,14 @@ class KAMDaemon:
                 return
 
             now = time.time()
+            # Coverage credits the digipeater that heard us directly
+            # (the first hop), not the last one that repeated it.
+            via, station = (
+                ("digi", first_hop(packet.digipeaters) or "")
+                if digipeater else ("igate", igate)
+            )
             if self._beacon_payload is not None and payload == self._beacon_payload:
+                self._record_own_heard(now, "beacon", "", via, station)
                 with self._beacon_lock:
                     if digipeater:
                         self._beacon_heard["digipeated_by"] = digipeater
@@ -2434,12 +2461,86 @@ class KAMDaemon:
             message = parse_aprs_message(payload)
             if message is not None and message.message_id is not None \
                     and message.kind == "message":
+                self._record_own_heard(
+                    now, "message", message.message_id, via, station
+                )
                 self._outbox.heard_back(
                     message.message_id, message.addressee,
                     digipeater=digipeater, igate=igate,
                 )
         except Exception:
             logger.exception("Own-packet tracking failed")
+
+    # -- Coverage (see aprs_coverage.py) ---------------------------------
+
+    def _log_own_tx(self, kind: str, ref: str, path: str) -> None:
+        if self._reception_writer is None:
+            return
+        try:
+            self._reception_writer.log_own_tx(
+                time.time(), kind, ref, path, self._setup
+            )
+        except Exception:
+            logger.exception("Could not log transmission for coverage")
+
+    def _record_own_heard(self, heard_at, kind, ref, via, station) -> None:
+        if self._reception_writer is None:
+            return
+        try:
+            self._reception_writer.record_own_heard(
+                heard_at, kind, ref, via, station
+            )
+        except Exception:
+            logger.exception("Could not record heard-back for coverage")
+
+    def _coverage_home(self):
+        if self._beacon_position is None:
+            return None
+        return (
+            self._beacon_position["latitude"],
+            self._beacon_position["longitude"],
+        )
+
+    def _m_coverage_status(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        return {
+            "enabled": self._reception_writer is not None,
+            "setup": self._setup,
+        }
+
+    def _m_coverage_set_setup(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """Set the station setup label (radio/antenna) used from now on."""
+        if self._reception_writer is None:
+            raise ValueError(
+                "Coverage needs the history database (KAMXL_HISTORY_DB)"
+            )
+        setup = normalize_setup(params.get("setup", ""))
+        self._reception_writer.set_setting(SETUP_KEY, setup)
+        self._setup = setup
+        self._reception_writer.setup = setup
+        logger.info("Station setup set to %r", setup)
+        return self._m_coverage_status({})
+
+    def _m_coverage_report(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """Per-setup coverage for the last ``days`` (default 30)."""
+        days = params.get("days", 30)
+        if isinstance(days, bool) or not isinstance(days, (int, float)) \
+                or not 0 < days <= 365:
+            raise ValueError("days must be a number from 1 to 365")
+        status = self._m_coverage_status({})
+        if self._reception_writer is None:
+            return {**status, "days": days, "home": None, "setups": []}
+        home = self._coverage_home()
+        setups = self._reception_writer.coverage_report(
+            time.time() - days * 86400, home, self._is_own_station
+        )
+        return {
+            **status,
+            "days": days,
+            "home": (
+                {"latitude": home[0], "longitude": home[1]} if home else None
+            ),
+            "setups": setups,
+        }
 
     def _push(self, event: str, title: str, message: str, **kwargs) -> None:
         if self._notifier is None:

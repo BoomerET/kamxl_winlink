@@ -215,6 +215,32 @@
   .detailActions a.messageStation, a.messageStation { color: #3388ff; }
 
 
+  /* Coverage overlay banner (opened from the dashboard). */
+  #coverageBanner:not([hidden]) {
+    position: absolute;
+    bottom: 24px;
+    left: 12px;
+    z-index: 1050;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: #101b1c;
+    color: #d4f7d4;
+    border: 1px solid #3a6;
+    border-radius: 5px;
+    padding: 8px 12px;
+    max-width: min(520px, calc(100vw - 48px));
+    font-size: 12px;
+  }
+  #coverageBanner button {
+    background: none; border: 1px solid #456; color: #cfc;
+    font: inherit; cursor: pointer;
+  }
+  .leaflet-tooltip.coverageLabel {
+    font-family: "Courier New", Courier, monospace;
+    font-size: 11px;
+  }
+
   /* Phones: the header wraps onto several lines, so show station
      details as a sheet along the bottom instead of under the header,
      and use 16px search text so iOS doesn't zoom in. */

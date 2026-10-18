@@ -2100,3 +2100,47 @@ Kept deliberately small (no installable app/PWA); Dave prefers RF.
 Tests: `tests/test_station_restore.py` (8), viewport check in
 `tests/test_web_pages.py`.
 
+### Coverage by station setup
+
+Dave runs different radios and antennas (a mag-mount on a cookie sheet
+in the garage, a J-pole at 16 ft in the backyard) and wants to compare
+them. `aprs_coverage.py` (named so it can't clash with the `coverage`
+test tool) plus history-database tables:
+
+- `settings` holds the current **station setup** label, set from the
+  dashboard and kept across restarts. Every received packet gets it
+  (new `received_packets.setup` column, stamped when the packet is
+  queued) and so does every transmission (`own_tx`: beacons,
+  messages, resends).
+- `own_heard`: each time a transmission comes back -- repeated by a
+  digipeater or sent back from APRS-IS by an iGate -- it is credited
+  to the latest matching transmission within 15 minutes (beacon
+  payload / message ID), once per digipeater per transmission.
+- The digipeater credited is the **first hop** -- the one that heard
+  us directly. The KAM-XL (like most TNCs) stars only the last
+  repeater, so every hop before the last `*` is used too, and the
+  first path entry is the first hop; an alias there (WIDE1*) means a
+  digipeater that didn't insert its callsign, recorded as "". The
+  existing "Heard back" display still shows the last repeater.
+- `coverage_report()` per setup: sent, % digipeated, % reached
+  APRS-IS, which digipeaters heard us (with % and distance from their
+  last stored position), and the receive side -- packets/hour over
+  hours with traffic, stations heard, stations heard direct, and the
+  farthest direct stations (distance from stored payloads; needs
+  `KAMXL_LATITUDE`/`LONGITUDE`). Old rows with no setup group as
+  "(no setup)".
+
+RPCs `coverage.status`, `coverage.set_setup`, `coverage.report`; REST
+`GET /coverage?days=N`, `POST /coverage/setup`. Dashboard Coverage
+card: setup box (with past setups suggested), period, and up to four
+setups side by side. Map: `/map?coverage=<setup>&days=N` draws lines
+from home to each digipeater, green 75%+, amber 25%+, red below.
+
+Caveats worth remembering when reading the numbers: a digipeater that
+only heard another digipeater's copy is not counted (on purpose); a
+transmission nobody repeated may still have been heard by stations
+that don't digipeat; and the receive numbers depend on band activity
+as much as the antenna, so compare setups over similar periods.
+
+Tests: `tests/test_coverage.py` (13).
+

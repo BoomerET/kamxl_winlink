@@ -924,6 +924,93 @@
     }
   }
 
+  // -- Coverage overlay (/map?coverage=<setup>&days=N) ----------------
+  //
+  // Opened from the dashboard's Coverage card: lines from this station
+  // to each digipeater that heard it with that setup, colored by how
+  // often (green 75%+, amber 25%+, red below).
+
+  var coverageSetup = params.get("coverage");
+  var coverageLayer = L.layerGroup();
+
+  function coverageColor(pct) {
+    return pct >= 75 ? "#3c3" : pct >= 25 ? "#fc3" : "#f55";
+  }
+
+  async function showCoverage() {
+    var days = Number(params.get("days")) || 30;
+    var banner = document.getElementById("coverageBanner");
+    try {
+      var res = await fetch(authedUrl("/coverage?days=" + days));
+      var payload = await res.json();
+      if (!payload.ok) throw new Error(payload.error && payload.error.message);
+      var report = payload.result;
+      var entry = (report.setups || []).filter(function (e) {
+        return e.setup === coverageSetup;
+      })[0];
+      var label = coverageSetup || "(no setup)";
+
+      banner.hidden = false;
+      if (!entry || !report.home) {
+        banner.querySelector("span").textContent = !report.home
+          ? "Coverage needs your position (KAMXL_LATITUDE / KAMXL_LONGITUDE)."
+          : "No coverage for \u201c" + label + "\u201d in the last " + days + " days.";
+        return;
+      }
+
+      var home = [report.home.latitude, report.home.longitude];
+      var bounds = [home];
+      entry.digipeaters.forEach(function (d) {
+        if (d.latitude == null || d.longitude == null) return;
+        var to = [d.latitude, d.longitude];
+        var color = coverageColor(d.pct);
+        bounds.push(to);
+        L.polyline([home, to], {
+          color: color, weight: 2 + Math.round(d.pct / 25), opacity: 0.85
+        }).addTo(coverageLayer);
+        L.circleMarker(to, {
+          radius: 6, color: "#000", weight: 1, fillColor: color, fillOpacity: 1
+        }).bindTooltip(
+          escapeHtml(d.callsign) + " " + Math.round(d.pct) + "%",
+          { permanent: true, direction: "right", className: "coverageLabel" }
+        ).bindPopup(
+          "<b>" + escapeHtml(d.callsign) + "</b><br>Heard " + d.heard +
+          " of " + entry.tx.total + " sent (" + Math.round(d.pct) + "%)" +
+          (d.distance_mi != null
+            ? "<br>" + Math.round(d.distance_mi) + " mi away" : "") +
+          "<br>Last: " + escapeHtml(new Date(d.last_heard * 1000).toLocaleString())
+        ).addTo(coverageLayer);
+      });
+
+      // Home last, so it sits on top of the lines.
+      L.circleMarker(home, {
+        radius: 7, color: "#fff", weight: 2, fillColor: "#3388ff", fillOpacity: 1
+      }).bindTooltip("You", {
+        permanent: true, direction: "left", className: "coverageLabel"
+      }).addTo(coverageLayer);
+
+      coverageLayer.addTo(map);
+      fitDone = true;
+      map.fitBounds(bounds, { maxZoom: 11, padding: [40, 40] });
+
+      banner.querySelector("span").textContent =
+        "Coverage: \u201c" + label + "\u201d, last " + days + " days \u2014 " +
+        entry.tx.digipeated + " of " + entry.tx.total + " sent were digipeated";
+    } catch (err) {
+      banner.hidden = false;
+      banner.querySelector("span").textContent =
+        "Unable to load coverage: " + String(err.message || err);
+    }
+  }
+
+  if (coverageSetup !== null) {
+    document.getElementById("coverageHide").addEventListener("click", function () {
+      map.removeLayer(coverageLayer);
+      document.getElementById("coverageBanner").hidden = true;
+    });
+    showCoverage();
+  }
+
   refresh();
   setInterval(refresh, 15000);
   refreshObjects();

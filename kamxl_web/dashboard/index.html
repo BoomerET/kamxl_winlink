@@ -242,6 +242,33 @@
     <button class="action" id="beaconNowBtn" type="button">Beacon now</button>
   </div>
 
+  <div class="card" id="coverageCard">
+    <h2>Coverage</h2>
+    <form id="setupForm" class="setupForm">
+      <label for="setupInput">Station setup now</label>
+      <input id="setupInput" list="setupOptions" maxlength="40"
+             autocomplete="off" placeholder="e.g. J-pole 16 ft">
+      <datalist id="setupOptions"></datalist>
+      <button class="action" id="setupSaveBtn" type="submit">Save</button>
+    </form>
+    <div class="sub" id="setupStatus" role="status" aria-live="polite">
+      Set this whenever you change radio or antenna. Everything you send
+      and hear is tagged with it, so setups can be compared below.
+    </div>
+    <div class="bulletinControls">
+      <label for="coverageDays">Over the last</label>
+      <select id="coverageDays">
+        <option value="7">7 days</option>
+        <option value="30" selected>30 days</option>
+        <option value="90">90 days</option>
+      </select>
+    </div>
+    <div class="sub" id="coverageStatus" role="status" aria-live="polite">
+      Loading coverage...
+    </div>
+    <div id="coverageTable"></div>
+  </div>
+
   <div class="card" id="pbbsCard">
     <h2>PBBS</h2>
     <div class="sub" id="pbbsSummary">Not checked this session.</div>
