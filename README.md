@@ -207,6 +207,8 @@ The web dashboard provides three reception-history display periods:
 
 The 7-day and 30-day views aggregate hourly records into calendar days using the browser's local timezone. Day boundaries account for daylight-saving transitions, including 23-hour and 25-hour days.
 
+**Backups:** set `KAMXL_BACKUP_DIR` and the daemon backs the database up every night, for example to a network share, keeping the last week. See [docs/backup.md](docs/backup.md) for setting up an SMB/Windows share and for restoring.
+
 The **packet log** page (`/log`, "log" in every page's header) searches everything stored: by sender, digipeater, text and period -- e.g. "when did I last hear K5XYZ, and through which digipeater?" Packet contents are stored from the version that added map restore onward; older rows show who and when only.
 
 The history database also powers the dashboard's **Coverage** card: set your current station setup (e.g. "Mag-mount, garage" or "J-pole 16 ft") and it compares setups side by side -- how often your beacons and messages were digipeated or reached APRS-IS, which digipeaters heard you, and how many stations you heard. See [docs/rest_api.md](docs/rest_api.md#coverage-by-station-setup).

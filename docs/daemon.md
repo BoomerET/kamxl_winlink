@@ -25,6 +25,10 @@ defaults:
 | `--callsign` | `KAMXL_CALLSIGN` | *(required -- no fallback)* |
 | `--history-db` | `KAMXL_HISTORY_DB` | *(off)* |
 | `--history-days` | `KAMXL_HISTORY_DAYS` | `90` (`0` = keep all, else min 31) |
+| `--backup-dir` | `KAMXL_BACKUP_DIR` | *(off)* -- see [backup.md](backup.md) |
+| `--backup-keep` | `KAMXL_BACKUP_KEEP` | `7` |
+| `--backup-time` | `KAMXL_BACKUP_TIME` | `03:30` (local) |
+| `--backup-allow-same-disk` | `KAMXL_BACKUP_ALLOW_SAME_DISK=1` | *(off)* |
 | `--auto-ack` | `KAMXL_AUTO_ACK=1` | *(off)* |
 | `--aprs-path` | `KAMXL_APRS_PATH` | `WIDE1-1,WIDE2-1` (`DIRECT` = none) |
 | `--latitude` / `--longitude` | `KAMXL_LATITUDE` / `KAMXL_LONGITUDE` | *(none -- beacon unavailable)* |
@@ -36,7 +40,7 @@ defaults:
 | `--auto-retry` | `KAMXL_AUTO_RETRY=1` | *(off)* |
 | `--ntfy-url` | `KAMXL_NTFY_URL` | *(off)* |
 | `--ntfy-topic` | `KAMXL_NTFY_TOPIC` | *(off)* |
-| `--ntfy-events` | `KAMXL_NTFY_EVENTS` | `messages,watchdog` |
+| `--ntfy-events` | `KAMXL_NTFY_EVENTS` | `messages,watchdog,backup` |
 | *(env only)* | `KAMXL_NTFY_TOKEN`, `KAMXL_NTFY_CF_ACCESS_CLIENT_ID`, `KAMXL_NTFY_CF_ACCESS_CLIENT_SECRET`, `KAMXL_NTFY_CLICK_URL` | *(none)* |
 | `--retry-count` | `KAMXL_RETRY_COUNT` | `3` (1-5) |
 | `--retry-interval` | `KAMXL_RETRY_INTERVAL` | `60` seconds (min 30), doubling |

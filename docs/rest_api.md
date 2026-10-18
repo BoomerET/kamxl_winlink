@@ -818,6 +818,16 @@ were saved) and `setup`. A `callsign` search's first page also has a
 `sources` (SSIDs) seen, and `via` -- the digipeaters it was heard
 through (the station that transmitted each copy) with counts.
 
+### Backups
+
+`GET /backup` reports history-database backups: `{"enabled": false}`
+when `KAMXL_BACKUP_DIR` isn't set, else `folder`, `folder_reachable`,
+`keep`, `time`, `running`, `last_success_at`, `last_file`,
+`last_size`, `failing`, `last_error`, `next_due_at`, `count` and
+`total_size`. `POST /backup/now` makes a backup and waits for it,
+returning `{ok, file, size, removed, seconds}` (or `{ok: false,
+error}`) plus the new `status`. See [backup.md](backup.md).
+
 ## Testing
 
 `tests/test_rest.py` runs a real `KAMDaemon` (wired to the same

@@ -14,8 +14,8 @@ Configuration (all optional; disabled unless URL and topic are set):
     KAMXL_NTFY_TOKEN          ntfy access token (Authorization: Bearer)
     KAMXL_NTFY_CF_ACCESS_CLIENT_ID / KAMXL_NTFY_CF_ACCESS_CLIENT_SECRET
                               Cloudflare Access service-token headers
-    KAMXL_NTFY_EVENTS         comma list: messages, bulletins, watchdog
-                              (default: messages,watchdog)
+    KAMXL_NTFY_EVENTS         comma list: messages, bulletins, watchdog, backup
+                              (default: messages,watchdog,backup)
     KAMXL_NTFY_CLICK_URL      link opened when the notification is tapped
 """
 
@@ -31,8 +31,8 @@ from typing import Callable, Dict, Optional
 logger = logging.getLogger("kamxl_notify")
 logger.addHandler(logging.NullHandler())
 
-EVENT_TYPES = ("messages", "bulletins", "watchdog")
-DEFAULT_EVENTS = ("messages", "watchdog")
+EVENT_TYPES = ("messages", "bulletins", "watchdog", "backup")
+DEFAULT_EVENTS = ("messages", "watchdog", "backup")
 
 
 def parse_events(text: Optional[str]) -> frozenset:

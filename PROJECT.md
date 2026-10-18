@@ -2180,3 +2180,35 @@ callsigns and APRS payloads; LIKE is fast enough).
 Tests: `tests/test_packet_log.py` (14), `last_hop` cases in
 `tests/test_coverage.py`.
 
+### Daily history backups
+
+Dave switched to keeping all history (`KAMXL_HISTORY_DAYS=0`), so the
+one SQLite file is now worth protecting. `db_backup.py`:
+`BackupManager` makes a backup with SQLite's online backup API (the
+daemon keeps writing), runs `PRAGMA quick_check` on the copy, switches
+it to rollback-journal mode for simple restores, gzips it into the
+backup folder as `kamxl-history-YYYYMMDD-HHMMSS.sqlite3.gz.partial`,
+fsyncs and renames. Only files matching that name pattern are ever
+pruned (newest `KAMXL_BACKUP_KEEP` kept).
+
+Schedule: daily at `KAMXL_BACKUP_TIME`; a missed slot (laptop asleep)
+runs on the next minute check; no backup for 26 h at startup -> five
+minutes after startup; a failure retries hourly. The last good backup
+is read back from the folder at startup, so no state is stored.
+
+Destination: Dave's SMB share (`\\192.168.7.246\KAM-XL`). Decided to
+let Linux mount it (cifs, fstab with `x-systemd.automount`, `nofail`,
+root-only credentials file) rather than speak SMB in the daemon: no
+third-party package, the OS handles reconnects, and the share
+password stays out of the daemon's environment. Because an unmounted
+share is just an empty local folder, a backup onto the same filesystem
+as the database is refused unless `KAMXL_BACKUP_ALLOW_SAME_DISK=1`.
+
+Notifications: new `backup` ntfy event (added to the defaults) on the
+first failure and on recovery. Dashboard Backups card with Back up
+now. RPCs `backup.status`, `backup.now`; REST `GET /backup`,
+`POST /backup/now`. Setup and restore steps: `docs/backup.md`.
+
+Tests: `tests/test_db_backup.py` (19), including a backup taken while
+another connection keeps inserting packets.
+

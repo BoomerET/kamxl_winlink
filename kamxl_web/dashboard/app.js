@@ -1747,6 +1747,98 @@
     }
   });
 
+  // -- Backups ---------------------------------------------------------
+
+  var backupStatus = document.getElementById("backupStatus");
+  var backupNowBtn = document.getElementById("backupNowBtn");
+
+  function formatBytes(n) {
+    if (n == null) return "";
+    if (n === 0) return "0 KB";
+    if (n < 1024 * 1024) return Math.max(1, Math.round(n / 1024)) + " KB";
+    if (n < 1024 * 1024 * 1024) return (n / 1048576).toFixed(1) + " MB";
+    return (n / 1073741824).toFixed(2) + " GB";
+  }
+
+  function formatWhen(epoch) {
+    if (!epoch) return "";
+    var d = new Date(epoch * 1000);
+    var today = new Date();
+    var tomorrow = new Date(today.getTime() + 86400000);
+    var time = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    if (d.toDateString() === today.toDateString()) return "today " + time;
+    if (d.toDateString() === tomorrow.toDateString()) return "tomorrow " + time;
+    return d.toLocaleDateString([], { month: "short", day: "numeric" }) + " " + time;
+  }
+
+  function showBackupStatus(st) {
+    if (!st.enabled) {
+      backupStatus.className = "sub";
+      backupStatus.textContent = "Off. Set KAMXL_BACKUP_DIR to back up " +
+        "the history database every day.";
+      backupNowBtn.hidden = true;
+      return;
+    }
+    backupNowBtn.hidden = false;
+    backupNowBtn.disabled = !!st.running;
+    var lines = [];
+    if (st.running) lines.push("Backing up now...");
+    if (st.failing) {
+      lines.push("<span class='err'>Last backup failed: " +
+        escapeHtml(st.last_error) + "</span>");
+    }
+    if (st.last_success_at) {
+      lines.push("Last good backup: " + escapeHtml(formatWhen(st.last_success_at)) +
+        " (" + escapeHtml(formatBytes(st.last_size)) + ")");
+    } else if (!st.failing) {
+      lines.push("No backups yet.");
+    }
+    lines.push(st.folder_reachable
+      ? escapeHtml(st.count + " kept of " + st.keep + ", " +
+          formatBytes(st.total_size || 0) + " in " + st.folder)
+      : escapeHtml("Can't reach " + st.folder + " right now."));
+    if (!st.running) {
+      lines.push("Next: " + escapeHtml(formatWhen(st.next_due_at)) +
+        " <span class='dim'>(daily at " + escapeHtml(st.time) + ")</span>");
+    }
+    backupStatus.className = "sub";
+    backupStatus.innerHTML = lines.join("<br>");
+  }
+
+  async function refreshBackup() {
+    try {
+      showBackupStatus(await apiGet("/backup"));
+    } catch (err) {
+      backupStatus.textContent = "Unable to read backup status: " + String(err);
+    }
+  }
+
+  backupNowBtn.addEventListener("click", async function () {
+    backupNowBtn.disabled = true;
+    backupStatus.textContent = "Backing up now — this can take a minute...";
+    try {
+      var res = await fetch(authedUrl("/backup/now"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: "{}"
+      });
+      var payload = await res.json();
+      if (!payload.ok) {
+        throw new Error((payload.error && payload.error.message) || "Backup failed");
+      }
+      showBackupStatus(payload.result.status);
+      if (payload.result.ok) {
+        backupStatus.innerHTML = "Saved " + escapeHtml(payload.result.file) +
+          ".<br>" + backupStatus.innerHTML;
+      }
+    } catch (err) {
+      backupStatus.className = "sub err";
+      backupStatus.textContent = "Backup failed: " + String(err.message || err);
+    } finally {
+      backupNowBtn.disabled = false;
+    }
+  });
+
   // -- Coverage --------------------------------------------------------
   //
   // Which digipeaters hear this station and how well it hears others,
@@ -2130,6 +2222,8 @@
   setInterval(refreshNotify, 60000);
   refreshCoverage();
   setInterval(refreshCoverage, 120000);
+  refreshBackup();
+  setInterval(refreshBackup, 60000);
   setInterval(refreshAutoAck, 15000);
   setInterval(refreshStations, 15000);
   setInterval(refreshReceptionStats, 15000);

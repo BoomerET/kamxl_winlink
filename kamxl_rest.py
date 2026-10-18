@@ -363,6 +363,8 @@ ROUTES: Tuple[Tuple[str, "re.Pattern", str], ...] = (
     ("POST", re.compile(r"^/notify/test$"), "_h_notify_test"),
     ("GET", re.compile(r"^/coverage$"), "_h_coverage_report"),
     ("GET", re.compile(r"^/log$"), "_h_log_page"),
+    ("GET", re.compile(r"^/backup$"), "_h_backup_status"),
+    ("POST", re.compile(r"^/backup/now$"), "_h_backup_now"),
     ("GET", re.compile(r"^/packets/search$"), "_h_packets_search"),
     ("POST", re.compile(r"^/coverage/setup$"), "_h_coverage_set_setup"),
     ("GET", re.compile(r"^/stations/(?P<callsign>[A-Za-z0-9\-]+)$"), "_h_stations_get"),
@@ -817,6 +819,14 @@ class RESTRequestHandler(BaseHTTPRequestHandler):
 
     def _h_objects_list(self, params: Dict[str, str], query: Dict[str, Any]) -> None:
         self._relay("objects.list")
+
+    def _h_backup_status(self, params: Dict[str, str], query: Dict[str, Any]) -> None:
+        """History backup settings, last result and next run."""
+        self._relay("backup.status")
+
+    def _h_backup_now(self, params: Dict[str, str], query: Dict[str, Any]) -> None:
+        """Back up now. A big database over a slow share takes a while."""
+        self._relay("backup.now", _socket_timeout=900)
 
     def _h_log_page(self, params: Dict[str, str], query: Dict[str, Any]) -> None:
         body = LOG_HTML.encode("utf-8")
