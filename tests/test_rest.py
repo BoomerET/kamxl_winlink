@@ -871,6 +871,22 @@ check(true, {
   uptime_seconds: 600,
   last_packet_at: 12345
 }, "quiet", "Reception: Quiet (no packets in 5 minutes)");
+
+// Reception watchdog states take precedence over the 5-minute view:
+// own stations still arriving must not read as "Receiving".
+check(true, {
+  packets_last_5m: 4,
+  uptime_seconds: 7200,
+  last_packet_at: 12345,
+  watchdog: { state: "only_own", minutes_since_other: 41.2 }
+}, "quiet", "Reception: Only own stations heard (41 min)");
+
+check(true, {
+  packets_last_5m: 0,
+  uptime_seconds: 7200,
+  last_packet_at: 12345,
+  watchdog: { state: "silent" }
+}, "disconnected", "Reception: Nothing heard");
 """
 
         result = subprocess.run(

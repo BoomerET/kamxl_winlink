@@ -1693,7 +1693,6 @@ DASHBOARD_HTML = """<!doctype html>
     if (!connected) {
       element.className = "disconnected";
       element.textContent = "Reception: Disconnected";
-      showReceptionAlert(null);
       return;
     }
 
@@ -1706,8 +1705,6 @@ DASHBOARD_HTML = """<!doctype html>
     var packets = Number(diag.packets_last_5m || 0);
     var uptime = Number(diag.uptime_seconds || 0);
     var wd = diag.watchdog || {};
-
-    showReceptionAlert(wd);
 
     if (wd.state === "only_own") {
       element.className = "quiet";
@@ -1739,6 +1736,9 @@ DASHBOARD_HTML = """<!doctype html>
         " monitor subscriber" + (status.monitor_subscribers === 1 ? "" : "s");
       var diag = status.diagnostics;
       updateReceptionHealth(status.connected, diag);
+      showReceptionAlert(
+        status.connected && diag ? diag.watchdog : null
+      );
 
       if (diag) {
         renderActivityHistory(diag.activity_history);
@@ -1769,6 +1769,7 @@ DASHBOARD_HTML = """<!doctype html>
       statusDetail.textContent = err.message || String(err);
       diagnosticsDetail.textContent = "Diagnostics unavailable";
       renderActivityHistory(null);
+      showReceptionAlert(null);
       var receptionHealth = document.getElementById("receptionHealth");
       receptionHealth.className = "unavailable";
       receptionHealth.textContent =
