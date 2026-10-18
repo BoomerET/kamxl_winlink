@@ -2059,9 +2059,12 @@ and a dashboard card with a "Send test notification" button.
 (notify.n5ba.net) behind Cloudflare Access, using a Cloudflare Access
 service token (`KAMXL_NTFY_CF_ACCESS_CLIENT_ID` / `_SECRET` in
 `.env`): the dashboard's "Send test notification" was delivered to his
-phone. Still to confirm on the air: a real APRS message from the
-TH-D75A producing exactly one notification when the same message also
-comes back through an iGate.
+phone. The same day a real APRS message sent over the air from the
+TH-D75A (N5BA-7) triggered the incoming-message alert on his phone
+within seconds: the complete RF -> KAM-XL -> daemon -> ntfy ->
+phone path works. (Duplicate copies of a message, such as a digipeated
+or iGated repeat, are suppressed by the 15-minute dedupe; covered by
+unit tests.)
 
 Tests: `tests/test_heard_back_and_notify.py` (20).
 
