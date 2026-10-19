@@ -2243,3 +2243,24 @@ note. RPCs `telemetry.stations`, `telemetry.get`; REST
 
 Tests: `tests/test_telemetry.py` (14).
 
+### Longer station tracks on the map
+
+The live map stays as it was: the in-memory tracker, stations dropping
+off after an hour, 25-point trails. A **Tracks** picker in the map
+header (6 h, 24 h, 3 days, 7 days; `?tracks=` in the URL) adds a
+history layer from `ReceptionHistory.station_tracks()`: stored Port 2
+UI position reports in the period (objects, `}` gated copies, port 1
+and connected frames excluded, as live), each station's distinct
+consecutive positions thinned evenly to 500 points with the newest
+kept, and its latest position/symbol/comment. Tracks are drawn as a
+thinner, lighter line under the live trails; stations heard in the
+period but not in the last hour get a faded marker (45% opacity, same
+APRS symbol) with a popup linking to the packet log. The history layer
+refreshes every minute and re-checks which stations are live after
+each live refresh, so a station moves from faded to live when heard.
+Picking a period fits the map to all tracks. Header count reads
+"(2 live · 30 in 24 hours)". RPC `stations.history`, REST
+`GET /stations/history?hours=`.
+
+Tests: `tests/test_station_tracks.py` (7).
+

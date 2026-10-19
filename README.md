@@ -209,6 +209,8 @@ The 7-day and 30-day views aggregate hourly records into calendar days using the
 
 **Backups:** set `KAMXL_BACKUP_DIR` and the daemon backs the database up every night, for example to a network share, keeping the last week. See [docs/backup.md](docs/backup.md) for setting up an SMB/Windows share and for restoring.
 
+On the **map**, the Tracks picker shows where stations went over the last 6 hours to 7 days (from the history database), not just the live last hour.
+
 The **telemetry** page graphs what digipeaters and weather stations report in APRS telemetry -- battery voltage, temperatures, on/off bits -- named and scaled with each station's own PARM/UNIT/EQNS definitions.
 
 The **packet log** page (`/log`, "log" in every page's header) searches everything stored: by sender, digipeater, text and period -- e.g. "when did I last hear K5XYZ, and through which digipeater?" Packet contents are stored from the version that added map restore onward; older rows show who and when only.

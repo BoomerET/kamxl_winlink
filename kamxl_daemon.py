@@ -372,6 +372,7 @@ class KAMDaemon:
             "monitor.subscribe": self._m_monitor_subscribe,
             "monitor.unsubscribe": self._m_monitor_unsubscribe,
             "stations.list": self._m_stations_list,
+            "stations.history": self._m_stations_history,
             "coverage.status": self._m_coverage_status,
             "packets.search": self._m_packets_search,
             "telemetry.stations": self._m_telemetry_stations,
@@ -1836,6 +1837,25 @@ class KAMDaemon:
             stations = self._stations.list_stations()
 
         return [dataclasses.asdict(station) for station in stations]
+
+    def _m_stations_history(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Stations heard in the last ``hours`` (2-720, default 24) with
+        their tracks, from the history database -- for showing more
+        than the live map's last hour.
+        """
+        if self._reception_writer is None:
+            raise ValueError(
+                "Longer tracks need the history database (KAMXL_HISTORY_DB)"
+            )
+        hours = params.get("hours", 24)
+        if isinstance(hours, bool) or not isinstance(hours, (int, float)) \
+                or not 1 <= hours <= 720:
+            raise ValueError("hours must be a number from 1 to 720")
+        stations = self._reception_writer.station_tracks(
+            int(time.time() - hours * 3600)
+        )
+        return {"hours": hours, "stations": stations}
 
     def _m_stations_get(self, params: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         with self._stations_lock:

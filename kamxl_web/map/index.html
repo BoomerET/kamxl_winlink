@@ -39,6 +39,16 @@
     <select id="digiStationFilter" aria-label="Filter digipeater paths by station">
       <option value="">All stations</option>
     </select>
+    <label class="digiToggle">
+      Tracks
+      <select id="trackPeriod" aria-label="How far back to show stations and tracks">
+        <option value="1">last hour (live)</option>
+        <option value="6">6 hours</option>
+        <option value="24">24 hours</option>
+        <option value="72">3 days</option>
+        <option value="168">7 days</option>
+      </select>
+    </label>
     <a href="#" id="homeLink">home</a>
     <a href="#" id="terminalLink">terminal</a>
     <a href="#" id="pbbsLink">pbbs</a>
