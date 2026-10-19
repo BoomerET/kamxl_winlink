@@ -25,10 +25,12 @@ STATUS. Verified against a real NA6D OpenTNC (opentnc_capture.py,
   - not on this firmware: VERSION, STATUS, ECHO, MCOM, MRPT, MSTAMP,
     HEADERLN, PPERSIST, APRSDIGI, BEACON
 
-Still UNVERIFIED (nothing was heard during the capture): the MONITOR
-line format and the connect/disconnect banners. Those remain TNC-2
-convention; see TNC2_HEADER_RE and CONNECT_MARKERS. KISS mode
-(OpenTNCKISS, below) depends on none of it.
+MONITOR lines, seen later the same day: "0 (???): <[To APRS from N5BA
+via WIDE1-1 WIDE2-1: 03(UI) PID ^F0 payload ]" -- see OPENTNC_MONITOR_RE.
+
+Still UNVERIFIED: the connect/disconnect banners (TNC-2 convention, see
+CONNECT_MARKERS) and how a digipeated hop is marked in a monitor line.
+KISS mode (OpenTNCKISS, below) depends on none of it.
 
 What this driver deliberately does NOT do yet:
 
@@ -52,13 +54,166 @@ import time
 
 from typing import Any, Dict, List, Optional, Tuple, Union
 
-from packet import APRS_RADIO_PORT, TNC2_HEADER_RE
+from packet import APRS_RADIO_PORT, Packet, PacketParser, TNC2_HEADER_RE
 from tnc import (
     CommandInfo,
     TerminalTNC,
     TNCError,
     logger,
 )
+
+
+# ---------------------------------------------------------------------------
+# MONITOR output
+# ---------------------------------------------------------------------------
+#
+# Seen on the real unit (2026-10-19, a KAM-XL beacon heard off the air),
+# one line per packet, here right after the prompt:
+#
+#   cmd:0 (???): <[To APRS from N5BA via WIDE1-1 WIDE2-1: 03(UI) PID ^F0 =3314.34N/09650.70W-N5BA KAM-XL ^0D ]
+#
+# i.e. "CHANNEL (INFO): <[To DEST from SRC[ via DIGI DIGI...]: CONTROL(TYPE)
+# PID ^XX PAYLOAD ]", with non-printable payload bytes written as ^XX hex
+# (the ^0D is the beacon's trailing CR). Nothing like TNC-2's
+# "SRC>DST,DIGI:payload".
+#
+# Still unverified (one sample so far): how a digipeated hop is marked
+# (assumed TNC-2's trailing "*"), what "(???)" becomes when it isn't
+# "???", and connected-mode frame shapes. A line that starts like a
+# packet but whose frame part doesn't parse is still recorded, with
+# frame_type None and the text as payload.
+
+OPENTNC_MONITOR_RE: re.Pattern = re.compile(
+    r"^(?:cmd:)?\s*"
+    r"(?:(?P<channel>\d+)\s*\((?P<info>[^)]*)\):\s*)?"
+    r"<\[To\s+(?P<destination>\S+)\s+from\s+(?P<source>\S+?)"
+    r"(?:\s+via\s+(?P<digipeaters>[^:]+?))?\s*:"
+    r"(?P<rest>.*)$"
+)
+
+_OPENTNC_FRAME_RE: re.Pattern = re.compile(
+    r"^\s*(?P<control>[0-9A-Fa-f]{2})\((?P<frame_type>[A-Za-z]+)[^)]*\)"
+    r"(?:\s+PID\s+\^?(?P<pid>[0-9A-Fa-f]{2}))?"
+    r"(?:\s(?P<body>.*?))?\s*\]\s*$"
+)
+
+# The firmware appears to print a space before each escape ("PID ^F0",
+# "KAM-XL ^0D ]" for the payload "...KAM-XL\r"), so that one space is
+# part of the escape. One sample so far -- a Mic-E packet would confirm.
+_CARET_HEX_RE: re.Pattern = re.compile(r" ?\^([0-9A-Fa-f]{2})")
+
+# A packet line longer than this without its closing "]" is given up on.
+_MAX_PARTIAL = 4096
+
+
+def unescape_monitor_text(text: str) -> str:
+    """
+    Undo the OpenTNC's ^XX escaping of non-printable bytes, then present
+    the payload the way every other path does (kiss.info_text): latin-1,
+    CRs as line breaks, trailing line breaks dropped.
+    """
+    from kiss import info_text
+
+    data = _CARET_HEX_RE.sub(
+        lambda m: chr(int(m.group(1), 16)), text,
+    ).encode("latin-1", "replace")
+
+    return info_text(data)
+
+
+class OpenTNCPacketParser(PacketParser):
+    """
+    PacketParser for OpenTNC MONITOR lines (format above). Each OpenTNC
+    packet is one self-contained line ending in "]", so it is emitted as
+    soon as that line arrives -- no waiting for the next header. TNC-2
+    style lines are still understood (the base parser), in case other
+    firmware builds print those.
+    """
+
+    def __init__(self, default_port: int = APRS_RADIO_PORT) -> None:
+        super().__init__(header_re=TNC2_HEADER_RE, default_port=default_port)
+        self._ready: List[Packet] = []
+        self._partial: Optional[str] = None
+
+    def feed(self, text: str) -> List[Packet]:
+        return self._take(super().feed(text))
+
+    def flush(self) -> List[Packet]:
+        packets = self._take(super().flush())
+        if self._partial is not None:
+            logger.debug("OpenTNC: unterminated monitor line dropped: %r",
+                         self._partial)
+            self._partial = None
+        return packets
+
+    def flush_pending(self) -> List[Packet]:
+        return self._take(super().flush_pending())
+
+    def _take(self, packets: List[Packet]) -> List[Packet]:
+        packets = packets + self._ready
+        self._ready = []
+        return packets
+
+    def _process_line(self, line: str) -> Optional[Packet]:
+        if self._partial is not None:
+            if OPENTNC_MONITOR_RE.match(line):
+                logger.debug("OpenTNC: unterminated monitor line dropped: %r",
+                             self._partial)
+                self._partial = None
+            else:
+                line = self._partial + line
+                self._partial = None
+
+        match = OPENTNC_MONITOR_RE.match(line)
+
+        if match is None:
+            return super()._process_line(line)
+
+        if not match.group("rest").rstrip().endswith("]"):
+            if len(line) < _MAX_PARTIAL:
+                self._partial = line
+            return None
+
+        previous = self._finalize_pending()
+        packet = self._packet_from_match(match, line)
+
+        if previous is None:
+            return packet
+
+        self._ready.append(packet)
+        return previous
+
+    def _packet_from_match(self, match: "re.Match[str]", line: str) -> Packet:
+        rest = match.group("rest")
+        frame = _OPENTNC_FRAME_RE.match(rest)
+
+        if frame is not None:
+            frame_type: Optional[str] = frame.group("frame_type").upper()
+            body = frame.group("body") or ""
+        else:
+            frame_type = None
+            body = rest.strip()
+            if body.endswith("]"):
+                body = body[:-1].rstrip()
+
+        channel = match.group("channel")
+        port = self._default_port
+        if channel is not None and int(channel) != 0:
+            port = 10 + int(channel)  # same convention as KISS channels
+
+        digipeaters = match.group("digipeaters")
+
+        raw = line[line.find("<["):] if "<[" in line else line
+
+        return Packet(
+            source=match.group("source"),
+            destination=match.group("destination"),
+            digipeaters=tuple(digipeaters.split()) if digipeaters else (),
+            port=port,
+            payload=unescape_monitor_text(body),
+            raw=raw,
+            frame_type=frame_type,
+        )
 
 
 ON_OFF = ("ON", "OFF")
@@ -129,15 +284,15 @@ class OpenTNC(TerminalTNC):
 
     COMMANDS = OPENTNC_COMMANDS
 
-    HEADER_RE = TNC2_HEADER_RE
+    # One MONITOR line (format above); OpenTNCPacketParser also accepts
+    # TNC-2 lines.
+    HEADER_RE = OPENTNC_MONITOR_RE
 
     # Single radio port, reported as the APRS port (see module docstring).
     DEFAULT_RADIO_PORT = APRS_RADIO_PORT
 
-    # TNC-2 monitor output has no end-of-packet marker; a packet whose
-    # line has been followed by half a second of silence is complete.
-    # Otherwise the last packet of a burst -- maybe a message to us --
-    # would wait for the next one to be heard.
+    # OpenTNC packets are complete lines and are emitted at once; this
+    # covers the TNC-2 fallback, which has no end-of-packet marker.
     MONITOR_IDLE_FLUSH = 0.5
 
     # The Terminal Mode APRS transmit checks need a STATUS command, which
@@ -238,10 +393,23 @@ class OpenTNC(TerminalTNC):
         would swallow the command's own reply here, so only the header
         lines themselves are dropped.
         """
-        return "\r\n".join(
-            line for line in text.splitlines()
-            if not self.HEADER_RE.match(line.strip())
-        )
+        kept = []
+
+        for line in text.splitlines():
+            stripped = line.strip()
+
+            # Includes a packet printed right after an idle prompt
+            # ("cmd:0 (???): <[..."): that prompt belongs to no reply.
+            if (OPENTNC_MONITOR_RE.match(stripped)
+                    or TNC2_HEADER_RE.match(stripped)):
+                continue
+
+            kept.append(line)
+
+        return "\r\n".join(kept)
+
+    def make_packet_parser(self) -> PacketParser:
+        return OpenTNCPacketParser(default_port=self.DEFAULT_RADIO_PORT)
 
     # -----------------------------------------------------------------------
     # OpenTNC-specific settings
