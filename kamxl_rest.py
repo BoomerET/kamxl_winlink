@@ -361,6 +361,7 @@ ROUTES: Tuple[Tuple[str, "re.Pattern", str], ...] = (
     ("GET", re.compile(r"^/pbbs/messages/(?P<number>\d+)$"), "_h_pbbs_read_message"),
     ("GET", re.compile(r"^/map$"), "_h_map_page"),
     ("GET", re.compile(r"^/stations$"), "_h_stations_list"),
+    ("GET", re.compile(r"^/stations/history$"), "_h_stations_history"),
     ("GET", re.compile(r"^/objects$"), "_h_objects_list"),
     ("GET", re.compile(r"^/notify$"), "_h_notify_status"),
     ("POST", re.compile(r"^/notify/test$"), "_h_notify_test"),
@@ -822,6 +823,21 @@ class RESTRequestHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
+
+    def _h_stations_history(self, params: Dict[str, str], query: Dict[str, Any]) -> None:
+        """Stations and tracks over the last ?hours= (default 24)."""
+        try:
+            hours = float(query.get("hours", ["24"])[0])
+        except (TypeError, ValueError):
+            hours = None
+        if hours is None or not 1 <= hours <= 720:
+            self._send_json(400, {
+                "ok": False,
+                "error": {"type": "InvalidParam",
+                          "message": "hours must be a number from 1 to 720"},
+            })
+            return
+        self._relay("stations.history", hours=hours, _socket_timeout=60)
 
     def _h_objects_list(self, params: Dict[str, str], query: Dict[str, Any]) -> None:
         self._relay("objects.list")

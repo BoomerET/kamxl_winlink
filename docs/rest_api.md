@@ -850,6 +850,22 @@ named from `PARM.`/`UNIT.`/`BITS.` messages addressed to it. A station
 that names its channels has blank ones hidden; without names every
 channel with data is shown as "Channel N", in raw units.
 
+### Longer station tracks
+
+`GET /stations/history?hours=24` (1-720) returns `{hours, stations}`
+from the history database: every station with a position report in
+the period, newest-heard first, with its latest `latitude`,
+`longitude`, `symbol_table`, `symbol_code`, `comment`, `first_heard`,
+`last_heard`, `reports`, and `track` -- distinct consecutive positions
+as `[latitude, longitude, time]`, oldest first, thinned evenly to at
+most 500 points. Same rules as the live map: Port 2 UI position
+reports; objects and gated copies don't move a station.
+
+The map's **Tracks** picker (last hour, 6 h, 24 h, 3 days, 7 days;
+`?tracks=24` in the URL) uses it: each station's track over the
+period, plus a faded marker for stations heard then but not in the
+last hour. "Last hour (live)" is the map as before.
+
 ## Testing
 
 `tests/test_rest.py` runs a real `KAMDaemon` (wired to the same

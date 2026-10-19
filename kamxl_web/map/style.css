@@ -215,6 +215,11 @@
   .detailActions a.messageStation, a.messageStation { color: #3388ff; }
 
 
+  #trackPeriod {
+    background: #101617; color: #9c9; border: 1px solid #345;
+    font: inherit; font-size: 11px; padding: 2px 5px; margin-right: 12px;
+  }
+
   /* Coverage overlay banner (opened from the dashboard). */
   #coverageBanner:not([hidden]) {
     position: absolute;
@@ -254,5 +259,5 @@
       max-height: 55vh;
     }
     #stationSearch { font-size: 16px; width: 140px; }
-    #digiStationFilter { margin-right: 0; }
+    #digiStationFilter, #trackPeriod { margin-right: 0; font-size: 16px; }
   }

@@ -819,10 +819,10 @@
       if (!payload.ok) return;
 
       var stations = payload.result;
-      stationCount.textContent = stations.length
-        ? "(" + stations.length + ")"
-        : "";
-      empty.style.display = stations.length ? "none" : "block";
+      liveCount = stations.length;
+      updateStationCount();
+      empty.style.display =
+        stations.length || historyData.length ? "none" : "block";
 
       var seen = {};
       lastStations = stations;
@@ -931,10 +931,115 @@
         stationSelectionHandled = selectMapStation(requestedStation);
       }
 
+      if (historyData.length) renderHistory();
     } catch (err) {
       // Transient fetch failure -- next poll will retry.
     }
   }
+
+  // -- Longer tracks (from the history database) ----------------------
+  //
+  // "Tracks: 24 hours" etc. adds, on top of the live map (last hour),
+  // each station's track over that period and a faded marker for
+  // stations heard then but not in the last hour. ?tracks=24 in the URL.
+
+  var trackPeriod = document.getElementById("trackPeriod");
+  var historyLayer = L.layerGroup().addTo(map);
+  var historyData = [];
+  var liveCount = 0;
+  if (["6", "24", "72", "168"].indexOf(params.get("tracks")) !== -1) {
+    trackPeriod.value = params.get("tracks");
+  }
+
+  function periodText() {
+    return trackPeriod.options[trackPeriod.selectedIndex].text;
+  }
+
+  function updateStationCount() {
+    if (Number(trackPeriod.value) > 1 && historyData.length) {
+      stationCount.textContent = "(" + liveCount + " live · " +
+        historyData.length + " in " + periodText() + ")";
+    } else {
+      stationCount.textContent = liveCount ? "(" + liveCount + ")" : "";
+    }
+  }
+
+  function historyPopupHtml(s) {
+    return "<b>" + escapeHtml(s.callsign) + "</b><br>" +
+      "last heard " + escapeHtml(relativeTime(s.last_heard)) + "<br>" +
+      s.latitude.toFixed(5) + ", " + s.longitude.toFixed(5) + "<br>" +
+      (s.comment ? escapeHtml(s.comment) + "<br>" : "") +
+      s.reports + " position report" + (s.reports === 1 ? "" : "s") +
+      " in " + escapeHtml(periodText()) + "<br>" +
+      "<a class='messageStation' href='" + escapeHtml(authedUrl(
+        "/log?callsign=" + encodeURIComponent(s.callsign) + "&days=7")) +
+      "'>Packet log &rarr;</a> &middot; " + messageLinkHtml(s.callsign, "Message");
+  }
+
+  function renderHistory() {
+    historyLayer.clearLayers();
+    if (Number(trackPeriod.value) <= 1) return;
+    historyData.forEach(function (s) {
+      if (s.track.length >= 2) {
+        var line = L.polyline(s.track.map(function (p) { return [p[0], p[1]]; }), {
+          color: "#3388ff", weight: 2, opacity: 0.45, interactive: false
+        }).addTo(historyLayer);
+        line.bringToBack();
+      }
+      // Stations on the live map already have a marker.
+      if (markers[s.callsign]) return;
+      var icon = aprsIcon(s.symbol_table, s.symbol_code);
+      var latLng = [s.latitude, s.longitude];
+      var marker = icon
+        ? L.marker(latLng, { icon: icon, opacity: 0.45 })
+        : L.circleMarker(latLng, { radius: 5, color: "#888", fillOpacity: 0.5 });
+      marker.bindPopup(historyPopupHtml(s)).bindTooltip(s.callsign, {
+        direction: "top", offset: [0, -10]
+      }).addTo(historyLayer);
+    });
+  }
+
+  async function refreshHistory(fit) {
+    var hours = Number(trackPeriod.value);
+    if (hours <= 1) {
+      historyData = [];
+      renderHistory();
+      updateStationCount();
+      return;
+    }
+    try {
+      var res = await fetch(authedUrl("/stations/history?hours=" + hours));
+      var payload = await res.json();
+      if (!payload.ok) throw new Error(payload.error && payload.error.message);
+      if (Number(trackPeriod.value) !== hours) return;  // changed meanwhile
+      historyData = payload.result.stations;
+      renderHistory();
+      updateStationCount();
+      empty.style.display = liveCount || historyData.length ? "none" : "block";
+      if (fit && historyData.length) {
+        fitDone = true;
+        var bounds = [];
+        historyData.forEach(function (s) {
+          bounds.push([s.latitude, s.longitude]);
+          s.track.forEach(function (p) { bounds.push([p[0], p[1]]); });
+        });
+        map.fitBounds(bounds, { maxZoom: 12, padding: [30, 30] });
+      }
+    } catch (err) {
+      stationCount.textContent = "(tracks unavailable: " +
+        String(err.message || err) + ")";
+    }
+  }
+
+  trackPeriod.addEventListener("change", function () {
+    try {
+      var q = new URLSearchParams(location.search);
+      if (Number(trackPeriod.value) > 1) q.set("tracks", trackPeriod.value);
+      else q.delete("tracks");
+      history.replaceState(null, "", location.pathname + "?" + q.toString());
+    } catch (e) { /* harmless */ }
+    refreshHistory(true);
+  });
 
   // -- Coverage overlay (/map?coverage=<setup>&days=N) ----------------
   //
@@ -1025,6 +1130,8 @@
 
   refresh();
   setInterval(refresh, 15000);
+  refreshHistory(!!params.get("tracks") && !params.get("station"));
+  setInterval(function () { refreshHistory(false); }, 60000);
   refreshObjects();
   setInterval(refreshObjects, 15000);
 })();

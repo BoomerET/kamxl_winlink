@@ -432,6 +432,63 @@ class ReceptionHistory:
             )[:10],
         }
 
+    # -- station tracks ---------------------------------------------------
+
+    def station_tracks(self, since, max_points=500):
+        """
+        Where each station was since ``since``: its latest position and
+        symbol, and its track -- distinct consecutive positions, oldest
+        first, thinned evenly to at most ``max_points`` (the newest is
+        always kept). Same rules as the live map: Port 2 UI position
+        reports only, objects and gated copies don't move a station.
+        Newest-heard first.
+        """
+        from aprs import parse_position
+
+        parsed = {}
+        stations = {}
+        for source, received_at, dest, payload in self._connection.execute(
+            """
+            SELECT source, received_at, destination, payload
+            FROM received_packets
+            WHERE received_at >= ? AND port = 2 AND payload IS NOT NULL
+              AND (frame_type IS NULL OR frame_type = 'UI')
+            ORDER BY received_at, id
+            """,
+            (int(since),),
+        ):
+            if payload[:1] in (";", ")", "}"):
+                continue
+            key = (payload, dest)
+            if key not in parsed:
+                parsed[key] = parse_position(payload, destination=dest)
+            pos = parsed[key]
+            if pos is None:
+                continue
+            entry = stations.get(source)
+            if entry is None:
+                entry = stations[source] = {
+                    "callsign": source, "first_heard": received_at,
+                    "reports": 0, "track": [],
+                }
+            entry["reports"] += 1
+            entry.update(
+                latitude=pos.latitude, longitude=pos.longitude,
+                symbol_table=pos.symbol_table, symbol_code=pos.symbol_code,
+                comment=pos.comment.strip(), last_heard=received_at,
+            )
+            track = entry["track"]
+            if not track or track[-1][0] != pos.latitude \
+                    or track[-1][1] != pos.longitude:
+                track.append([pos.latitude, pos.longitude, received_at])
+
+        for entry in stations.values():
+            track = entry["track"]
+            if len(track) > max_points:
+                step = (len(track) - 1) / (max_points - 1)
+                entry["track"] = [track[round(i * step)] for i in range(max_points)]
+        return sorted(stations.values(), key=lambda e: -e["last_heard"])
+
     # -- telemetry (see aprs_telemetry.py) -------------------------------
 
     def _telemetry_reports(self, since, callsign=None):
