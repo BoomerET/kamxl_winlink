@@ -1,0 +1,316 @@
+/*
+ * tncstation themes -- shared by every page (inlined by load_page()).
+ *
+ * Every color the pages use is a --t-* token defined here, once per
+ * theme. Page stylesheets only ever say var(--t-...); no page has a
+ * color of its own. To add a theme: copy one block below, give it a
+ * new [data-theme="..."] selector, change the values, and add its name
+ * to THEMES in theme.js.
+ *
+ *   terminal  green on black -- the original look, and the default
+ *   light     dark on light, for daylight and phones outdoors
+ *   night     dim red on black, to keep night vision at the operating
+ *             position
+ *   (auto)    not a palette: theme.js picks terminal or light from the
+ *             device's dark/light setting
+ *
+ * theme.js sets <html data-theme="..."> before the page draws.
+ */
+
+/* Terminal -- the original colors, unchanged */
+:root {
+  /* Surfaces */
+  --t-bg: #0b0f10;
+  --t-surface: #101617;
+  --t-surface-raised: #101b1c;
+  --t-surface-sunken: #0b1213;
+  --t-tooltip-bg: #18242a;
+  --t-row-hover: #101c1d;
+  --t-item-hover: #15211f;
+  --t-item-selected: #1a2d26;
+  --t-bubble-in: #17242a;
+  --t-bubble-out: #16291f;
+  --t-field-alt-bg: #142525;
+  --t-field-alt-hover: #1c3030;
+  --t-overlay-bg: rgba(11, 15, 16, 0.85);
+  --t-mark-bg: #3a5a20;
+  /* Borders and rules */
+  --t-border: #234;
+  --t-border-strong: #345;
+  --t-border-chip: #456;
+  --t-border-alt: #344;
+  --t-rule: #1a2a2e;
+  --t-rule-2: #1c2526;
+  --t-grid: #1c2a2e;
+  --t-border-accent: #3a6;
+  --t-focus: #5a8;
+  --t-border-good: #2c5a3c;
+  --t-border-ok: #3a5;
+  --t-border-bad: #844;
+  --t-border-warn: #665;
+  --t-border-info: #357;
+  --t-bubble-in-border: #2a3d44;
+  --t-tooltip-border: #3a5560;
+  --t-field-alt-border: #385454;
+  --t-overlay-border: #5a4a22;
+  /* Text */
+  --t-ink: #d4f7d4;
+  --t-ink-strong: #cfc;
+  --t-ink-on-mark: #efe;
+  --t-ink-max: #fff;
+  --t-field-alt-ink: #e0eeee;
+  --t-ink-soft: #cdd;
+  --t-muted: #9ab;
+  --t-muted-alt: #9aa;
+  --t-label: #789;
+  --t-dim: #678;
+  --t-faint: #567;
+  --t-header-ink: #888;
+  --t-notice: #999;
+  --t-control-ink: #9c9;
+  --t-heading: #9f9;
+  --t-heading-alt: #8f8;
+  /* Accents and status */
+  --t-accent: #6c9;
+  --t-teal: #22a4a7;
+  --t-series: #3987e5;
+  --t-link: #3388ff;
+  --t-info: #6cf;
+  --t-info-soft: #8cf;
+  --t-mint: #8fd;
+  --t-ok: #6f6;
+  --t-ok-bright: #50fa7b;
+  --t-warn: #cc6;
+  --t-amber: #f1c40f;
+  --t-on-amber: #0b0f10;
+  --t-gold: #ffd27a;
+  --t-badge-bg: #fc3;
+  --t-on-badge: #000;
+  --t-badge-ring: #000;
+  --t-bad: #f77;
+  --t-bad-icon: #f66;
+  --t-alert: #ff5555;
+  --t-alert-soft: #ff7777;
+  --t-amber-tint: rgba(241, 196, 15, 0.08);
+  --t-alert-tint: rgba(255, 85, 85, 0.08);
+  --t-link-tint: rgba(51, 136, 255, 0.08);
+  --t-shadow: #0008;
+  --t-shadow-strong: #0009;
+}
+
+/* Light */
+:root[data-theme="light"] {
+  color-scheme: light;
+  /* Surfaces */
+  --t-bg: #f4f7f5;
+  --t-surface: #ffffff;
+  --t-surface-raised: #ffffff;
+  --t-surface-sunken: #eef2f0;
+  --t-tooltip-bg: #ffffff;
+  --t-row-hover: #eef4f0;
+  --t-item-hover: #eaf2ec;
+  --t-item-selected: #dcefe2;
+  --t-bubble-in: #eef3f6;
+  --t-bubble-out: #e3f3e8;
+  --t-field-alt-bg: #f1f6f6;
+  --t-field-alt-hover: #e3eeee;
+  --t-overlay-bg: rgba(255, 255, 255, 0.92);
+  --t-mark-bg: #fff0a0;
+  /* Borders and rules */
+  --t-border: #d3dcd8;
+  --t-border-strong: #b4c2bc;
+  --t-border-chip: #a7b6b0;
+  --t-border-alt: #c7d3d0;
+  --t-rule: #e1e7e4;
+  --t-rule-2: #e6ebe9;
+  --t-grid: #e1e7e4;
+  --t-border-accent: #4c9a6a;
+  --t-focus: #2f8a5c;
+  --t-border-good: #7cbf93;
+  --t-border-ok: #4f9d6b;
+  --t-border-bad: #d98b8b;
+  --t-border-warn: #c9b46a;
+  --t-border-info: #8aaed6;
+  --t-bubble-in-border: #c3d3dc;
+  --t-tooltip-border: #b4c2bc;
+  --t-field-alt-border: #b7cccc;
+  --t-overlay-border: #d8c48a;
+  /* Text */
+  --t-ink: #1d2b24;
+  --t-ink-strong: #0f3d24;
+  --t-ink-on-mark: #1d2b24;
+  --t-ink-max: #0b1a12;
+  --t-field-alt-ink: #1d2b24;
+  --t-ink-soft: #39484f;
+  --t-muted: #4e5f66;
+  --t-muted-alt: #52625f;
+  --t-label: #55666d;
+  --t-dim: #62727a;
+  --t-faint: #6e7d84;
+  --t-header-ink: #55666d;
+  --t-notice: #62727a;
+  --t-control-ink: #236841;
+  --t-heading: #1a6b3c;
+  --t-heading-alt: #1a6b3c;
+  /* Accents and status */
+  --t-accent: #2f8a5c;
+  --t-teal: #13797b;
+  --t-series: #2a6fd0;
+  --t-link: #0b5ed7;
+  --t-info: #0a689e;
+  --t-info-soft: #1a679c;
+  --t-mint: #13795b;
+  --t-ok: #1a7f37;
+  --t-ok-bright: #1a7f37;
+  --t-warn: #836500;
+  --t-amber: #946600;
+  --t-on-amber: #ffffff;
+  --t-gold: #8a5a00;
+  --t-badge-bg: #ffd84d;
+  --t-on-badge: #000000;
+  --t-badge-ring: #000000;
+  --t-bad: #c62828;
+  --t-bad-icon: #c62828;
+  --t-alert: #c62828;
+  --t-alert-soft: #b3261e;
+  --t-amber-tint: rgba(148, 102, 0, 0.10);
+  --t-alert-tint: rgba(198, 40, 40, 0.08);
+  --t-link-tint: rgba(11, 94, 215, 0.08);
+  --t-shadow: rgba(0, 0, 0, 0.14);
+  --t-shadow-strong: rgba(0, 0, 0, 0.20);
+}
+
+/* Night (red) */
+:root[data-theme="night"] {
+  color-scheme: dark;
+  /* Surfaces */
+  --t-bg: #000000;
+  --t-surface: #0a0000;
+  --t-surface-raised: #0f0202;
+  --t-surface-sunken: #050000;
+  --t-tooltip-bg: #140303;
+  --t-row-hover: #160404;
+  --t-item-hover: #160404;
+  --t-item-selected: #170404;
+  --t-bubble-in: #120303;
+  --t-bubble-out: #140303;
+  --t-field-alt-bg: #120303;
+  --t-field-alt-hover: #200505;
+  --t-overlay-bg: rgba(0, 0, 0, 0.88);
+  --t-mark-bg: #4a0d0d;
+  /* Borders and rules */
+  --t-border: #2a0808;
+  --t-border-strong: #3d0b0b;
+  --t-border-chip: #4a0e0e;
+  --t-border-alt: #330a0a;
+  --t-rule: #1f0606;
+  --t-rule-2: #1f0606;
+  --t-grid: #2a0808;
+  --t-border-accent: #6b1414;
+  --t-focus: #8c1c1c;
+  --t-border-good: #5a1212;
+  --t-border-ok: #6b1414;
+  --t-border-bad: #8c1c1c;
+  --t-border-warn: #5a1212;
+  --t-border-info: #4a0e0e;
+  --t-bubble-in-border: #330a0a;
+  --t-tooltip-border: #4a0e0e;
+  --t-field-alt-border: #3d0b0b;
+  --t-overlay-border: #4a0e0e;
+  /* Text */
+  --t-ink: #e04444;
+  --t-ink-strong: #f04a4a;
+  --t-ink-on-mark: #f26060;
+  --t-ink-max: #ff5a5a;
+  --t-field-alt-ink: #e04444;
+  --t-ink-soft: #c83838;
+  --t-muted: #b83636;
+  --t-muted-alt: #b83636;
+  --t-label: #a83131;
+  --t-dim: #8f2a2a;
+  --t-faint: #7a2424;
+  --t-header-ink: #a83131;
+  --t-notice: #a83131;
+  --t-control-ink: #c83838;
+  --t-heading: #e84444;
+  --t-heading-alt: #e84444;
+  /* Accents and status */
+  --t-accent: #b83232;
+  --t-teal: #a83131;
+  --t-series: #c83838;
+  --t-link: #ff6b4a;
+  --t-info: #e0603c;
+  --t-info-soft: #e0603c;
+  --t-mint: #c83838;
+  --t-ok: #e84444;
+  --t-ok-bright: #e84444;
+  --t-warn: #cc5a24;
+  --t-amber: #cc5a24;
+  --t-on-amber: #000000;
+  --t-gold: #cc5a24;
+  --t-badge-bg: #cc5a24;
+  --t-on-badge: #000000;
+  --t-badge-ring: #000000;
+  --t-bad: #ff6b4a;
+  --t-bad-icon: #ff6b4a;
+  --t-alert: #ff6b4a;
+  --t-alert-soft: #ff6b4a;
+  --t-amber-tint: rgba(204, 90, 36, 0.10);
+  --t-alert-tint: rgba(255, 107, 74, 0.08);
+  --t-link-tint: rgba(255, 107, 74, 0.08);
+  --t-shadow: rgba(0, 0, 0, 0.8);
+  --t-shadow-strong: rgba(0, 0, 0, 0.85);
+}
+
+/* The theme picker theme.js adds to each page header. Same look as the
+   header's own buttons. */
+.themePicker {
+  margin-left: 8px;
+  padding: 1px 4px;
+  background: var(--t-surface);
+  border: 1px solid var(--t-border-strong);
+  border-radius: 3px;
+  color: var(--t-control-ink);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+.themePicker:hover, .themePicker:focus { border-color: var(--t-focus); color: var(--t-ink-strong); }
+
+/* Night: the map tiles, lines and markers are drawn for OpenStreetMap's
+   light tiles, so dim and red-tint the whole map instead of recoloring
+   each piece -- one bright white map would undo the point of the theme.
+   Popups and labels are page elements and use the tokens above. */
+:root[data-theme="night"] .leaflet-tile-pane,
+:root[data-theme="night"] .leaflet-overlay-pane,
+:root[data-theme="night"] .leaflet-marker-pane,
+:root[data-theme="night"] .leaflet-shadow-pane {
+  filter: invert(1) grayscale(1) brightness(0.55) sepia(1) saturate(6) hue-rotate(-50deg);
+}
+:root[data-theme="night"] .leaflet-container { background: var(--t-bg); }
+:root[data-theme="night"] .leaflet-popup-content-wrapper,
+:root[data-theme="night"] .leaflet-popup-tip {
+  background: var(--t-surface-raised);
+  color: var(--t-ink);
+  box-shadow: 0 3px 14px var(--t-shadow);
+}
+:root[data-theme="night"] .leaflet-popup-content a,
+:root[data-theme="night"] .leaflet-container a.leaflet-popup-close-button { color: var(--t-link); }
+:root[data-theme="night"] .leaflet-bar a,
+:root[data-theme="night"] .leaflet-bar a:hover {
+  background: var(--t-surface-raised);
+  border-color: var(--t-border-strong);
+  color: var(--t-ink);
+}
+:root[data-theme="night"] .leaflet-bar { border-color: var(--t-border-strong); }
+:root[data-theme="night"] .leaflet-control-attribution {
+  background: var(--t-overlay-bg);
+  color: var(--t-dim);
+}
+:root[data-theme="night"] .leaflet-control-attribution a { color: var(--t-label); }
+:root[data-theme="night"] .leaflet-attribution-flag { display: none !important; }
+:root[data-theme="night"] .leaflet-tooltip {
+  background: var(--t-surface-raised);
+  border-color: var(--t-border-strong);
+  color: var(--t-ink);
+}

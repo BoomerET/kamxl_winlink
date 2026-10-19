@@ -2,8 +2,8 @@
   html, body {
     margin: 0;
     min-height: 100%;
-    background: #0b0f10;
-    color: #d4f7d4;
+    background: var(--t-bg);
+    color: var(--t-ink);
     font-family: "Courier New", Courier, monospace;
   }
   .paneHeader {
@@ -11,43 +11,43 @@
     align-items: center;
     justify-content: space-between;
     padding: 4px 10px;
-    background: #101617;
-    border-bottom: 1px solid #234;
+    background: var(--t-surface);
+    border-bottom: 1px solid var(--t-border);
     font-size: 12px;
     letter-spacing: 0.05em;
-    color: #888;
+    color: var(--t-header-ink);
     box-sizing: border-box;
   }
   .paneHeader a, .paneHeader button {
     background: none;
-    border: 1px solid #345;
-    color: #9c9;
+    border: 1px solid var(--t-border-strong);
+    color: var(--t-control-ink);
     font: inherit;
     font-size: 11px;
     padding: 2px 8px;
     cursor: pointer;
     text-decoration: none;
   }
-  .paneHeader a:hover, .paneHeader button:hover { border-color: #5a8; color: #cfc; }
+  .paneHeader a:hover, .paneHeader button:hover { border-color: var(--t-focus); color: var(--t-ink-strong); }
   #content { padding: 12px; }
   table { border-collapse: collapse; width: 100%; font-size: 13px; }
   th, td {
     text-align: left;
     padding: 4px 10px 4px 0;
-    border-bottom: 1px solid #1c2526;
+    border-bottom: 1px solid var(--t-rule-2);
     white-space: nowrap;
   }
-  th { color: #789; font-weight: normal; }
+  th { color: var(--t-label); font-weight: normal; }
   td.subject { white-space: normal; }
   tr.msgRow { cursor: pointer; }
-  tr.msgRow:hover { background: #101c1d; }
-  .err { color: #f77; }
-  .notice { color: #999; font-style: italic; }
+  tr.msgRow:hover { background: var(--t-row-hover); }
+  .err { color: var(--t-bad); }
+  .notice { color: var(--t-notice); font-style: italic; }
   #detail {
     white-space: pre-wrap;
     word-break: break-word;
     padding-top: 8px;
     line-height: 1.4;
   }
-  #detail .hdr { color: #6cf; margin-bottom: 8px; }
+  #detail .hdr { color: var(--t-info); margin-bottom: 8px; }
   #backLink { display: inline-block; margin-bottom: 10px; }

@@ -2,8 +2,8 @@
   html, body {
     margin: 0;
     min-height: 100%;
-    background: #0b0f10;
-    color: #d4f7d4;
+    background: var(--t-bg);
+    color: var(--t-ink);
     font-family: "Courier New", Courier, monospace;
   }
   .paneHeader {
@@ -11,24 +11,24 @@
     align-items: center;
     justify-content: space-between;
     padding: 4px 10px;
-    background: #101617;
-    border-bottom: 1px solid #234;
+    background: var(--t-surface);
+    border-bottom: 1px solid var(--t-border);
     font-size: 12px;
     letter-spacing: 0.05em;
-    color: #888;
+    color: var(--t-header-ink);
     box-sizing: border-box;
   }
   .paneHeader a, .paneHeader button {
     background: none;
-    border: 1px solid #345;
-    color: #9c9;
+    border: 1px solid var(--t-border-strong);
+    color: var(--t-control-ink);
     font: inherit;
     font-size: 11px;
     padding: 2px 8px;
     cursor: pointer;
     text-decoration: none;
   }
-  .paneHeader a:hover, .paneHeader button:hover { border-color: #5a8; color: #cfc; }
+  .paneHeader a:hover, .paneHeader button:hover { border-color: var(--t-focus); color: var(--t-ink-strong); }
   #cards {
     display: flex;
     flex-wrap: wrap;
@@ -37,8 +37,8 @@
     box-sizing: border-box;
   }
   .card {
-    background: #101617;
-    border: 1px solid #234;
+    background: var(--t-surface);
+    border: 1px solid var(--t-border);
     border-radius: 4px;
     padding: 14px 16px;
     min-width: 240px;
@@ -49,25 +49,25 @@
     margin: 0 0 10px;
     font-size: 12px;
     letter-spacing: 0.05em;
-    color: #789;
+    color: var(--t-label);
     font-weight: normal;
     text-transform: uppercase;
   }
-  .card .big { font-size: 20px; color: #cfc; }
-  .card .sub { color: #9ab; font-size: 12px; margin-top: 4px; }
+  .card .big { font-size: 20px; color: var(--t-ink-strong); }
+  .card .sub { color: var(--t-muted); font-size: 12px; margin-top: 4px; }
   .card a.action, .card button.action {
     display: inline-block;
     margin: 10px 8px 0 0;
     background: none;
-    border: 1px solid #345;
-    color: #9c9;
+    border: 1px solid var(--t-border-strong);
+    color: var(--t-control-ink);
     font: inherit;
     font-size: 12px;
     padding: 4px 10px;
     cursor: pointer;
     text-decoration: none;
   }
-  .card a.action:hover, .card button.action:hover { border-color: #5a8; color: #cfc; }
+  .card a.action:hover, .card button.action:hover { border-color: var(--t-focus); color: var(--t-ink-strong); }
   .card button.action:disabled { opacity: 0.5; cursor: default; }
   /* APRS Messaging */
   #aprsMessagingCard {
@@ -76,9 +76,9 @@
   }
   #aprsConversations { margin-top: 16px; }
   #aprsConversations .autoAckToggle { margin-top: 10px; }
-  #aprsConversations h3 { font-size: 13px; color: #9ab; margin: 0 0 6px; }
+  #aprsConversations h3 { font-size: 13px; color: var(--t-muted); margin: 0 0 6px; }
   #convUnreadBadge {
-    background: #f1c40f; color: #0b0f10; border-radius: 8px;
+    background: var(--t-amber); color: var(--t-on-amber); border-radius: 8px;
     padding: 0 6px; font-size: 11px; margin-left: 4px;
   }
   .convLayout {
@@ -92,33 +92,33 @@
     .convLayout { grid-template-columns: 1fr; }
   }
   #convList {
-    border: 1px solid #234; border-radius: 4px;
+    border: 1px solid var(--t-border); border-radius: 4px;
     max-height: 340px; overflow-y: auto;
   }
   .convRow {
     display: block; width: 100%; text-align: left;
-    background: none; border: 0; border-bottom: 1px solid #1a2a2e;
-    color: #d4f7d4; font: inherit; font-size: 12px;
+    background: none; border: 0; border-bottom: 1px solid var(--t-rule);
+    color: var(--t-ink); font: inherit; font-size: 12px;
     padding: 7px 8px; cursor: pointer;
   }
-  .convRow:hover, .convRow:focus-visible { background: #15211f; outline: none; }
-  .convRow.selected { background: #1a2d26; }
+  .convRow:hover, .convRow:focus-visible { background: var(--t-item-hover); outline: none; }
+  .convRow.selected { background: var(--t-item-selected); }
   .convRow .convCall { font-weight: bold; }
   .convRow .convUnread {
-    float: right; background: #f1c40f; color: #0b0f10;
+    float: right; background: var(--t-amber); color: var(--t-on-amber);
     border-radius: 8px; padding: 0 6px; font-size: 11px;
   }
   .convRow .convPreview {
-    display: block; color: #9ab; margin-top: 2px;
+    display: block; color: var(--t-muted); margin-top: 2px;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
   #convThread {
-    border: 1px solid #234; border-radius: 4px;
+    border: 1px solid var(--t-border); border-radius: 4px;
     display: flex; flex-direction: column; min-width: 0;
   }
   .convThreadHead {
     display: flex; justify-content: space-between; align-items: center;
-    padding: 6px 8px; border-bottom: 1px solid #234; gap: 8px;
+    padding: 6px 8px; border-bottom: 1px solid var(--t-border); gap: 8px;
   }
   .convThreadHead button.action { margin-top: 0; padding: 2px 10px; }
   #convMessages {
@@ -129,14 +129,14 @@
     max-width: 85%; padding: 6px 9px; border-radius: 8px;
     overflow-wrap: anywhere; line-height: 1.4;
   }
-  .bubble.in { align-self: flex-start; background: #17242a; border: 1px solid #2a3d44; }
-  .bubble.out { align-self: flex-end; background: #16291f; border: 1px solid #2c5a3c; }
+  .bubble.in { align-self: flex-start; background: var(--t-bubble-in); border: 1px solid var(--t-bubble-in-border); }
+  .bubble.out { align-self: flex-end; background: var(--t-bubble-out); border: 1px solid var(--t-border-good); }
   .bubble .bubbleMeta {
     display: flex; gap: 6px; flex-wrap: wrap; align-items: center;
-    color: #9ab; font-size: 11px; margin-top: 4px;
+    color: var(--t-muted); font-size: 11px; margin-top: 4px;
   }
   .bubble .bubbleMeta button.action { margin-top: 0; padding: 1px 7px; font-size: 11px; }
-  .ackBadge.gaveup { color: #f77; border-color: #844; }
+  .ackBadge.gaveup { color: var(--t-bad); border-color: var(--t-border-bad); }
 
   #aprsMessageForm {
     display: flex;
@@ -147,7 +147,7 @@
   #aprsMessageForm > label[for] {
     display: block;
     font-size: 12px;
-    color: #9ab;
+    color: var(--t-muted);
     margin-bottom: -4px;
   }
 
@@ -156,9 +156,9 @@
     width: 100%;
     box-sizing: border-box;
     padding: 7px 9px;
-    background: #0b0f10;
-    color: #d4f7d4;
-    border: 1px solid #345;
+    background: var(--t-bg);
+    color: var(--t-ink);
+    border: 1px solid var(--t-border-strong);
     border-radius: 3px;
     font: inherit;
     font-size: 13px;
@@ -176,7 +176,7 @@
   #aprsMessageForm input[type="checkbox"] {
     flex: 0 0 auto;
     margin: 2px 0 0;
-    accent-color: #6c9;
+    accent-color: var(--t-accent);
   }
 
   #aprsMessageForm button.action {
@@ -196,43 +196,43 @@
     gap: 8px;
     align-items: flex-start;
     font-size: 12px;
-    color: #cfc;
+    color: var(--t-ink-strong);
     cursor: pointer;
   }
   .autoAckToggle input { margin-top: 2px; }
-  #aprsAutoAckStatus.on { color: #6f6; }
-  #aprsAutoAckStatus.paused { color: #cc6; }
-  #aprsAutoAckStatus.off { color: #9ab; }
+  #aprsAutoAckStatus.on { color: var(--t-ok); }
+  #aprsAutoAckStatus.paused { color: var(--t-warn); }
+  #aprsAutoAckStatus.off { color: var(--t-muted); }
   .inboxButtons { display: flex; gap: 8px; flex-wrap: wrap; }
-  #aprsOutbox h3, #aprsInbox h3 { font-size: 13px; color: #9ab; margin: 0 0 6px; }
+  #aprsOutbox h3, #aprsInbox h3 { font-size: 13px; color: var(--t-muted); margin: 0 0 6px; }
   .outboxEntry {
     padding: 8px 0;
-    border-bottom: 1px solid #234;
+    border-bottom: 1px solid var(--t-border);
     font-size: 12px;
   }
-  .outboxHead { color: #9ab; display: flex; gap: 8px; flex-wrap: wrap; }
+  .outboxHead { color: var(--t-muted); display: flex; gap: 8px; flex-wrap: wrap; }
   .outboxText { margin-top: 4px; overflow-wrap: anywhere; }
   .outboxStatus { margin-top: 4px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
   .ackBadge {
     display: inline-block;
     padding: 1px 6px;
     border-radius: 3px;
-    border: 1px solid #456;
+    border: 1px solid var(--t-border-chip);
     font-size: 11px;
   }
-  .ackBadge.pending { color: #cc6; border-color: #665; }
-  .ackBadge.acked { color: #6f6; border-color: #3a5; }
-  .ackBadge.rejected { color: #f77; border-color: #844; }
+  .ackBadge.pending { color: var(--t-warn); border-color: var(--t-border-warn); }
+  .ackBadge.acked { color: var(--t-ok); border-color: var(--t-border-ok); }
+  .ackBadge.rejected { color: var(--t-bad); border-color: var(--t-border-bad); }
   .outboxEntry button.action { margin-top: 0; padding: 2px 8px; font-size: 11px; }
-  #statusDot.live::before { content: "\25CF "; color: #6f6; }
-  #statusDot.down::before { content: "\2715 "; color: #f66; }
-  #statusDot.checking::before { content: "\25CB "; color: #cc6; }
-  .err { color: #f77; }
+  #statusDot.live::before { content: "\25CF "; color: var(--t-ok); }
+  #statusDot.down::before { content: "\2715 "; color: var(--t-bad-icon); }
+  #statusDot.checking::before { content: "\25CB "; color: var(--t-warn); }
+  .err { color: var(--t-bad); }
   table { border-collapse: collapse; width: 100%; font-size: 12px; margin-top: 8px; }
   th, td {
     text-align: left;
     padding: 3px 8px 3px 0;
-    border-bottom: 1px solid #1c2526;
+    border-bottom: 1px solid var(--t-rule-2);
     white-space: nowrap;
   }
   td.subject { white-space: normal; }
@@ -249,16 +249,16 @@
   }
 
   #activityChart .activity-bar {
-    fill: #6c9;
+    fill: var(--t-accent);
   }
 
   #activityChart .activity-grid {
-    stroke: #345;
+    stroke: var(--t-border-strong);
     stroke-width: 1;
   }
 
   #activityChart .activity-label {
-    fill: #9ab;
+    fill: var(--t-muted);
     font: 11px monospace;
   }
 
@@ -279,16 +279,16 @@
   }
 
   #historyChart .activity-bar {
-    fill: #6c9;
+    fill: var(--t-accent);
   }
 
   #historyChart .activity-grid {
-    stroke: #345;
+    stroke: var(--t-border-strong);
     stroke-width: 1;
   }
 
   #historyChart .activity-label {
-    fill: #9ab;
+    fill: var(--t-muted);
     font: 11px monospace;
   }
 
@@ -304,34 +304,34 @@
   #receptionAlert {
     margin: 12px 16px 0;
     padding: 10px 14px;
-    border: 1px solid #f1c40f;
+    border: 1px solid var(--t-amber);
     border-left-width: 6px;
     border-radius: 4px;
-    background: rgba(241, 196, 15, 0.08);
-    color: #f1c40f;
+    background: var(--t-amber-tint);
+    color: var(--t-amber);
     font-size: 13px;
     line-height: 1.5;
   }
   #receptionAlert.silent {
-    border-color: #ff5555;
-    background: rgba(255, 85, 85, 0.08);
-    color: #ff7777;
+    border-color: var(--t-alert);
+    background: var(--t-alert-tint);
+    color: var(--t-alert-soft);
   }
   #receptionAlert[hidden] { display: none; }
-  #receptionAlertText { color: #cdd; margin-top: 2px; }
+  #receptionAlertText { color: var(--t-ink-soft); margin-top: 2px; }
 
   #receptionHealth.receiving {
-    color: #50fa7b;
+    color: var(--t-ok-bright);
   }
 
   #receptionHealth.waiting,
   #receptionHealth.quiet {
-    color: #f1c40f;
+    color: var(--t-amber);
   }
 
   #receptionHealth.disconnected,
   #receptionHealth.unavailable {
-    color: #ff5555;
+    color: var(--t-alert);
   }
 
   .digiToggle {
@@ -339,13 +339,13 @@
     align-items: center;
     gap: 5px;
     margin-right: 15px;
-    color: #9c9;
+    color: var(--t-control-ink);
     font-size: 11px;
     cursor: pointer;
   }
 
   .digiToggle input {
-    accent-color: #22a4a7;
+    accent-color: var(--t-teal);
     cursor: pointer;
   }
 
@@ -362,7 +362,7 @@
 
   .receptionMetrics > div {
     padding: 12px;
-    border: 1px solid #344;
+    border: 1px solid var(--t-border-alt);
     border-radius: 6px;
     min-width: 0;
   }
@@ -370,7 +370,7 @@
   .receptionMetricValue {
     font-size: 26px;
     font-weight: bold;
-    color: #50fa7b;
+    color: var(--t-ok-bright);
     font-variant-numeric: tabular-nums;
   }
 
@@ -382,7 +382,7 @@
 
   .receptionLists h3 {
     font-size: 14px;
-    color: #9ab;
+    color: var(--t-muted);
   }
 
   .receptionRow {
@@ -390,7 +390,7 @@
     justify-content: space-between;
     gap: 12px;
     padding: 6px 0;
-    border-bottom: 1px solid #344;
+    border-bottom: 1px solid var(--t-border-alt);
     font-family: monospace;
   }
 
@@ -407,9 +407,9 @@
 
   .receptionFilters input,
   .receptionFilters select {
-    background: #142525;
-    color: #e0eeee;
-    border: 1px solid #385454;
+    background: var(--t-field-alt-bg);
+    color: var(--t-field-alt-ink);
+    border: 1px solid var(--t-field-alt-border);
     border-radius: 5px;
     padding: 7px 9px;
     max-width: 100%;
@@ -439,7 +439,7 @@
 
   .receptionBarTrack {
     height: 8px;
-    background: #1c3030;
+    background: var(--t-field-alt-hover);
     border-radius: 4px;
     overflow: hidden;
     margin-top: 4px;
@@ -447,29 +447,29 @@
 
   .receptionBarFill {
     height: 100%;
-    background: #50fa7b;
+    background: var(--t-ok-bright);
     border-radius: 4px;
     transition: width 0.4s ease;
   }
 
   #rxTopDigis .receptionBarFill {
-    background: #22a4a7;
+    background: var(--t-teal);
   }
 
   .receptionRow span:last-child {
-    color: #50fa7b;
+    color: var(--t-ok-bright);
     font-variant-numeric: tabular-nums;
   }
 
   .receptionStationLink {
     color: inherit;
     text-decoration: none;
-    border-bottom: 1px dotted #50fa7b;
+    border-bottom: 1px dotted var(--t-ok-bright);
   }
 
   .receptionStationLink:hover,
   .receptionStationLink:focus-visible {
-    color: #50fa7b;
+    color: var(--t-ok-bright);
     text-decoration: underline;
   }
 
@@ -490,52 +490,52 @@
   /* Bulletins card */
   #bulletinCard { flex: 1 1 340px; }
   #bulletinNewBadge {
-    background: #f1c40f; color: #0b0f10; border-radius: 8px;
+    background: var(--t-amber); color: var(--t-on-amber); border-radius: 8px;
     padding: 0 6px; font-size: 11px; margin-left: 4px;
   }
   .bulletinControls {
     display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
-    font-size: 12px; color: #9ab;
+    font-size: 12px; color: var(--t-muted);
   }
   .bulletinControls select {
-    background: #0b0f10; color: #d4f7d4; border: 1px solid #234;
+    background: var(--t-bg); color: var(--t-ink); border: 1px solid var(--t-border);
     font: inherit; padding: 2px 4px;
   }
   .bulletinControls button.action { margin-top: 0; }
   #bulletinList { margin-top: 8px; max-height: 360px; overflow-y: auto; }
-  .bulletinGroup { border-top: 1px solid #234; padding: 6px 0; }
-  .bulletinFrom { color: #9ab; font-size: 12px; }
-  .bulletinFrom b { color: #cfc; }
+  .bulletinGroup { border-top: 1px solid var(--t-border); padding: 6px 0; }
+  .bulletinFrom { color: var(--t-muted); font-size: 12px; }
+  .bulletinFrom b { color: var(--t-ink-strong); }
   .bulletinRow {
     display: flex; gap: 8px; align-items: baseline;
     font-size: 12px; margin-top: 4px;
   }
   .bulletinTag {
-    flex: 0 0 auto; border: 1px solid #456; border-radius: 3px;
-    padding: 0 5px; font-size: 11px; color: #9ab; white-space: nowrap;
+    flex: 0 0 auto; border: 1px solid var(--t-border-chip); border-radius: 3px;
+    padding: 0 5px; font-size: 11px; color: var(--t-muted); white-space: nowrap;
   }
-  .bulletinTag.announcement { color: #8cf; border-color: #357; }
-  .bulletinTag.group { color: #cfc; border-color: #3a5; }
-  .bulletinTag.nws { color: #ff7777; border-color: #844; }
+  .bulletinTag.announcement { color: var(--t-info-soft); border-color: var(--t-border-info); }
+  .bulletinTag.group { color: var(--t-ink-strong); border-color: var(--t-border-ok); }
+  .bulletinTag.nws { color: var(--t-alert-soft); border-color: var(--t-border-bad); }
   .bulletinText { flex: 1 1 auto; overflow-wrap: anywhere; }
   .bulletinRow.new .bulletinText::before {
-    content: "\25CF "; color: #f1c40f;
+    content: "\25CF "; color: var(--t-amber);
   }
-  .bulletinSeen { color: #678; font-size: 11px; white-space: nowrap; }
+  .bulletinSeen { color: var(--t-dim); font-size: 11px; white-space: nowrap; }
 
   /* APRS services card */
   #servicesCard { flex: 1 1 340px; }
   #servicesCard input[type="text"], #servicesCard select {
     width: 100%; box-sizing: border-box; margin-top: 2px;
-    background: #0b0f10; color: #d4f7d4; border: 1px solid #234;
+    background: var(--t-bg); color: var(--t-ink); border: 1px solid var(--t-border);
     border-radius: 3px; padding: 6px 8px; font: inherit; font-size: 13px;
   }
   #servicesCard input:disabled { opacity: 0.4; }
-  .svcLabel { display: block; margin-top: 10px; font-size: 12px; color: #9ab; }
+  .svcLabel { display: block; margin-top: 10px; font-size: 12px; color: var(--t-muted); }
   .svcNote { margin-top: 6px; line-height: 1.5; }
-  .svcNote code, .svcPreview code { color: #cfc; }
+  .svcNote code, .svcPreview code { color: var(--t-ink-strong); }
   .svcPreview {
-    margin-top: 12px; padding: 8px; border: 1px dashed #234; border-radius: 4px;
+    margin-top: 12px; padding: 8px; border: 1px dashed var(--t-border); border-radius: 4px;
     font-size: 12px; display: flex; flex-wrap: wrap; gap: 6px; align-items: baseline;
     overflow-wrap: anywhere;
   }
@@ -543,11 +543,11 @@
 
   /* "Did it get out?" and notifications */
   .heardChip {
-    display: inline-block; border: 1px solid #2c5a3c; border-radius: 3px;
-    padding: 0 5px; font-size: 11px; color: #8fd;
+    display: inline-block; border: 1px solid var(--t-border-good); border-radius: 3px;
+    padding: 0 5px; font-size: 11px; color: var(--t-mint);
   }
-  .heardChip.igate { border-color: #357; color: #8cf; }
-  #beaconHeardBack.heard { color: #6f6; }
+  .heardChip.igate { border-color: var(--t-border-info); color: var(--t-info-soft); }
+  #beaconHeardBack.heard { color: var(--t-ok); }
   #notifyCard { flex: 1 1 260px; }
   #notifyStatus { line-height: 1.5; }
 
@@ -555,10 +555,10 @@
   /* Coverage card */
   #coverageCard { flex: 2 1 520px; }
   .setupForm { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
-  .setupForm label { color: #9ab; font-size: 12px; }
+  .setupForm label { color: var(--t-muted); font-size: 12px; }
   .setupForm input {
     flex: 1 1 180px; min-width: 0;
-    background: #0b0f10; color: #d4f7d4; border: 1px solid #345;
+    background: var(--t-bg); color: var(--t-ink); border: 1px solid var(--t-border-strong);
     font: inherit; font-size: 13px; padding: 4px 6px;
   }
   .setupForm button.action { margin-top: 0; }
@@ -566,21 +566,21 @@
   #coverageTable { overflow-x: auto; margin-top: 8px; }
   .covTable { border-collapse: collapse; font-size: 12px; min-width: 100%; }
   .covTable th, .covTable td {
-    border-bottom: 1px solid #1a2a2e; padding: 5px 8px;
+    border-bottom: 1px solid var(--t-rule); padding: 5px 8px;
     text-align: left; vertical-align: top;
   }
-  .covTable thead th { color: #cfc; font-weight: normal; white-space: nowrap; }
-  .covTable tbody th { color: #789; font-weight: normal; white-space: nowrap; }
-  .covTable .now { color: #8f8; font-size: 11px; }
-  .covTable .dim { color: #678; }
-  .covTable .pct { color: #cfc; }
-  .covTable a { color: #3388ff; font-size: 11px; }
+  .covTable thead th { color: var(--t-ink-strong); font-weight: normal; white-space: nowrap; }
+  .covTable tbody th { color: var(--t-label); font-weight: normal; white-space: nowrap; }
+  .covTable .now { color: var(--t-heading-alt); font-size: 11px; }
+  .covTable .dim { color: var(--t-dim); }
+  .covTable .pct { color: var(--t-ink-strong); }
+  .covTable a { color: var(--t-link); font-size: 11px; }
   .covList { margin: 0; padding: 0; list-style: none; }
   .covList li { white-space: nowrap; }
 
   #backupCard { flex: 1 1 260px; }
   #backupStatus { line-height: 1.5; }
-  #backupStatus .dim { color: #678; }
+  #backupStatus .dim { color: var(--t-dim); }
 
   /* Phones: full-width cards, tighter margins, and 16px form text so
      iOS doesn't zoom in when a field is tapped. */

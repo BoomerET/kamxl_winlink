@@ -2,8 +2,8 @@
   html, body {
     margin: 0;
     min-height: 100%;
-    background: #0b0f10;
-    color: #d4f7d4;
+    background: var(--t-bg);
+    color: var(--t-ink);
     font-family: "Courier New", Courier, monospace;
   }
   .paneHeader {
@@ -13,21 +13,21 @@
     align-items: center;
     justify-content: space-between;
     padding: 4px 10px;
-    background: #101617;
-    border-bottom: 1px solid #234;
+    background: var(--t-surface);
+    border-bottom: 1px solid var(--t-border);
     font-size: 12px;
     letter-spacing: 0.05em;
-    color: #888;
+    color: var(--t-header-ink);
     box-sizing: border-box;
   }
   .paneHeader a {
-    border: 1px solid #345;
-    color: #9c9;
+    border: 1px solid var(--t-border-strong);
+    color: var(--t-control-ink);
     font-size: 11px;
     padding: 2px 8px;
     text-decoration: none;
   }
-  .paneHeader a:hover { border-color: #5a8; color: #cfc; }
+  .paneHeader a:hover { border-color: var(--t-focus); color: var(--t-ink-strong); }
   #content { padding: 12px; max-width: 1100px; }
 
   #searchForm {
@@ -40,75 +40,75 @@
     display: flex;
     flex-direction: column;
     gap: 3px;
-    color: #789;
+    color: var(--t-label);
     font-size: 11px;
     flex: 1 1 150px;
   }
   #searchForm input, #searchForm select {
-    background: #101617;
-    color: #d4f7d4;
-    border: 1px solid #345;
+    background: var(--t-surface);
+    color: var(--t-ink);
+    border: 1px solid var(--t-border-strong);
     font: inherit;
     font-size: 13px;
     padding: 5px 7px;
     min-width: 0;
   }
-  #searchForm input:focus, #searchForm select:focus { outline: 1px solid #5a8; }
+  #searchForm input:focus, #searchForm select:focus { outline: 1px solid var(--t-focus); }
   button {
     background: none;
-    border: 1px solid #345;
-    color: #9c9;
+    border: 1px solid var(--t-border-strong);
+    color: var(--t-control-ink);
     font: inherit;
     font-size: 12px;
     padding: 5px 12px;
     cursor: pointer;
   }
-  button:hover { border-color: #5a8; color: #cfc; }
+  button:hover { border-color: var(--t-focus); color: var(--t-ink-strong); }
   button:disabled { opacity: 0.5; cursor: default; }
   .buttons { display: flex; gap: 6px; }
 
-  #status { margin: 12px 0 8px; color: #9ab; font-size: 12px; }
-  #status.err { color: #f77; }
+  #status { margin: 12px 0 8px; color: var(--t-muted); font-size: 12px; }
+  #status.err { color: var(--t-bad); }
 
   #summary {
-    border: 1px solid #234;
+    border: 1px solid var(--t-border);
     border-radius: 4px;
-    background: #101617;
+    background: var(--t-surface);
     padding: 10px 12px;
     margin-bottom: 12px;
     font-size: 13px;
     line-height: 1.6;
   }
-  #summary h2 { margin: 0 0 4px; font-size: 15px; color: #9f9; font-weight: normal; }
-  #summary .label { color: #789; }
-  #summary a { color: #3388ff; }
+  #summary h2 { margin: 0 0 4px; font-size: 15px; color: var(--t-heading); font-weight: normal; }
+  #summary .label { color: var(--t-label); }
+  #summary a { color: var(--t-link); }
 
   .pkt {
-    border-bottom: 1px solid #1a2a2e;
+    border-bottom: 1px solid var(--t-rule);
     padding: 6px 0;
     font-size: 13px;
   }
   .pktHead { display: flex; flex-wrap: wrap; gap: 2px 12px; align-items: baseline; }
-  .pktTime { color: #789; font-size: 12px; white-space: nowrap; }
-  .pktPath { color: #9ab; font-size: 12px; }
-  .pktSetup { color: #678; font-size: 11px; margin-left: auto; }
+  .pktTime { color: var(--t-label); font-size: 12px; white-space: nowrap; }
+  .pktPath { color: var(--t-muted); font-size: 12px; }
+  .pktSetup { color: var(--t-dim); font-size: 11px; margin-left: auto; }
   .pktBody {
     margin-top: 3px;
-    color: #cfc;
+    color: var(--t-ink-strong);
     white-space: pre-wrap;
     overflow-wrap: anywhere;
   }
-  .pktBody.missing { color: #567; font-style: italic; }
-  mark { background: #3a5a20; color: #efe; }
+  .pktBody.missing { color: var(--t-faint); font-style: italic; }
+  mark { background: var(--t-mark-bg); color: var(--t-ink-on-mark); }
 
   a.call {
-    color: #8cf;
+    color: var(--t-info-soft);
     text-decoration: none;
     cursor: pointer;
   }
   a.call:hover { text-decoration: underline; }
   .src { font-weight: bold; }
-  .dim { color: #678; }
+  .dim { color: var(--t-dim); }
 
   #moreBtn { margin: 14px 0 30px; }
 

@@ -13,7 +13,13 @@ index.html references the other two with exactly
     <link rel="stylesheet" href="style.css">
     <script src="app.js"></script>
 
-and load_page() inlines them, so each page is still served as one
+Every page also loads the shared theme files, with exactly
+
+    <script src="../_shared/theme.js"></script>
+    <link rel="stylesheet" href="../_shared/theme.css">
+
+in its <head> (see _shared/theme.css for the themes), and load_page()
+inlines all four, so each page is still served as one
 self-contained response from the same authenticated route as before
 (the bearer token arrives as ?token= on the page URL; a separate
 /static/... request for the CSS or JS wouldn't carry it). Opening an
@@ -31,6 +37,10 @@ PAGES_DIR = Path(__file__).resolve().parent
 STYLE_TAG = '<link rel="stylesheet" href="style.css">'
 SCRIPT_TAG = '<script src="app.js"></script>'
 
+SHARED_DIR = "_shared"
+THEME_STYLE_TAG = '<link rel="stylesheet" href="../_shared/theme.css">'
+THEME_SCRIPT_TAG = '<script src="../_shared/theme.js"></script>'
+
 PAGE_NAMES = ("dashboard", "terminal", "pbbs", "winlink", "map", "log", "telemetry")
 
 
@@ -45,15 +55,19 @@ def load_page(name: str) -> str:
     folder = PAGES_DIR / name
     html = _read(folder / "index.html")
 
-    for tag, filename, wrap in (
-        (STYLE_TAG, "style.css", ("<style>", "</style>")),
-        (SCRIPT_TAG, "app.js", ("<script>", "</script>")),
+    shared = PAGES_DIR / SHARED_DIR
+
+    for tag, path, wrap in (
+        (THEME_SCRIPT_TAG, shared / "theme.js", ("<script>", "</script>")),
+        (THEME_STYLE_TAG, shared / "theme.css", ("<style>", "</style>")),
+        (STYLE_TAG, folder / "style.css", ("<style>", "</style>")),
+        (SCRIPT_TAG, folder / "app.js", ("<script>", "</script>")),
     ):
         if html.count(tag) != 1:
             raise ValueError(
                 f"{folder / 'index.html'} must contain {tag!r} exactly once"
             )
-        content = _read(folder / filename)
+        content = _read(path)
         html = html.replace(tag, wrap[0] + content + wrap[1])
 
     return html

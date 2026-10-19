@@ -1,14 +1,14 @@
 
   :root {
-    --surface: #0b0f10;
-    --card: #101617;
-    --border: #234;
-    --ink: #d4f7d4;
-    --ink-2: #9ab;
-    --ink-3: #678;
-    --grid: #1c2a2e;
-    --series: #3987e5;      /* validated: dark slot 1, >= 3:1 on --card */
-    --bit-off: #1c2a2e;
+    --surface: var(--t-bg);
+    --card: var(--t-surface);
+    --border: var(--t-border);
+    --ink: var(--t-ink);
+    --ink-2: var(--t-muted);
+    --ink-3: var(--t-dim);
+    --grid: var(--t-grid);
+    --series: var(--t-series);      /* validated: dark slot 1, >= 3:1 on --card */
+    --bit-off: var(--t-grid);
   }
   html, body {
     margin: 0;
@@ -21,24 +21,24 @@
     display: flex; flex-wrap: wrap; gap: 4px;
     align-items: center; justify-content: space-between;
     padding: 4px 10px;
-    background: #101617; border-bottom: 1px solid var(--border);
-    font-size: 12px; letter-spacing: 0.05em; color: #888;
+    background: var(--t-surface); border-bottom: 1px solid var(--border);
+    font-size: 12px; letter-spacing: 0.05em; color: var(--t-header-ink);
   }
   .paneHeader a {
-    border: 1px solid #345; color: #9c9; font-size: 11px;
+    border: 1px solid var(--t-border-strong); color: var(--t-control-ink); font-size: 11px;
     padding: 2px 8px; text-decoration: none;
   }
-  .paneHeader a:hover { border-color: #5a8; color: #cfc; }
+  .paneHeader a:hover { border-color: var(--t-focus); color: var(--t-ink-strong); }
   #content { padding: 12px; }
 
   .controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
   .controls label { color: var(--ink-3); font-size: 12px; }
   select {
-    background: var(--card); color: var(--ink); border: 1px solid #345;
+    background: var(--card); color: var(--ink); border: 1px solid var(--t-border-strong);
     font: inherit; font-size: 13px; padding: 4px 6px;
   }
   #status { margin: 10px 0; color: var(--ink-2); font-size: 12px; }
-  #status.err { color: #f77; }
+  #status.err { color: var(--t-bad); }
 
   .layout { display: grid; grid-template-columns: 240px 1fr; gap: 14px; }
   #stationList { display: flex; flex-direction: column; gap: 2px; }
@@ -48,17 +48,17 @@
     color: var(--ink); font: inherit; font-size: 13px;
     padding: 7px 9px; cursor: pointer;
   }
-  .stationBtn:hover { border-color: #345; }
-  .stationBtn[aria-current="true"] { background: var(--card); border-color: #3a6; }
-  .stationBtn .call { color: #9f9; }
+  .stationBtn:hover { border-color: var(--t-border-strong); }
+  .stationBtn[aria-current="true"] { background: var(--card); border-color: var(--t-border-accent); }
+  .stationBtn .call { color: var(--t-heading); }
   .stationBtn .meta { display: block; color: var(--ink-3); font-size: 11px; margin-top: 2px; }
 
-  .stationHead h1 { margin: 0; font-size: 17px; color: #9f9; font-weight: normal; }
+  .stationHead h1 { margin: 0; font-size: 17px; color: var(--t-heading); font-weight: normal; }
   .stationHead .sub { color: var(--ink-2); font-size: 12px; margin-top: 3px; }
-  .stationHead a { color: #3388ff; }
+  .stationHead a { color: var(--t-link); }
   .note {
     margin: 10px 0; padding: 8px 10px; font-size: 12px; color: var(--ink-2);
-    border: 1px dashed #345; border-radius: 4px;
+    border: 1px dashed var(--t-border-strong); border-radius: 4px;
   }
 
   .charts {
@@ -105,11 +105,11 @@
 
   #tooltip {
     position: fixed; z-index: 10; pointer-events: none;
-    background: #18242a; border: 1px solid #3a5560; border-radius: 4px;
+    background: var(--t-tooltip-bg); border: 1px solid var(--t-tooltip-border); border-radius: 4px;
     padding: 5px 8px; font-size: 12px; color: var(--ink-2);
-    box-shadow: 0 4px 14px #0008;
+    box-shadow: 0 4px 14px var(--t-shadow);
   }
-  #tooltip strong { color: #fff; font-size: 14px; font-weight: normal; }
+  #tooltip strong { color: var(--t-ink-max); font-size: 14px; font-weight: normal; }
 
   .phoneOnly { display: none; }
   @media (max-width: 700px) {

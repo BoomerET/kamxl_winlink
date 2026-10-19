@@ -811,13 +811,15 @@ checkDayLengths(2026, 11, 1, 25);
         scripts = re.findall(r"<script>(.*?)</script>", html, re.DOTALL)
         inline_scripts = [s for s in scripts if s.strip()]
         self.assertEqual(
-            len(inline_scripts), 1, "expected exactly one inline <script> body"
+            len(inline_scripts), 2,
+            "expected two inline <script> bodies (shared theme + page)"
         )
 
         with tempfile.NamedTemporaryFile(
             mode="w", suffix=".js", delete=False
         ) as handle:
-            handle.write(inline_scripts[0])
+            # Each script is checked; joined so one node --check covers both.
+            handle.write("\n;\n".join(inline_scripts))
             script_path = handle.name
         self.addCleanup(os.remove, script_path)
 
@@ -2383,13 +2385,15 @@ class StationsEndpointTests(RestTestCase):
         scripts = re.findall(r"<script>(.*?)</script>", html, re.DOTALL)
         inline_scripts = [s for s in scripts if s.strip()]
         self.assertEqual(
-            len(inline_scripts), 1, "expected exactly one inline <script> body"
+            len(inline_scripts), 2,
+            "expected two inline <script> bodies (shared theme + page)"
         )
 
         with tempfile.NamedTemporaryFile(
             mode="w", suffix=".js", delete=False
         ) as handle:
-            handle.write(inline_scripts[0])
+            # Each script is checked; joined so one node --check covers both.
+            handle.write("\n;\n".join(inline_scripts))
             script_path = handle.name
         self.addCleanup(os.remove, script_path)
 

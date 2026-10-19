@@ -2,8 +2,8 @@
   html, body {
     margin: 0;
     height: 100%;
-    background: #0b0f10;
-    color: #d4f7d4;
+    background: var(--t-bg);
+    color: var(--t-ink);
     font-family: "Courier New", Courier, monospace;
   }
   body {
@@ -15,32 +15,43 @@
     align-items: center;
     justify-content: space-between;
     padding: 4px 10px;
-    background: #101617;
-    border-bottom: 1px solid #234;
+    background: var(--t-surface);
+    border-bottom: 1px solid var(--t-border);
     font-size: 12px;
     letter-spacing: 0.05em;
-    color: #888;
+    color: var(--t-header-ink);
     box-sizing: border-box;
   }
   .paneHeader button {
     background: none;
-    border: 1px solid #345;
-    color: #9c9;
+    border: 1px solid var(--t-border-strong);
+    color: var(--t-control-ink);
     font: inherit;
     font-size: 11px;
     padding: 2px 8px;
     cursor: pointer;
   }
-  .paneHeader button:hover { border-color: #5a8; color: #cfc; }
-  #monitorStatus.live::before { content: "\25CF "; color: #6f6; }
-  #monitorStatus.connecting::before { content: "\25CB "; color: #cc6; }
-  #monitorStatus.down::before { content: "\2715 "; color: #f66; }
+  .paneHeader button:hover { border-color: var(--t-focus); color: var(--t-ink-strong); }
+  /* The second header's page links (were inline styles in index.html). */
+  .paneHeader a {
+    background: none;
+    border: 1px solid var(--t-border-strong);
+    color: var(--t-control-ink);
+    font: inherit;
+    font-size: 11px;
+    padding: 2px 8px;
+    text-decoration: none;
+  }
+  .paneHeader a:hover { border-color: var(--t-focus); color: var(--t-ink-strong); }
+  #monitorStatus.live::before { content: "\25CF "; color: var(--t-ok); }
+  #monitorStatus.connecting::before { content: "\25CB "; color: var(--t-warn); }
+  #monitorStatus.down::before { content: "\2715 "; color: var(--t-bad-icon); }
   #monitorPane {
     flex: 1 1 40%;
     min-height: 80px;
     display: flex;
     flex-direction: column;
-    border-bottom: 2px solid #234;
+    border-bottom: 2px solid var(--t-border);
   }
   #monitorFeed {
     flex: 1;
@@ -51,8 +62,8 @@
     font-size: 13px;
   }
   #monitorFeed div { padding: 1px 0; }
-  .pktTime { color: #567; }
-  .pktRoute { color: #6cf; }
+  .pktTime { color: var(--t-faint); }
+  .pktRoute { color: var(--t-info); }
   #terminalPane {
     flex: 1 1 60%;
     display: flex;
@@ -71,24 +82,24 @@
     display: flex;
     height: 48px;
     flex: 0 0 48px;
-    border-top: 1px solid #234;
+    border-top: 1px solid var(--t-border);
     box-sizing: border-box;
   }
   #prompt {
     padding: 0 8px;
     display: flex;
     align-items: center;
-    color: #6f6;
+    color: var(--t-ok);
   }
   #cmdInput {
     flex: 1;
-    background: #0b0f10;
-    color: #d4f7d4;
+    background: var(--t-bg);
+    color: var(--t-ink);
     border: none;
     outline: none;
     font: inherit;
     font-size: 14px;
   }
-  .err { color: #f77; }
-  .sent { color: #6cf; }
-  .notice { color: #999; font-style: italic; }
+  .err { color: var(--t-bad); }
+  .sent { color: var(--t-info); }
+  .notice { color: var(--t-notice); font-style: italic; }
