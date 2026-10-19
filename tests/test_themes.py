@@ -323,5 +323,33 @@ class ThemeScriptTests(unittest.TestCase):
         self.assertEqual(r["afterOtherTab"], "night")
 
 
+
+class PageFeatureTests(unittest.TestCase):
+    """features.js hides links to pages a station's TNC can't use."""
+
+    def test_every_page_inlines_features_js(self):
+        js = (SHARED / "features.js").read_text(encoding="utf-8")
+        for page in tncstation_web.PAGE_NAMES:
+            html = tncstation_web.load_page(page)
+            self.assertIn(js, html, page)
+            self.assertNotIn("_shared/features.js", html, page)
+
+    def test_links_and_cards_are_marked(self):
+        for page in tncstation_web.PAGE_NAMES:
+            html = tncstation_web.load_page(page)
+            for feature in ("terminal", "pbbs", "winlink"):
+                if f'id="{feature}Link"' in html:
+                    self.assertIn(f'id="{feature}Link" data-feature="{feature}"',
+                                  html, (page, feature))
+        dashboard = tncstation_web.load_page("dashboard")
+        self.assertIn('id="pbbsCard" data-feature="pbbs"', dashboard)
+        self.assertIn('id="winlinkCard" data-feature="winlink"', dashboard)
+
+    def test_feature_pages_say_what_they_need(self):
+        for page in ("pbbs", "winlink", "terminal"):
+            self.assertIn(f'<body data-page-feature="{page}">',
+                          tncstation_web.load_page(page))
+
+
 if __name__ == "__main__":
     unittest.main()

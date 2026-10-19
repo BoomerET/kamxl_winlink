@@ -811,8 +811,8 @@ checkDayLengths(2026, 11, 1, 25);
         scripts = re.findall(r"<script>(.*?)</script>", html, re.DOTALL)
         inline_scripts = [s for s in scripts if s.strip()]
         self.assertEqual(
-            len(inline_scripts), 2,
-            "expected two inline <script> bodies (shared theme + page)"
+            len(inline_scripts), 3,
+            "expected three inline <script> bodies (theme, features, page)"
         )
 
         with tempfile.NamedTemporaryFile(
@@ -2385,8 +2385,8 @@ class StationsEndpointTests(RestTestCase):
         scripts = re.findall(r"<script>(.*?)</script>", html, re.DOTALL)
         inline_scripts = [s for s in scripts if s.strip()]
         self.assertEqual(
-            len(inline_scripts), 2,
-            "expected two inline <script> bodies (shared theme + page)"
+            len(inline_scripts), 3,
+            "expected three inline <script> bodies (theme, features, page)"
         )
 
         with tempfile.NamedTemporaryFile(

@@ -87,4 +87,4 @@ py-modules = [
 packages = ["tncstation_web"]
 
 [tool.setuptools.package-data]
-tncstation_web = ["*/index.html", "*/style.css", "*/app.js", "_shared/theme.css", "_shared/theme.js"]
+tncstation_web = ["*/index.html", "*/style.css", "*/app.js", "_shared/theme.css", "_shared/theme.js", "_shared/features.js"]

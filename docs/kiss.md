@@ -19,7 +19,7 @@ limitation").
 
 Connected mode needs the TNC's own AX.25 link layer, which only
 Terminal Mode exposes; in KISS those features answer with a clear
-error. A natural split for a two-TNC station: one TNC in KISS as the
+error, and the web pages hide their links. A natural split for a two-TNC station: one TNC in KISS as the
 full-time APRS radio, the other in Terminal Mode for connected work
 (two daemons -- see [opentnc.md](opentnc.md), "Running both TNCs").
 

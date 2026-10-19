@@ -17,9 +17,11 @@ Every page also loads the shared theme files, with exactly
 
     <script src="../_shared/theme.js"></script>
     <link rel="stylesheet" href="../_shared/theme.css">
+    <script src="../_shared/features.js"></script>
 
-in its <head> (see _shared/theme.css for the themes), and load_page()
-inlines all four, so each page is still served as one
+in its <head> (see _shared/theme.css for the themes; features.js hides
+links to pages the station's TNC can't use), and load_page() inlines
+all five, so each page is still served as one
 self-contained response from the same authenticated route as before
 (the bearer token arrives as ?token= on the page URL; a separate
 /static/... request for the CSS or JS wouldn't carry it). Opening an
@@ -40,6 +42,7 @@ SCRIPT_TAG = '<script src="app.js"></script>'
 SHARED_DIR = "_shared"
 THEME_STYLE_TAG = '<link rel="stylesheet" href="../_shared/theme.css">'
 THEME_SCRIPT_TAG = '<script src="../_shared/theme.js"></script>'
+FEATURES_SCRIPT_TAG = '<script src="../_shared/features.js"></script>'
 
 PAGE_NAMES = ("dashboard", "terminal", "pbbs", "winlink", "map", "log", "telemetry")
 
@@ -60,6 +63,7 @@ def load_page(name: str) -> str:
     for tag, path, wrap in (
         (THEME_SCRIPT_TAG, shared / "theme.js", ("<script>", "</script>")),
         (THEME_STYLE_TAG, shared / "theme.css", ("<style>", "</style>")),
+        (FEATURES_SCRIPT_TAG, shared / "features.js", ("<script>", "</script>")),
         (STYLE_TAG, folder / "style.css", ("<style>", "</style>")),
         (SCRIPT_TAG, folder / "app.js", ("<script>", "</script>")),
     ):

@@ -307,6 +307,10 @@ class OpenTNC(TerminalTNC):
     # this firmware doesn't have (see module docstring). KISS mode works.
     APRS_TX_SUPPORTED = False
 
+    # No built-in mailbox. Winlink over its connected mode is untried.
+    HAS_PBBS = False
+    HAS_WINLINK = False
+
     # Seen on the real unit: "Unknown command: X". EH? kept for other
     # TNC-2-style firmware builds.
     ERROR_MARKERS = ("Unknown command", "EH?", "?EH")
