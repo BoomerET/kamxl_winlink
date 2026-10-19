@@ -527,6 +527,31 @@ class DaemonOverKISSTests(unittest.TestCase):
         self.assertEqual(acks[0].info, b":W5ABC    :ack42")
         self.assertEqual(acks[0].source, "N5BA")
 
+    def test_opening_terminal_pages_does_not_pause_auto_ack(self):
+        # Seen on the OpenTNC station: visiting the PBBS, Winlink or
+        # Terminal page left auto-ACK "paused" for good, though KISS
+        # can't have a connected session open.
+        self.start()
+        self.daemon.dispatch("aprs.ack_enable", {
+            "confirm_transmit": True, "confirm_vhf_port2_radio_ready": True,
+            "confirm_hf_port1_disconnected": True,
+        })
+
+        for method, params in (("send_command", {"command": "MYCALL"}),
+                               ("pbbs.list_messages", {}),
+                               ("winlink.check_mail", {})):
+            try:
+                self.daemon.dispatch(method, params)
+            except Exception:
+                pass
+
+        self.assertFalse(self.daemon.dispatch("aprs.ack_status", {})["paused"])
+
+        self.serial.push(kiss_frame(ui("W5ABC", "APRS", [], b":N5BA     :ack me{43")))
+        acks = self.wait_for(lambda: [f for _, f in frames_written(self.serial)
+                                      if f.info.startswith(b":W5ABC    :ack")])
+        self.assertEqual(acks[0].info, b":W5ABC    :ack43")
+
     def test_terminal_features_report_kiss(self):
         self.start()
         with self.assertRaises(TNCError) as ctx:

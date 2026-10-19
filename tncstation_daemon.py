@@ -664,6 +664,21 @@ class KAMDaemon:
             self._invalidate_aprs_safety("TNC configuration changed")
             return self.kam.set(params["command"], params["value"])
 
+    def _mark_link_may_be_active(self) -> None:
+        """
+        Note that a terminal, connected-mode, PBBS or Winlink operation
+        is starting, so automatic transmissions won't Ctrl-C into a
+        session it may leave open. Caller must hold _kam_lock.
+
+        Not in KISS mode: there is no command mode and no connected
+        mode, so no session can be open -- the KISS driver refuses those
+        operations without sending anything. (Setting the flag there
+        paused auto-ACK and beacons until the next manual send, just
+        for opening the PBBS, Winlink or Terminal page.)
+        """
+        if getattr(self.kam, "MODE", "terminal") != "kiss":
+            self._aprs_link_may_be_active = True
+
     def _invalidate_aprs_safety(self, reason: str) -> None:
         """
         Mark APRS transmission unsafe.
@@ -683,7 +698,7 @@ class KAMDaemon:
             self._invalidate_aprs_safety(
                 "Raw terminal command may have changed TNC state"
             )
-            self._aprs_link_may_be_active = True
+            self._mark_link_may_be_active()
             return self.kam.send_command(
                 params["command"],
                 command_timeout=params.get("timeout", 10),
@@ -723,7 +738,7 @@ class KAMDaemon:
         with self._kam_lock:
             self._aprs_session_uncertain = True
             self._invalidate_aprs_safety("AX.25 connection attempted")
-            self._aprs_link_may_be_active = True
+            self._mark_link_may_be_active()
             return self.kam.connect_station(
                 params["callsign"],
                 via=params.get("via"),
@@ -734,7 +749,7 @@ class KAMDaemon:
         with self._kam_lock:
             self._aprs_session_uncertain = True
             self._invalidate_aprs_safety("Connected data operation attempted")
-            self._aprs_link_may_be_active = True
+            self._mark_link_may_be_active()
             self.kam.send_connected(
                 params["text"],
                 add_cr=params.get("add_cr", True),
@@ -748,14 +763,14 @@ class KAMDaemon:
             self._invalidate_aprs_safety(
                 "TNC query or read may have changed session state"
             )
-            self._aprs_link_may_be_active = True
+            self._mark_link_may_be_active()
             return self.kam.read_connected(params.get("timeout", 5))
 
     def _m_disconnect_station(self, params: Dict[str, Any]) -> str:
         with self._kam_lock:
             self._aprs_session_uncertain = True
             self._invalidate_aprs_safety("AX.25 disconnect attempted")
-            self._aprs_link_may_be_active = True
+            self._mark_link_may_be_active()
             result = self.kam.disconnect_station(
                 params.get("timeout", 30),
                 command_mode_timeout=params.get("command_mode_timeout", 5)
@@ -769,7 +784,7 @@ class KAMDaemon:
         with self._kam_lock:
             self._aprs_session_uncertain = True
             self._invalidate_aprs_safety("PBBS operation attempted")
-            self._aprs_link_may_be_active = True
+            self._mark_link_may_be_active()
             messages = self.kam.list_pbbs_messages(
                 mypbbs=params.get("mypbbs"),
                 connect_timeout=params.get("connect_timeout", 15),
@@ -786,7 +801,7 @@ class KAMDaemon:
         with self._kam_lock:
             self._aprs_session_uncertain = True
             self._invalidate_aprs_safety("PBBS operation attempted")
-            self._aprs_link_may_be_active = True
+            self._mark_link_may_be_active()
             message = self.kam.read_pbbs_message(
                 int(params["number"]),
                 mypbbs=params.get("mypbbs"),
@@ -809,7 +824,7 @@ class KAMDaemon:
         with self._kam_lock:
             self._aprs_session_uncertain = True
             self._invalidate_aprs_safety("Winlink operation attempted")
-            self._aprs_link_may_be_active = True
+            self._mark_link_may_be_active()
             messages = self.kam.check_winlink_mail(
                 gateway=params["gateway"],
                 password=params["password"],
@@ -846,7 +861,7 @@ class KAMDaemon:
         with self._kam_lock:
             self._aprs_session_uncertain = True
             self._invalidate_aprs_safety("Winlink operation attempted")
-            self._aprs_link_may_be_active = True
+            self._mark_link_may_be_active()
             accepted_mids = self.kam.send_winlink_message(
                 gateway=params["gateway"],
                 password=params["password"],
