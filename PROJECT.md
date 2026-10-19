@@ -2264,3 +2264,20 @@ Picking a period fits the map to all tracks. Header count reads
 
 Tests: `tests/test_station_tracks.py` (7).
 
+### Supported Python: 3.13 and 3.14
+
+CI used to test 3.9, 3.11 and 3.13. Dave runs it on the Maestro laptop
+(Python 3.14.4) and wants to run it on a Raspberry Pi 3B+ (Raspberry Pi
+OS, Python 3.13.5), so CI now tests exactly those two versions and
+`requires-python` is `>=3.13` (it was `>=3.9`; README said 3.8+).
+Checked locally: all tests pass on 3.13 and 3.14.6 with no deprecation
+warnings. Also moved the workflow to actions/checkout@v5,
+setup-python@v6 and setup-node@v5 (the v4/v5 actions ran on Node 20,
+which GitHub has deprecated).
+
+Note: one test failed once under 3.13 on PR #37 and passed on re-run;
+it couldn't be reproduced locally (full suite three times in parallel)
+and the CI log wasn't readable from the session, so it's a timing
+flake in some test, not a version problem. If it recurs, the job log
+names the test.
+
