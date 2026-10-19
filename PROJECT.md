@@ -2243,6 +2243,15 @@ note. RPCs `telemetry.stations`, `telemetry.get`; REST
 
 Tests: `tests/test_telemetry.py` (14).
 
+**Verified 2026-10-18** on Dave's station: 8 local stations sent
+telemetry in the first evening. N5DRP-1 ("N5DRP Telemetry", an
+aprx-style digipeater report) decoded with its own definitions --
+VIN 13.9 Volt, RX1H / DG1H packets per hour, EFF1H percent -- and
+named on/off bits O1-O4, I1-I4. Follow-up fixes from that screenshot:
+y-axis tick labels now use as many decimals as the tick spacing needs
+(a 13.80-13.90 V range printed "13.9 13.9 13.8 13.8..."), and
+"1 reports" became "1 report".
+
 ### Longer station tracks on the map
 
 The live map stays as it was: the in-memory tracker, stations dropping
