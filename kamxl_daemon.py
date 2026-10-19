@@ -374,6 +374,8 @@ class KAMDaemon:
             "stations.list": self._m_stations_list,
             "coverage.status": self._m_coverage_status,
             "packets.search": self._m_packets_search,
+            "telemetry.stations": self._m_telemetry_stations,
+            "telemetry.get": self._m_telemetry_get,
             "backup.status": self._m_backup_status,
             "backup.now": self._m_backup_now,
             "coverage.set_setup": self._m_coverage_set_setup,
@@ -2521,6 +2523,40 @@ class KAMDaemon:
                 )
         except Exception:
             logger.exception("Own-packet tracking failed")
+
+    # -- Telemetry (see aprs_telemetry.py) -------------------------------
+
+    def _telemetry_since(self, params: Dict[str, Any]) -> int:
+        if self._reception_writer is None:
+            raise ValueError(
+                "Telemetry needs the history database (KAMXL_HISTORY_DB)"
+            )
+        days = params.get("days", 7)
+        if isinstance(days, bool) or not isinstance(days, (int, float)) \
+                or not 0 < days <= 3650:
+            raise ValueError("days must be a number from 1 to 3650")
+        return int(time.time() - days * 86400)
+
+    def _m_telemetry_stations(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """Stations that sent telemetry in the last ``days`` (default 7)."""
+        since = self._telemetry_since(params)
+        return {
+            "days": params.get("days", 7),
+            "stations": self._reception_writer.telemetry_stations(since),
+        }
+
+    def _m_telemetry_get(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """One station's telemetry, scaled and named, for charting."""
+        since = self._telemetry_since(params)
+        callsign = params.get("callsign")
+        if not isinstance(callsign, str) or not re.match(
+                r"^[A-Z0-9]{1,6}(-[A-Z0-9]{1,2})?$", callsign.strip().upper()):
+            raise ValueError("callsign must be like W5NGU-3")
+        result = self._reception_writer.telemetry_series(
+            callsign.strip().upper(), since
+        )
+        result["days"] = params.get("days", 7)
+        return result
 
     # -- Packet log search -----------------------------------------------
 

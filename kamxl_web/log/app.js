@@ -14,6 +14,7 @@
   document.getElementById("homeLink").href = authedUrl("/");
   document.getElementById("terminalLink").href = authedUrl("/terminal");
   document.getElementById("mapLink").href = authedUrl("/map");
+  document.getElementById("telemetryLink").href = authedUrl("/telemetry");
   document.getElementById("pbbsLink").href = authedUrl("/pbbs");
   document.getElementById("winlinkLink").href = authedUrl("/winlink");
 

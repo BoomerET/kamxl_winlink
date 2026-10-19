@@ -167,6 +167,9 @@ MAP_HTML = load_page("map")
 # Packet log search page: kamxl_web/log/.
 LOG_HTML = load_page("log")
 
+# Telemetry graphs page: kamxl_web/telemetry/.
+TELEMETRY_HTML = load_page("telemetry")
+
 logger = logging.getLogger("kamxl_rest")
 logger.addHandler(logging.NullHandler())
 
@@ -363,6 +366,9 @@ ROUTES: Tuple[Tuple[str, "re.Pattern", str], ...] = (
     ("POST", re.compile(r"^/notify/test$"), "_h_notify_test"),
     ("GET", re.compile(r"^/coverage$"), "_h_coverage_report"),
     ("GET", re.compile(r"^/log$"), "_h_log_page"),
+    ("GET", re.compile(r"^/telemetry$"), "_h_telemetry_page"),
+    ("GET", re.compile(r"^/telemetry/stations$"), "_h_telemetry_stations"),
+    ("GET", re.compile(r"^/telemetry/(?P<callsign>[A-Za-z0-9\-]+)$"), "_h_telemetry_get"),
     ("GET", re.compile(r"^/backup$"), "_h_backup_status"),
     ("POST", re.compile(r"^/backup/now$"), "_h_backup_now"),
     ("GET", re.compile(r"^/packets/search$"), "_h_packets_search"),
@@ -827,6 +833,39 @@ class RESTRequestHandler(BaseHTTPRequestHandler):
     def _h_backup_now(self, params: Dict[str, str], query: Dict[str, Any]) -> None:
         """Back up now. A big database over a slow share takes a while."""
         self._relay("backup.now", _socket_timeout=900)
+
+    def _telemetry_days(self, query: Dict[str, Any]) -> Optional[float]:
+        try:
+            days = float(query.get("days", ["7"])[0])
+        except (TypeError, ValueError):
+            days = None
+        if days is None or not 0 < days <= 3650:
+            self._send_json(400, {
+                "ok": False,
+                "error": {"type": "InvalidParam",
+                          "message": "days must be a number from 1 to 3650"},
+            })
+            return None
+        return days
+
+    def _h_telemetry_page(self, params: Dict[str, str], query: Dict[str, Any]) -> None:
+        body = TELEMETRY_HTML.encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _h_telemetry_stations(self, params: Dict[str, str], query: Dict[str, Any]) -> None:
+        days = self._telemetry_days(query)
+        if days is not None:
+            self._relay("telemetry.stations", days=days, _socket_timeout=30)
+
+    def _h_telemetry_get(self, params: Dict[str, str], query: Dict[str, Any]) -> None:
+        days = self._telemetry_days(query)
+        if days is not None:
+            self._relay("telemetry.get", callsign=params["callsign"],
+                        days=days, _socket_timeout=30)
 
     def _h_log_page(self, params: Dict[str, str], query: Dict[str, Any]) -> None:
         body = LOG_HTML.encode("utf-8")

@@ -43,6 +43,15 @@ class LoadPageTests(unittest.TestCase):
         for marker in ('id="backupCard"', "refreshBackup", "/backup/now"):
             self.assertIn(marker, dashboard)
 
+    def test_every_page_links_log_and_telemetry(self):
+        for name in kamxl_web.PAGE_NAMES:
+            html = kamxl_web.load_page(name)
+            with self.subTest(page=name):
+                if name != "log":
+                    self.assertIn('id="logLink"', html)
+                if name != "telemetry":
+                    self.assertIn('id="telemetryLink"', html)
+
     def test_every_page_has_a_phone_viewport(self):
         # Without it phones draw the page at desktop width and shrink it.
         for name in kamxl_web.PAGE_NAMES:
@@ -65,6 +74,7 @@ class LoadPageTests(unittest.TestCase):
             ("dashboard", "DASHBOARD_HTML"), ("terminal", "TERMINAL_HTML"),
             ("pbbs", "PBBS_HTML"), ("winlink", "WINLINK_HTML"),
             ("map", "MAP_HTML"), ("log", "LOG_HTML"),
+            ("telemetry", "TELEMETRY_HTML"),
         ):
             self.assertEqual(getattr(kamxl_rest, const), kamxl_web.load_page(name))
 

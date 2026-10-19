@@ -270,6 +270,12 @@ class ReceptionWriter:
             lambda h: h.station_summary(callsign, since, until)
         )
 
+    def telemetry_stations(self, since):
+        return self._with_history(lambda h: h.telemetry_stations(since))
+
+    def telemetry_series(self, callsign, since):
+        return self._with_history(lambda h: h.telemetry_series(callsign, since))
+
     def get_setting(self, key):
         return self._with_history(lambda h: h.get_setting(key))
 
