@@ -27,6 +27,16 @@ record what it actually prints and correct the driver from that.
 | APRS transmit (messages, ACKs, resends, beacons) | **Disabled** -- fails closed until STATUS/UNPROTO output is checked |
 | PBBS | Not applicable (the OpenTNC has no built-in mailbox) |
 
+## KISS mode: APRS without the guesswork
+
+Everything above about unverified display formats applies to Terminal
+Mode. In KISS mode (`TNCSTATION_MODE=kiss`, see [kiss.md](kiss.md)) the
+OpenTNC passes raw AX.25 frames, so monitoring *and APRS transmit*
+work from day one -- nothing depends on how the firmware formats text.
+What KISS can't do is connected mode (PBBS, Winlink, the web
+terminal). If the OpenTNC's job is APRS, KISS is the easier start; the
+capture below is still worth doing for Terminal Mode later.
+
 ## Day-one checklist
 
 1. **Configure it** in a terminal (PuTTY, `screen /dev/ttyACM0`, ...),

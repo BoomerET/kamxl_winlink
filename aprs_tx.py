@@ -8,6 +8,15 @@ class APRSTransmitError(ValueError):
     """APRS transmission cannot proceed safely."""
 
 
+def is_kiss(kam) -> bool:
+    """
+    True for a KISS-mode driver (kiss.KISSTNC). There, transmitting is
+    one UI frame built here: no command prompt to recover, no stream
+    STATUS, no UNPROTO to change and restore, no CONVERS.
+    """
+    return getattr(kam, "MODE", None) == "kiss"
+
+
 def require_aprs_tx_support(kam) -> None:
     """
     Refuse to run the live APRS transmit path on a TNC driver whose
@@ -256,6 +265,17 @@ def recover_aprs_command_mode(kam) -> dict:
     """
     require_aprs_tx_support(kam)
 
+    if is_kiss(kam):
+        # Nothing to recover: a KISS TNC has no command mode or streams.
+        return {
+            "command_mode_response_valid": True,
+            "active_stream": "KISS",
+            "ax25_connected": False,
+            "rf_enabled": False,
+            "recovered": True,
+            "transmitted": False,
+        }
+
     try:
         kam.enter_command_mode()
         status = kam.send_command("STATUS")
@@ -281,6 +301,16 @@ def check_aprs_tx_preflight(kam) -> dict:
     not authorize RF transmission.
     """
     require_aprs_tx_support(kam)
+
+    if is_kiss(kam):
+        # The frame (port, path, length, line endings) is built and
+        # checked here, not configured on the TNC.
+        return {
+            "passed": True,
+            "rf_enabled": False,
+            "transmitted": False,
+            "checks": ["KISS"],
+        }
 
     checks = (
         ("STATUS", validate_aprs_active_stream),
@@ -461,6 +491,9 @@ def _execute_aprs_tx_transaction(kam, payload: str, path: str = "") -> dict:
     # Validate path before touching hardware.
     build_aprs_tx_plan(payload, "CQ/CQ", path)
 
+    if is_kiss(kam):
+        return _execute_kiss_aprs_tx(kam, payload, path)
+
     original = None
     changed = False
     submitted = False
@@ -596,6 +629,34 @@ def _execute_aprs_tx_transaction(kam, payload: str, path: str = "") -> dict:
 
     return {
         "submitted_to_tnc": submitted,
+        "rf_confirmed": False,
+        "delivered": False,
+        "unproto_restored": True,
+    }
+
+
+def _execute_kiss_aprs_tx(kam, payload: str, path: str = "") -> dict:
+    """
+    KISS: send the already-validated payload as one AX.25 UI frame from
+    the station callsign to APRS via ``path``. Same result shape as the
+    Terminal Mode transaction.
+    """
+    hops = validate_aprs_path(path)
+
+    try:
+        kam.send_ui(
+            payload.encode("ascii"),
+            destination="APRS",
+            path=hops.split(",") if hops else [],
+        )
+    except Exception as exc:
+        raise APRSTransmitError(
+            "APRS frame submission to the KISS TNC is uncertain; it may "
+            "already have been transmitted. Do not retry automatically."
+        ) from exc
+
+    return {
+        "submitted_to_tnc": True,
         "rf_confirmed": False,
         "delivered": False,
         "unproto_restored": True,

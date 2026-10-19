@@ -2083,11 +2083,21 @@ class TerminalTNC:
 # Driver selection
 # ---------------------------------------------------------------------------
 
-# Short name -> (module, class). Imported lazily so tnc.py never imports
-# a driver module at load time (each driver imports tnc.py itself).
-TNC_MODELS: Dict[str, Tuple[str, str]] = {
-    "kamxl": ("kamxl", "KAMXL"),
-    "opentnc": ("opentnc", "OpenTNC"),
+# Short name -> (module, class) per mode. Imported lazily so tnc.py
+# never imports a driver module at load time (each imports tnc.py).
+TNC_MODELS: Dict[str, Dict[str, Tuple[str, str]]] = {
+    "kamxl": {
+        "terminal": ("kamxl", "KAMXL"),
+        "kiss": ("kamxl", "KAMXLKISS"),
+    },
+    "opentnc": {
+        "terminal": ("opentnc", "OpenTNC"),
+        "kiss": ("opentnc", "OpenTNCKISS"),
+    },
+    # Already in KISS, or a KISS server such as Direwolf (tcp://host:8001).
+    "kiss": {
+        "kiss": ("kiss", "GenericKISS"),
+    },
 }
 
 # Accepted spellings, e.g. TNCSTATION_TNC=kam-xl or --tnc OpenTNC.
@@ -2099,16 +2109,20 @@ _MODEL_ALIASES: Dict[str, str] = {
     "open-tnc": "opentnc",
     "open_tnc": "opentnc",
     "na6d": "opentnc",
+    "direwolf": "kiss",
+    "generic": "kiss",
 }
 
 DEFAULT_TNC_MODEL = "kamxl"
 
+TNC_MODES = ("terminal", "kiss")
+
 
 def normalize_tnc_model(model: Optional[str]) -> str:
     """
-    Return the canonical short name for ``model`` ("kamxl", "opentnc"),
-    defaulting to the KAM-XL when ``model`` is empty. Raises ValueError
-    for anything unrecognized.
+    Return the canonical short name for ``model`` ("kamxl", "opentnc",
+    "kiss"), defaulting to the KAM-XL when ``model`` is empty. Raises
+    ValueError for anything unrecognized.
     """
     value = (model or "").strip().lower() or DEFAULT_TNC_MODEL
     value = _MODEL_ALIASES.get(value, value)
@@ -2122,11 +2136,36 @@ def normalize_tnc_model(model: Optional[str]) -> str:
     return value
 
 
-def tnc_class(model: Optional[str]) -> type:
-    """Return the driver class for ``model`` (see normalize_tnc_model)."""
+def normalize_tnc_mode(model: Optional[str], mode: Optional[str]) -> str:
+    """
+    Return "terminal" or "kiss" for ``model``. Empty means the model's
+    default: Terminal Mode where it has one, else KISS. Raises
+    ValueError for an unknown mode or one the model doesn't have.
+    """
+    name = normalize_tnc_model(model)
+    modes = TNC_MODELS[name]
+    value = (mode or "").strip().lower()
+
+    if not value:
+        return "terminal" if "terminal" in modes else "kiss"
+
+    if value not in TNC_MODES:
+        raise ValueError(
+            f"Unknown TNC mode {mode!r} (expected one of: {', '.join(TNC_MODES)})"
+        )
+
+    if value not in modes:
+        raise ValueError(f"TNC model {name!r} has no {value} mode")
+
+    return value
+
+
+def tnc_class(model: Optional[str], mode: Optional[str] = None) -> type:
+    """Return the driver class for ``model`` in ``mode`` (see normalize_tnc_mode)."""
     import importlib
 
-    module_name, class_name = TNC_MODELS[normalize_tnc_model(model)]
+    name = normalize_tnc_model(model)
+    module_name, class_name = TNC_MODELS[name][normalize_tnc_mode(name, mode)]
 
     return getattr(importlib.import_module(module_name), class_name)
 
@@ -2135,17 +2174,20 @@ def create_tnc(
     model: Optional[str],
     port: str,
     baudrate: Optional[int] = None,
+    mode: Optional[str] = None,
     **kwargs: Any
 ) -> TerminalTNC:
     """
-    Build (but don't open) a driver for ``model`` on serial ``port``.
+    Build (but don't open) a driver for ``model`` on ``port``.
 
         tnc = create_tnc("opentnc", "/dev/ttyACM0")
+        tnc = create_tnc("opentnc", "/dev/ttyACM0", mode="kiss")
+        tnc = create_tnc("kiss", "tcp://localhost:8001")    # Direwolf
         tnc.connect()
 
     ``baudrate`` of None keeps the driver's own default.
     """
-    cls = tnc_class(model)
+    cls = tnc_class(model, mode)
 
     if baudrate is not None:
         kwargs["baudrate"] = baudrate

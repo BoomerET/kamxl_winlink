@@ -199,6 +199,11 @@ for packet in tnc.monitor():
     print(packet.source, "->", packet.destination, ":", packet.payload)
 ```
 
+Any of them can also run in **KISS mode** (`TNCSTATION_MODE=kiss`),
+and Direwolf works as a TNC over KISS TCP (`TNCSTATION_TNC=kiss`,
+`TNCSTATION_PORT=tcp://localhost:8001`): monitoring and APRS with raw
+AX.25 frames, no display-format parsing. See [docs/kiss.md](docs/kiss.md).
+
 `from kamxl import KAMXL` and the `KAMError` exception family work
 exactly as before. See [docs/opentnc.md](docs/opentnc.md) for the
 OpenTNC: setup, what's verified, and how to capture real output with

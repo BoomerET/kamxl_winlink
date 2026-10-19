@@ -56,7 +56,7 @@ class LegacySettingsTests(unittest.TestCase):
 
         captured = {}
 
-        def fake_create_tnc(model, port, baudrate=None):
+        def fake_create_tnc(model, port, baudrate=None, mode=None):
             captured.update(model=model, port=port)
             raise SystemExit(0)
 
