@@ -828,6 +828,28 @@ when `KAMXL_BACKUP_DIR` isn't set, else `folder`, `folder_reachable`,
 returning `{ok, file, size, removed, seconds}` (or `{ok: false,
 error}`) plus the new `status`. See [backup.md](backup.md).
 
+### Telemetry
+
+`GET /telemetry` is the telemetry page ("telemetry" in every header;
+"Telemetry" in a station's details on the map when it has sent some).
+It reads:
+
+- `GET /telemetry/stations?days=7` -- stations that sent telemetry in
+  the period: `callsign`, `reports`, `first_heard`, `last_heard`, and
+  from its definitions `project` and named `channels`.
+- `GET /telemetry/<callsign>?days=7` -- `analog` channels (`channel`,
+  `name`, `unit`, `points` as `[time, value]`, `latest`, `min`,
+  `max`), `bits` (`bit`, `name`, `points` as `[time, on]`, `latest`),
+  `project`, `defined`, `reports`, `first_heard`, `last_heard`.
+
+Decoded from stored packets: `T#` reports (decimals and negatives
+accepted, as modern senders use them) and compressed `|...|` telemetry
+in position comments, including copies gated from APRS-IS. Values are
+scaled with the station's latest `EQNS.` message (a*x^2 + b*x + c) and
+named from `PARM.`/`UNIT.`/`BITS.` messages addressed to it. A station
+that names its channels has blank ones hidden; without names every
+channel with data is shown as "Channel N", in raw units.
+
 ## Testing
 
 `tests/test_rest.py` runs a real `KAMDaemon` (wired to the same

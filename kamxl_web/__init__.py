@@ -31,7 +31,7 @@ PAGES_DIR = Path(__file__).resolve().parent
 STYLE_TAG = '<link rel="stylesheet" href="style.css">'
 SCRIPT_TAG = '<script src="app.js"></script>'
 
-PAGE_NAMES = ("dashboard", "terminal", "pbbs", "winlink", "map", "log")
+PAGE_NAMES = ("dashboard", "terminal", "pbbs", "winlink", "map", "log", "telemetry")
 
 
 def _read(path: Path) -> str:

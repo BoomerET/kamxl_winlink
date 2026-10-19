@@ -49,6 +49,7 @@
   document.getElementById("pbbsLink").href = authedUrl("/pbbs");
   document.getElementById("mapLink").href = authedUrl("/map");
   document.getElementById("logLink").href = authedUrl("/log");
+  document.getElementById("telemetryLink").href = authedUrl("/telemetry");
 
   function escapeHtml(text) {
     var div = document.createElement("div");

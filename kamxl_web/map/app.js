@@ -19,6 +19,7 @@
   document.getElementById("pbbsLink").href = authedUrl("/pbbs");
   document.getElementById("winlinkLink").href = authedUrl("/winlink");
   document.getElementById("logLink").href = authedUrl("/log");
+  document.getElementById("telemetryLink").href = authedUrl("/telemetry");
 
   var map = L.map("map").setView([0, 0], 2);
   L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
@@ -527,7 +528,14 @@
         messageLinkHtml(station.callsign) + " &nbsp; " +
         "<a class='messageStation' href='" + escapeHtml(authedUrl(
           "/log?callsign=" + encodeURIComponent(station.callsign) +
-          "&days=30")) + "'>Packet log &rarr;</a></div>";
+          "&days=30")) + "'>Packet log &rarr;</a>" +
+        ((station.recent_packets || []).some(function (p) {
+          return /^T#/.test(p.payload || "");
+        })
+          ? " &nbsp; <a class='messageStation' href='" + escapeHtml(authedUrl(
+              "/telemetry?station=" + encodeURIComponent(station.callsign))) +
+            "'>Telemetry &rarr;</a>"
+          : "") + "</div>";
 
       function detail(label, value) {
         html += "<div class='detailRow'>" +

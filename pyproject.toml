@@ -57,6 +57,7 @@ py-modules = [
     "pbbs",
     "aprs",
     "aprs_coverage",
+    "aprs_telemetry",
     "db_backup",
     "stations",
     "winlink",

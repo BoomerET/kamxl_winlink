@@ -432,6 +432,85 @@ class ReceptionHistory:
             )[:10],
         }
 
+    # -- telemetry (see aprs_telemetry.py) -------------------------------
+
+    def _telemetry_reports(self, since, callsign=None):
+        """(callsign, received_at, TelemetryReport) for stored telemetry,
+        oldest first. Gated (third-party) copies count for their
+        originator."""
+        from aprs_telemetry import parse_telemetry
+
+        query = """
+            SELECT source, received_at, payload FROM received_packets
+            WHERE received_at >= ? AND payload IS NOT NULL
+              AND (payload LIKE 'T#%' OR payload LIKE '%|%|%'
+                   OR payload LIKE '}%:T#%')
+        """
+        args = [int(since)]
+        if callsign:
+            query += " AND (source = ? OR payload LIKE '}%')"
+            args.append(callsign)
+        query += " ORDER BY received_at, id"
+
+        found = []
+        for source, received_at, payload in self._connection.execute(query, args):
+            source, payload = unwrap_third_party(source, payload)
+            if callsign and source != callsign:
+                continue
+            report = parse_telemetry(payload)
+            if report is not None:
+                found.append((source, received_at, report))
+        return found
+
+    def telemetry_definitions(self, callsign):
+        """The station's PARM/UNIT/EQNS/BITS messages (all time; the
+        newest of each kind wins)."""
+        from aprs_telemetry import TelemetryDefinitions
+
+        definitions = TelemetryDefinitions()
+        for (text,) in self._connection.execute(
+            """
+            SELECT message_text FROM aprs_messages
+            WHERE addressee = ? AND kind = 'message'
+              AND (message_text LIKE 'PARM.%' OR message_text LIKE 'UNIT.%'
+                   OR message_text LIKE 'EQNS.%' OR message_text LIKE 'BITS.%')
+            ORDER BY received_at, id
+            """,
+            (callsign,),
+        ):
+            definitions.apply(text)
+        return definitions
+
+    def telemetry_stations(self, since):
+        """Stations that sent telemetry since ``since``, newest first."""
+        stations = {}
+        for source, received_at, _report in self._telemetry_reports(since):
+            entry = stations.setdefault(source, {
+                "callsign": source, "reports": 0,
+                "first_heard": received_at, "last_heard": received_at,
+            })
+            entry["reports"] += 1
+            entry["last_heard"] = max(entry["last_heard"], received_at)
+        result = []
+        for entry in stations.values():
+            definitions = self.telemetry_definitions(entry["callsign"])
+            entry["project"] = definitions.project
+            entry["channels"] = [n for n in definitions.names[:5] if n]
+            result.append(entry)
+        return sorted(result, key=lambda e: -e["last_heard"])
+
+    def telemetry_series(self, callsign, since):
+        from aprs_telemetry import build_series
+
+        reports = [
+            (received_at, report)
+            for _source, received_at, report
+            in self._telemetry_reports(since, callsign)
+        ]
+        return build_series(
+            callsign, reports, self.telemetry_definitions(callsign)
+        )
+
     # -- settings and coverage ------------------------------------------
 
     def get_setting(self, key: str) -> Optional[str]:

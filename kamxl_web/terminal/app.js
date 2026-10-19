@@ -68,6 +68,7 @@
   document.getElementById("mapLink").href = authedUrl("/map");
   document.getElementById("winlinkLink").href = authedUrl("/winlink");
   document.getElementById("logLink").href = authedUrl("/log");
+  document.getElementById("telemetryLink").href = authedUrl("/telemetry");
 
   // -- Live monitor (milestone 5) ------------------------------------
   //

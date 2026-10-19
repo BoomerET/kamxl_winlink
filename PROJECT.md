@@ -2212,3 +2212,34 @@ now. RPCs `backup.status`, `backup.now`; REST `GET /backup`,
 Tests: `tests/test_db_backup.py` (19), including a backup taken while
 another connection keeps inserting packets.
 
+**Verified 2026-10-18** with Dave's share `\\192.168.7.246\KAM-XL`
+mounted at `/mnt/kamxl-backup`: the first backup
+(`kamxl-history-20261018-203727.sqlite3.gz`) unpacked to a database
+that passed `PRAGMA integrity_check` with all 8,660 packets.
+
+### Telemetry graphs
+
+`aprs_telemetry.py` decodes `T#` reports (spec form plus the decimal
+and negative values modern senders use, `MIC` sequence, empty
+channels, trailing comments) and base91 compressed `|ss11..|`
+telemetry -- the latter only inside position reports, where `|...|`
+is unlikely to be ordinary text. `TelemetryDefinitions` applies the
+station's PARM/UNIT/EQNS/BITS messages (newest of each wins; read from
+`aprs_messages`, which already stored them). Nothing new is stored:
+series are computed from stored payloads at request time, so all
+telemetry heard since payloads were saved is available.
+
+The page (`kamxl_web/telemetry/`) follows the dataviz guidance: one
+small chart per channel (each has its own units -- never a shared
+axis), a single validated series color (dark slot 1, `#3987e5`, passes
+contrast on the card surface), lines broken where the station went
+quiet (gap > 3x the usual interval), crosshair + tooltip that snaps to
+the nearest report, bits as on/off run strips, and a data table so
+nothing needs hovering. Charts are drawn at real pixel width and
+redrawn on resize, so text isn't stretched. Unused channels (blank in
+PARM) are hidden; stations without definitions show raw values with a
+note. RPCs `telemetry.stations`, `telemetry.get`; REST
+`/telemetry/stations`, `/telemetry/<callsign>`.
+
+Tests: `tests/test_telemetry.py` (14).
+
