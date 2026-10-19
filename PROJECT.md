@@ -2264,14 +2264,16 @@ Picking a period fits the map to all tracks. Header count reads
 
 Tests: `tests/test_station_tracks.py` (7).
 
-### Supported Python: 3.13 and 3.14
+### Supported Python: 3.9+, tested on 3.9, 3.13 and 3.14
 
-CI used to test 3.9, 3.11 and 3.13. Dave runs it on the Maestro laptop
-(Python 3.14.4) and wants to run it on a Raspberry Pi 3B+ (Raspberry Pi
-OS, Python 3.13.5), so CI now tests exactly those two versions and
-`requires-python` is `>=3.13` (it was `>=3.9`; README said 3.8+).
-Checked locally: all tests pass on 3.13 and 3.14.6 with no deprecation
-warnings. Also moved the workflow to actions/checkout@v5,
+Dave runs it on the Maestro laptop (Python 3.14.4) and wants to run it
+on a Raspberry Pi 3B+ (Raspberry Pi OS, Python 3.13.5). PR #39 briefly
+required 3.13+; Dave's rule is not to limit ourselves unless
+necessary, and nothing needs more than 3.9, so `requires-python` is
+back to `>=3.9` (the README had said 3.8+). CI tests 3.9 (the floor),
+3.13 (the Pi) and 3.14 (the laptop); 3.11 dropped. Checked locally:
+all tests pass on 3.9.25, 3.13.16 and 3.14.6, with no deprecation
+warnings on 3.14. Raise the floor only when a feature truly needs it. Also moved the workflow to actions/checkout@v5,
 setup-python@v6 and setup-node@v5 (the v4/v5 actions ran on Node 20,
 which GitHub has deprecated).
 
