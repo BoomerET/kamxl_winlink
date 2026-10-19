@@ -53,7 +53,7 @@ import winlink_api
 
 from kamxl import KAMXL, KAMError
 from packet import Packet, PacketParser
-from tnc import TerminalTNC, create_tnc, normalize_tnc_model
+from tnc import TerminalTNC, create_tnc, normalize_tnc_mode, normalize_tnc_model
 from stations import StationTracker
 from winlink import OutgoingMessage
 from collections import deque
@@ -189,6 +189,12 @@ class KAMDaemon:
             normalize_station_callsign(station_callsign)
             if station_callsign is not None else None
         )
+
+        # A KISS-mode TNC adds no source address of its own: frames go
+        # out from the station callsign.
+        if hasattr(kam, "mycall") and not getattr(kam, "mycall", None):
+            kam.mycall = self.station_callsign
+
         self.socket_path = socket_path
         self._reception_writer = None
 
@@ -493,6 +499,7 @@ class KAMDaemon:
             "connected": connected,
             "port": self.kam.port,
             "tnc_model": getattr(self.kam, "MODEL", "KAM-XL"),
+            "tnc_mode": getattr(self.kam, "MODE", "terminal"),
             "aprs_tx_supported": getattr(self.kam, "APRS_TX_SUPPORTED", True),
             "monitor_subscribers": subscriber_count,
             "diagnostics": {
@@ -1941,7 +1948,7 @@ class KAMDaemon:
             self._aprs_link_may_be_active = True
             logger.exception("APRS session verification failed")
             raise APRSTransmitError(
-                "Could not verify the KAM-XL is idle in command mode "
+                f"Could not verify the {getattr(self.kam, 'MODEL', 'TNC')} is idle in command mode "
                 "(is a connected AX.25 session still open on stream A?). "
                 "Nothing was transmitted."
             ) from exc
@@ -3124,8 +3131,20 @@ def main(argv: Optional[list] = None) -> None:
         "--tnc",
         default=os.environ.get("TNCSTATION_TNC") or "kamxl",
         help=(
-            "TNC model on --port: kamxl (Kantronics KAM-XL) or opentnc "
-            "(NA6D/AE6EO OpenTNC) (default: $TNCSTATION_TNC, or kamxl)"
+            "TNC model on --port: kamxl (Kantronics KAM-XL), opentnc "
+            "(NA6D/AE6EO OpenTNC), or kiss (a TNC already in KISS mode, or "
+            "Direwolf -- --port tcp://localhost:8001) "
+            "(default: $TNCSTATION_TNC, or kamxl)"
+        ),
+    )
+    parser.add_argument(
+        "--tnc-mode",
+        default=os.environ.get("TNCSTATION_MODE") or "",
+        help=(
+            "terminal or kiss. KISS mode is monitoring and APRS only (no "
+            "connected mode, PBBS, Winlink or TNC commands). "
+            "(default: $TNCSTATION_MODE, or the TNC's own default: terminal "
+            "for kamxl/opentnc, kiss for kiss)"
         ),
     )
     parser.add_argument(
@@ -3133,7 +3152,8 @@ def main(argv: Optional[list] = None) -> None:
         default=os.environ.get("TNCSTATION_PORT"),
         required=os.environ.get("TNCSTATION_PORT") is None,
         help=(
-            "Serial port the TNC is on, e.g. /dev/ttyUSB0, /dev/ttyACM0 or COM8 "
+            "Serial port the TNC is on, e.g. /dev/ttyUSB0, /dev/ttyACM0 or COM8, "
+            "or tcp://host:port for KISS over TCP (Direwolf) "
             "(default: $TNCSTATION_PORT; required if that's unset). No "
             "hardcoded fallback -- a wrong/missing port should fail "
             "fast, not silently try to open a device that isn't there "
@@ -3379,6 +3399,7 @@ def main(argv: Optional[list] = None) -> None:
 
     try:
         tnc_model = normalize_tnc_model(args.tnc)
+        tnc_mode = normalize_tnc_mode(tnc_model, args.tnc_mode)
     except ValueError as exc:
         parser.error(str(exc))
 
@@ -3472,7 +3493,7 @@ def main(argv: Optional[list] = None) -> None:
             ", ".join(legacy_settings),
         )
 
-    kam = create_tnc(tnc_model, args.port, baudrate=args.baud)
+    kam = create_tnc(tnc_model, args.port, baudrate=args.baud, mode=tnc_mode)
     kam.connect()
 
     daemon = KAMDaemon(
@@ -3565,7 +3586,10 @@ def main(argv: Optional[list] = None) -> None:
     )
     server_thread.start()
 
-    logger.info("tncstation daemon (%s): %s -> %s", kam.MODEL, args.port, args.socket)
+    logger.info(
+        "tncstation daemon (%s, %s mode): %s -> %s",
+        kam.MODEL, tnc_mode, args.port, args.socket,
+    )
 
     try:
         while not shutdown_requested.is_set():

@@ -304,3 +304,42 @@ class OpenTNC(TerminalTNC):
 
     def read_pbbs_message(self, *args: Any, **kwargs: Any) -> Any:
         raise TNCError("The OpenTNC has no built-in PBBS")
+
+
+# ---------------------------------------------------------------------------
+# KISS mode
+# ---------------------------------------------------------------------------
+
+from kiss import KISS_EXIT, KISSTNC  # noqa: E402
+
+
+class OpenTNCKISS(KISSTNC):
+    """
+    The OpenTNC in KISS mode: monitoring and APRS transmit with frames
+    built here, so nothing depends on the (still unverified) Terminal
+    Mode display formats above. Per NA6D's guide: ``KISS ON`` from the
+    cmd: prompt enters KISS immediately; C0 FF C0 (or a power cycle)
+    leaves it. KISS doesn't survive a power cycle, so nothing persists.
+
+    Sending ``KISS ON`` to a unit that's already in KISS (say, after the
+    daemon restarted) is harmless: a KISS decoder ignores bytes outside
+    FEND-delimited frames.
+    """
+
+    MODEL = "OpenTNC"
+    NAME = "opentnc"
+
+    PORT_MAP = {0: APRS_RADIO_PORT}
+    APRS_TX_CHANNEL = 0
+
+    def enter_kiss_mode(self) -> None:
+        self._write(b"\r")
+        self._settle(0.3)
+        self._write(b"KISS ON\r")
+        reply = self._settle(0.5)
+        logger.info("OpenTNC: KISS ON sent (reply %r)", reply[:80])
+
+    def leave_kiss_mode(self) -> None:
+        self._write(KISS_EXIT)
+        self._settle(0.3)
+        logger.info("OpenTNC: left KISS mode")

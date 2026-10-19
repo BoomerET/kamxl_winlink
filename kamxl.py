@@ -227,3 +227,65 @@ class KAMXL(TerminalTNC):
         logger.debug("pbbs read raw: %r", text)
 
         return parse_message(text)
+
+
+# ---------------------------------------------------------------------------
+# KISS mode
+# ---------------------------------------------------------------------------
+
+from kiss import KISS_EXIT, KISSTNC  # noqa: E402
+
+
+class KAMXLKISS(KISSTNC):
+    """
+    The KAM-XL in KISS mode -- UNVERIFIED against the real unit.
+
+    Entering, per the manual: ``INTFACE KISS`` at cmd:, then ``RESET``
+    (see enterKissMode.py). INTFACE is a *saved* setting, so leaving
+    has to put it back, or the KAM-XL boots into KISS from then on and
+    every Terminal Mode tool stops working: at shutdown this sends the
+    KISS exit (C0 FF C0, see exitKissMode.py), then ``INTFACE
+    TERMINAL`` and ``RESET``. If the daemon dies without a clean
+    shutdown, run exitKissMode.py and do that by hand.
+
+    Port mapping is the KAM-XL's two-radio layout as KISS channels --
+    channel 0 = Port 1 (HF), channel 1 = Port 2 (VHF) -- assumed from
+    the manual, not yet seen on the air. Until it has been, APRS
+    transmit stays off here: a wrong guess would key the HF port. The
+    KAM-XL's Terminal Mode driver (KAMXL) transmits APRS normally.
+    """
+
+    MODEL = "KAM-XL"
+    NAME = "kamxl"
+
+    PORT_MAP = {0: 1, 1: 2}
+    APRS_TX_CHANNEL = 1
+    APRS_TX_SUPPORTED = False
+
+    def enter_kiss_mode(self) -> None:
+        self._write(b"\r")
+        reply = self._settle(0.5)
+
+        if b"cmd:" not in reply:
+            # No prompt: most likely already in KISS (INTFACE persists).
+            logger.info("KAM-XL: no cmd: prompt; assuming it's already in KISS mode")
+            return
+
+        self._write(b"INTFACE KISS\r")
+        reply = self._settle(1.0)
+
+        if b"EH?" in reply:
+            raise KAMCommandError(f"KAM-XL rejected INTFACE KISS: {reply!r}")
+
+        self._write(b"RESET\r")
+        self._settle(2.0)
+        logger.info("KAM-XL: INTFACE KISS + RESET sent")
+
+    def leave_kiss_mode(self) -> None:
+        self._write(KISS_EXIT)
+        self._settle(1.5)
+        self._write(b"\rINTFACE TERMINAL\r")
+        self._settle(1.0)
+        self._write(b"RESET\r")
+        self._settle(2.0)
+        logger.info("KAM-XL: left KISS mode, INTFACE TERMINAL restored")
