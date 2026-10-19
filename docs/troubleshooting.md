@@ -87,7 +87,7 @@ forwarding windows.
 A firmware flash can leave the KAM-XL's host baud rate (`HBAUD`)
 different from what it was before -- observed directly: flashing at
 38400 left the unit answering at 38400 afterward, not back at the
-usual 19200. `kamxl_daemon.py` (and `KAMXL` itself) has no way to
+usual 19200. `tncstation_daemon.py` (and `KAMXL` itself) has no way to
 auto-detect this -- a baud mismatch doesn't produce garbled text or a
 clean error, it just looks like the KAM-XL never responds at all,
 since every byte is being misread. Check what the KAM-XL is actually
@@ -100,7 +100,7 @@ autodetect and lock to whatever baud rate `*` was just sent at,
 letting you reset it to a known rate (e.g. reconnect your terminal at
 19200 first, then send `ABAUD` and `*`) without needing to already
 know or guess the right value. Once it's back to a known rate, either
-pass `kamxl_daemon.py --baud <rate>` to match, or set it back to the
+pass `tncstation_daemon.py --baud <rate>` to match, or set it back to the
 project's usual 19200 default so nothing else needs to change.
 
 ## General advice

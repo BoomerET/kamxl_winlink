@@ -10,9 +10,9 @@ import unittest
 from contextlib import redirect_stderr
 from unittest.mock import patch
 
-import kamxl_daemon
+import tncstation_daemon
 from fakes import ScriptedSerial, make_kam
-from kamxl_daemon import KAMDaemon
+from tncstation_daemon import KAMDaemon
 from packet import Packet
 from test_rest import RestTestCase
 
@@ -109,7 +109,7 @@ class WatchdogStateTests(unittest.TestCase):
                     "last_other_source": "W5NGU-3"}
 
         with patch.object(daemon, "_watchdog_snapshot", fake_snapshot), \
-             self.assertLogs("kamxl_daemon", level="INFO") as logs:
+             self.assertLogs("tncstation_daemon", level="INFO") as logs:
             for _ in range(4):
                 daemon._watchdog_tick()
 
@@ -123,12 +123,12 @@ class WatchdogStateTests(unittest.TestCase):
 class WatchdogCommandLineTests(unittest.TestCase):
 
     def test_too_small_threshold_rejected_before_serial(self):
-        with patch.dict(os.environ, {"KAMXL_CALLSIGN": "N5BA"}, clear=True), \
-             patch.object(kamxl_daemon, "_load_dotenv"), \
-             patch.object(kamxl_daemon, "KAMXL") as kamxl_cls, \
+        with patch.dict(os.environ, {"TNCSTATION_CALLSIGN": "N5BA"}, clear=True), \
+             patch.object(tncstation_daemon, "_load_dotenv"), \
+             patch.object(tncstation_daemon, "KAMXL") as kamxl_cls, \
              redirect_stderr(io.StringIO()):
             with self.assertRaises(SystemExit):
-                kamxl_daemon.main(
+                tncstation_daemon.main(
                     ["--port", "/dev/null", "--watchdog-minutes", "2"]
                 )
         kamxl_cls.assert_not_called()

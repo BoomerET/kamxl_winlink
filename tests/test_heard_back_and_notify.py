@@ -14,9 +14,9 @@ import urllib.error
 from contextlib import redirect_stderr
 from unittest.mock import patch
 
-import kamxl_daemon
+import tncstation_daemon
 from fakes import make_kam
-from kamxl_daemon import KAMDaemon
+from tncstation_daemon import KAMDaemon
 from notify import Notifier, parse_events
 from packet import Packet
 from test_aprs_serial import APRSTransactionFake
@@ -300,7 +300,7 @@ class NotificationHookTests(_Stack, unittest.TestCase):
         serial, daemon, client = self.start(notifier=n)
         result = client.call("notify.test", )["result"]
         self.assertTrue(result["delivered"])
-        self.assertEqual(op.bodies()[0]["title"], "KAM-XL test notification")
+        self.assertEqual(op.bodies()[0]["title"], "tncstation test notification")
 
     def test_notify_test_without_config(self):
         serial, daemon, client = self.start()
@@ -311,27 +311,27 @@ class NotificationHookTests(_Stack, unittest.TestCase):
 class NotifyCommandLineTests(unittest.TestCase):
 
     def _exits(self, env):
-        base = {"KAMXL_CALLSIGN": "N5BA"}
+        base = {"TNCSTATION_CALLSIGN": "N5BA"}
         base.update(env)
         with patch.dict(os.environ, base, clear=True), \
-             patch.object(kamxl_daemon, "_load_dotenv"), \
-             patch.object(kamxl_daemon, "KAMXL") as kamxl_cls, \
+             patch.object(tncstation_daemon, "_load_dotenv"), \
+             patch.object(tncstation_daemon, "KAMXL") as kamxl_cls, \
              redirect_stderr(io.StringIO()):
             with self.assertRaises(SystemExit):
-                kamxl_daemon.main(["--port", "/dev/null"])
+                tncstation_daemon.main(["--port", "/dev/null"])
         kamxl_cls.assert_not_called()
 
     def test_url_without_topic(self):
-        self._exits({"KAMXL_NTFY_URL": "https://notify.example.net"})
+        self._exits({"TNCSTATION_NTFY_URL": "https://notify.example.net"})
 
     def test_bad_url_and_events(self):
-        self._exits({"KAMXL_NTFY_URL": "notify.example.net", "KAMXL_NTFY_TOPIC": "a"})
-        self._exits({"KAMXL_NTFY_URL": "https://x", "KAMXL_NTFY_TOPIC": "a",
-                     "KAMXL_NTFY_EVENTS": "everything"})
+        self._exits({"TNCSTATION_NTFY_URL": "notify.example.net", "TNCSTATION_NTFY_TOPIC": "a"})
+        self._exits({"TNCSTATION_NTFY_URL": "https://x", "TNCSTATION_NTFY_TOPIC": "a",
+                     "TNCSTATION_NTFY_EVENTS": "everything"})
 
     def test_half_cloudflare_pair(self):
-        self._exits({"KAMXL_NTFY_URL": "https://x", "KAMXL_NTFY_TOPIC": "a",
-                     "KAMXL_NTFY_CF_ACCESS_CLIENT_ID": "id-only"})
+        self._exits({"TNCSTATION_NTFY_URL": "https://x", "TNCSTATION_NTFY_TOPIC": "a",
+                     "TNCSTATION_NTFY_CF_ACCESS_CLIENT_ID": "id-only"})
 
 
 class NotifyRestTests(RestTestCase):

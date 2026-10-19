@@ -48,7 +48,7 @@ jobs:
 
       - name: Check web page JavaScript syntax
         run: |
-          for f in kamxl_web/*/app.js; do echo "node --check $f"; node --check "$f"; done
+          for f in tncstation_web/*/app.js; do echo "node --check $f"; node --check "$f"; done
 
       - name: Run test suite
         run: python run_tests.py

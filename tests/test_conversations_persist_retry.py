@@ -14,11 +14,11 @@ import unittest
 from contextlib import redirect_stderr
 from unittest.mock import patch
 
-import kamxl_daemon
+import tncstation_daemon
 from aprs import parse_aprs_message
 from aprs_outbox import OutboundAprsTracker
 from fakes import make_kam
-from kamxl_daemon import KAMDaemon
+from tncstation_daemon import KAMDaemon
 from packet import Packet
 from reception_history import ReceptionHistory
 from test_aprs_serial import APRSTransactionFake
@@ -341,12 +341,12 @@ class RetryCommandLineTests(unittest.TestCase):
 
     def test_bad_retry_settings_rejected_before_serial(self):
         for argv in (["--retry-count", "9"], ["--retry-interval", "5"]):
-            with patch.dict(os.environ, {"KAMXL_CALLSIGN": "N5BA"}, clear=True), \
-                 patch.object(kamxl_daemon, "_load_dotenv"), \
-                 patch.object(kamxl_daemon, "KAMXL") as kamxl_cls, \
+            with patch.dict(os.environ, {"TNCSTATION_CALLSIGN": "N5BA"}, clear=True), \
+                 patch.object(tncstation_daemon, "_load_dotenv"), \
+                 patch.object(tncstation_daemon, "KAMXL") as kamxl_cls, \
                  redirect_stderr(io.StringIO()):
                 with self.assertRaises(SystemExit):
-                    kamxl_daemon.main(["--port", "/dev/null"] + argv)
+                    tncstation_daemon.main(["--port", "/dev/null"] + argv)
             kamxl_cls.assert_not_called()
 
 
@@ -395,7 +395,7 @@ class RestConversationTests(RestTestCase):
             self.skipTest("node not available")
 
         import re
-        from kamxl_rest import DASHBOARD_HTML
+        from tncstation_rest import DASHBOARD_HTML
 
         match = re.search(
             r"  function buildThreads\(\) \{(.*?)\n  \}\n", DASHBOARD_HTML, re.S

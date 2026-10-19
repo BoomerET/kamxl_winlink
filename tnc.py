@@ -136,7 +136,7 @@ class TerminalTNC:
     # Human-readable model name, used in error messages and logs.
     MODEL: str = "TNC"
 
-    # Short name accepted by create_tnc() / --tnc / KAMXL_TNC.
+    # Short name accepted by create_tnc() / --tnc / TNCSTATION_TNC.
     NAME: str = "generic"
 
     # Text meaning the TNC rejected a command.
@@ -555,7 +555,7 @@ class TerminalTNC:
         response text.
 
         Real bug found live (Dave's daemon log, a plain "VERSION"
-        command sent through kamxl_daemon.py/kamxl_rest.py's web
+        command sent through tncstation_daemon.py/tncstation_rest.py's web
         terminal): unsolicited MONITOR traffic and a command's response
         share one physical serial stream on real hardware (see
         docs/daemon.md's "Known limitation" -- previously flagged as
@@ -584,7 +584,7 @@ class TerminalTNC:
         "EH?" tail too, since nothing after it looked like another
         header. Good enough to clean up a command's response; not
         meant to replace PacketParser for genuine monitor decoding
-        (which still runs separately, in kamxl_daemon.py's background
+        (which still runs separately, in tncstation_daemon.py's background
         thread, whenever it isn't locked out by an in-flight command).
 
         Known limitation of this heuristic: a monitored packet with no
@@ -2090,7 +2090,7 @@ TNC_MODELS: Dict[str, Tuple[str, str]] = {
     "opentnc": ("opentnc", "OpenTNC"),
 }
 
-# Accepted spellings, e.g. KAMXL_TNC=kam-xl or --tnc OpenTNC.
+# Accepted spellings, e.g. TNCSTATION_TNC=kam-xl or --tnc OpenTNC.
 _MODEL_ALIASES: Dict[str, str] = {
     "kam": "kamxl",
     "kam-xl": "kamxl",

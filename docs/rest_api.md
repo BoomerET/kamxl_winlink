@@ -1,6 +1,6 @@
 # REST API
 
-Milestone 3. `kamxl_rest.py` is a thin HTTP front end for
+Milestone 3. `tncstation_rest.py` is a thin HTTP front end for
 [the daemon](daemon.md) -- it translates HTTP requests into the
 daemon's Unix socket protocol and proxies its `packet` events out as
 Server-Sent Events. It does not talk to the KAM-XL directly; the
@@ -10,25 +10,25 @@ daemon first.
 ## Running it
 
 ```
-python3 kamxl_daemon.py --port COM8 &
-python3 kamxl_rest.py --daemon-socket /tmp/kamxl.sock --port 8080
+python3 tncstation_daemon.py --port COM8 &
+python3 tncstation_rest.py --daemon-socket /tmp/tncstation.sock --port 8080
 ```
 
 | Flag | Env var | Default |
 | --- | --- | --- |
-| `--daemon-socket` | `KAMXL_SOCKET` | `/tmp/kamxl.sock` |
-| `--host` | `KAMXL_REST_HOST` | `0.0.0.0` (all interfaces) |
-| `--port` | `KAMXL_REST_PORT` | `8080` |
-| `--api-key` | `KAMXL_REST_API_KEY` | random, generated and printed at startup |
+| `--daemon-socket` | `TNCSTATION_SOCKET` | `/tmp/tncstation.sock` |
+| `--host` | `TNCSTATION_REST_HOST` | `0.0.0.0` (all interfaces) |
+| `--port` | `TNCSTATION_REST_PORT` | `8080` |
+| `--api-key` | `TNCSTATION_REST_API_KEY` | random, generated and printed at startup |
 
-Like the daemon, `kamxl_rest.py` reads a `.env` file from the folder
+Like the daemon, `tncstation_rest.py` reads a `.env` file from the folder
 it's started in, so one `.env` configures both programs (a real
-environment variable still wins). With `KAMXL_REST_API_KEY` set
+environment variable still wins). With `TNCSTATION_REST_API_KEY` set
 there, a systemd unit needs no flags at all:
 
 ```
-WorkingDirectory=/home/you/kamxl_winlink
-ExecStart=/path/to/python3 -u kamxl_rest.py
+WorkingDirectory=/home/you/tncstation
+ExecStart=/path/to/python3 -u tncstation_rest.py
 ```
 
 `Ctrl-C`/`SIGTERM` shuts down cleanly, same as the daemon.
@@ -149,7 +149,7 @@ bypasses auth entirely and always returns `204` with no body, never
 first load of any page here (there's no cookie/session for them to
 have picked a token up from), so leaving it to the normal auth path
 would log a routine, harmless request as an "Unauthorized" failure --
-see `RESTRequestHandler.do_GET()` in `kamxl_rest.py`.
+see `RESTRequestHandler.do_GET()` in `tncstation_rest.py`.
 
 ## Examples
 
@@ -212,10 +212,10 @@ curl -N -H "Authorization: Bearer $TOKEN" http://kam-host:8080/monitor/stream
 
 ## Where the pages live
 
-Each web page is three ordinary files under `kamxl_web/<page>/`
+Each web page is three ordinary files under `tncstation_web/<page>/`
 (`dashboard`, `terminal`, `pbbs`, `winlink`, `map`): `index.html`,
-`style.css` and `app.js`. `kamxl_web.load_page()` inlines the CSS and
-JS into the HTML when `kamxl_rest.py` starts, so each page is still
+`style.css` and `app.js`. `tncstation_web.load_page()` inlines the CSS and
+JS into the HTML when `tncstation_rest.py` starts, so each page is still
 served as one self-contained response from its usual authenticated
 route. Restart the web service after editing them. CI runs
 `node --check` on every `app.js`.
@@ -335,7 +335,7 @@ it took slightly longer than the old 5s window to fully arrive.
 Milestone 7 (APRS mapping). `GET /map` serves a third self-contained
 page: a live map, built with [Leaflet](https://leafletjs.com/) and
 OpenStreetMap tiles (both loaded from `cdnjs.cloudflare.com` by the
-*browser* viewing the page -- `kamxl_rest.py` itself never talks to the
+*browser* viewing the page -- `tncstation_rest.py` itself never talks to the
 internet). Linked from the web terminal's and PBBS page's headers, and
 back again.
 
@@ -355,7 +355,7 @@ to a specific commit:
   repo.
 - **Symbol lookup logic:** the ~15-line translation-table and
   sprite-grid-position math is ported inline into the map page's
-  script (`kamxl_web/map/app.js`) from [OK-DMR/aprs-symbols](https://github.com/OK-DMR/aprs-symbols)'
+  script (`tncstation_web/map/app.js`) from [OK-DMR/aprs-symbols](https://github.com/OK-DMR/aprs-symbols)'
   `aprs-symbols.js`/`aprs-symbols.css` (MIT License, Copyright (c)
   2019 Marek Sebera) -- not loaded from a CDN, just the logic reused
   with attribution.
@@ -373,7 +373,7 @@ Leaflet's plain default marker rather than drawing nothing.
 
 Unlike PBBS, `GET /stations` and `GET /stations/<CALLSIGN>` never
 drive an AX.25 connect/command/disconnect cycle -- they just read
-whatever `kamxl_daemon.py`'s always-on monitor thread has already
+whatever `tncstation_daemon.py`'s always-on monitor thread has already
 decoded into its in-memory station database (see
 [daemon.md](daemon.md#concurrency-model) and `stations.py`), so these
 calls are fast and don't need a generous timeout the way PBBS calls
@@ -585,7 +585,7 @@ daemon restart doesn't reuse recent ones.
 | `rejected` | `rejID` heard from the addressee |
 
 An incoming ack is matched only when it is addressed to this station
-(`KAMXL_CALLSIGN` / `--callsign` on the daemon, e.g. `N5BA`), sent
+(`TNCSTATION_CALLSIGN` / `--callsign` on the daemon, e.g. `N5BA`), sent
 by the station the message was addressed to (exact SSID), and carries
 the assigned ID. Also recognized: acks that arrive via an iGate as
 APRS third-party packets (`}ANSRVR>...::N5BA     :ack0A1F`), APRS 1.1
@@ -612,7 +612,7 @@ fields separately.
 `POST /aprs/ack` with `{"enabled": true|false}` turns it on or off;
 turning it on is the operator's authorization for ACK transmissions on
 VHF Port 2 and runs the same Ctrl-C + `STATUS` TNC check as a send.
-`--auto-ack` / `KAMXL_AUTO_ACK=1` turns it on at daemon startup.
+`--auto-ack` / `TNCSTATION_AUTO_ACK=1` turns it on at daemon startup.
 Messages that reach RF from APRS-IS through an iGate (third-party
 `}` packets) are acked too, addressed to the originating station
 rather than the iGate.
@@ -634,7 +634,7 @@ Sent Messages).
 ### Digipeater path and position beacon
 
 Everything sent on APRS (messages, resends, ACKs, beacons) uses the
-daemon's `--aprs-path` / `KAMXL_APRS_PATH` (default
+daemon's `--aprs-path` / `TNCSTATION_APRS_PATH` (default
 `WIDE1-1,WIDE2-1`). `POST /aprs/send` may include `"path"` to
 override it for one message (`"DIRECT"` or `""` = no digipeaters);
 `GET /aprs/outbox` reports the configured `path`.
@@ -717,7 +717,7 @@ bulletins, `BLNA`-`BLNZ` announcements, `BLN#GROUP` group bulletins
 `last_heard` and `count`, newest first. Requires `--history-db`.
 `POST /aprs/bulletins/clear` deletes them. Bulletins are never acked,
 and their repeated copies are pruned with the packet history
-(`KAMXL_HISTORY_DAYS`). The dashboard's Bulletins card groups them by
+(`TNCSTATION_HISTORY_DAYS`). The dashboard's Bulletins card groups them by
 sender, marks new ones, and chimes when alerts are on.
 
 ### APRS Services card
@@ -790,7 +790,7 @@ setups: [...]}`, newest-used setup first. Each setup has:
 
 A copy is credited to the latest matching transmission sent within the
 previous 15 minutes (beacons by payload, messages by message ID).
-Distances need `KAMXL_LATITUDE`/`KAMXL_LONGITUDE`. The dashboard's
+Distances need `TNCSTATION_LATITUDE`/`TNCSTATION_LONGITUDE`. The dashboard's
 Coverage card shows setups side by side; its "map" link opens
 `/map?coverage=<setup>&days=N`, which draws lines to each digipeater
 colored by how often it heard you.
@@ -821,7 +821,7 @@ through (the station that transmitted each copy) with counts.
 ### Backups
 
 `GET /backup` reports history-database backups: `{"enabled": false}`
-when `KAMXL_BACKUP_DIR` isn't set, else `folder`, `folder_reachable`,
+when `TNCSTATION_BACKUP_DIR` isn't set, else `folder`, `folder_reachable`,
 `keep`, `time`, `running`, `last_success_at`, `last_file`,
 `last_size`, `failing`, `last_error`, `next_due_at`, `count` and
 `total_size`. `POST /backup/now` makes a backup and waits for it,
@@ -869,7 +869,7 @@ last hour. "Last hour (live)" is the map as before.
 ## Testing
 
 `tests/test_rest.py` runs a real `KAMDaemon` (wired to the same
-scripted fakes used elsewhere) plus a real `kamxl_rest` HTTP server
+scripted fakes used elsewhere) plus a real `tncstation_rest` HTTP server
 pointed at it, talked to with real HTTP requests -- the socket and
 HTTP layers are exercised for real; only the serial connection
 underneath is faked. Included in `python3 run_tests.py`.

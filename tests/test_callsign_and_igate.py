@@ -1,5 +1,5 @@
 """
-Offline tests for the configurable station callsign (KAMXL_CALLSIGN /
+Offline tests for the configurable station callsign (TNCSTATION_CALLSIGN /
 --callsign) and automatic ACKs for messages gated from APRS-IS.
 """
 
@@ -10,8 +10,8 @@ import time
 import unittest
 from unittest.mock import patch
 
-import kamxl_daemon
-from kamxl_daemon import KAMDaemon, normalize_station_callsign
+import tncstation_daemon
+from tncstation_daemon import KAMDaemon, normalize_station_callsign
 from packet import Packet
 from fakes import make_kam
 from test_aprs_serial import APRSTransactionFake
@@ -57,11 +57,11 @@ class CommandLineTests(unittest.TestCase):
 
     def _main(self, argv, env):
         with patch.dict(os.environ, env, clear=True), \
-             patch.object(kamxl_daemon, "_load_dotenv"), \
-             patch.object(kamxl_daemon, "KAMXL") as kamxl_cls, \
+             patch.object(tncstation_daemon, "_load_dotenv"), \
+             patch.object(tncstation_daemon, "KAMXL") as kamxl_cls, \
              redirect_stderr(io.StringIO()):
             with self.assertRaises(SystemExit):
-                kamxl_daemon.main(argv)
+                tncstation_daemon.main(argv)
         return kamxl_cls
 
     def test_callsign_required(self):
@@ -71,7 +71,7 @@ class CommandLineTests(unittest.TestCase):
 
     def test_invalid_callsign_rejected_before_serial(self):
         kamxl_cls = self._main(
-            ["--port", "/dev/null"], {"KAMXL_CALLSIGN": "not a call"}
+            ["--port", "/dev/null"], {"TNCSTATION_CALLSIGN": "not a call"}
         )
         kamxl_cls.assert_not_called()
 

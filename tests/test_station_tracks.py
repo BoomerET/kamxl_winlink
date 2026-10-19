@@ -5,9 +5,9 @@ import tempfile
 import time
 import unittest
 
-import kamxl_web
+import tncstation_web
 from fakes import ScriptedSerial, make_kam
-from kamxl_daemon import KAMDaemon
+from tncstation_daemon import KAMDaemon
 from packet import Packet
 from reception_history import ReceptionHistory
 from test_rest import RestTestCase
@@ -116,7 +116,7 @@ class TrackRestTests(RestTestCase):
         self.assertEqual(payload["result"], {"hours": 72, "stations": []})
         status, _ = self.request(port, "GET", "/stations/history?hours=soon")
         self.assertEqual(status, 400)
-        page = kamxl_web.load_page("map")
+        page = tncstation_web.load_page("map")
         for marker in ('id="trackPeriod"', "refreshHistory", "/stations/history"):
             self.assertIn(marker, page)
 

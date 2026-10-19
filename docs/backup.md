@@ -1,10 +1,10 @@
 # History database backups
 
-With `KAMXL_BACKUP_DIR` set, the daemon backs up the history database
-(`KAMXL_HISTORY_DB`: packet log, messages, coverage, setups) once a day
-at `KAMXL_BACKUP_TIME` (default 03:30, local time). If the laptop was
+With `TNCSTATION_BACKUP_DIR` set, the daemon backs up the history database
+(`TNCSTATION_HISTORY_DB`: packet log, messages, coverage, setups) once a day
+at `TNCSTATION_BACKUP_TIME` (default 03:30, local time). If the laptop was
 off or asleep at that time, the backup runs as soon as the daemon is
-running again. It keeps the newest `KAMXL_BACKUP_KEEP` backups
+running again. It keeps the newest `TNCSTATION_BACKUP_KEEP` backups
 (default 7) and deletes older ones; it never touches any other file
 in the folder.
 
@@ -16,7 +16,7 @@ under that name only once it's complete.
 The dashboard's **Backups** card shows the last good backup, how many
 are kept, when the next one is due, and has a **Back up now** button.
 If a backup fails you get a phone notification (`backup` event, on by
-default; if you set `KAMXL_NTFY_EVENTS` yourself, add `backup` to it),
+default; if you set `TNCSTATION_NTFY_EVENTS` yourself, add `backup` to it),
 and another when backups work again. Failed backups are retried every
 hour.
 
@@ -51,7 +51,7 @@ example uses `\\192.168.7.246\KAM-XL` (`smb://192.168.7.246/KAM-XL`).
    ```
 
 3. Find the user the daemon runs as -- the `User=` line in
-   `/etc/systemd/system/kamxl-daemon.service` -- and add this line to
+   `/etc/systemd/system/tncstation-daemon.service` -- and add this line to
    `/etc/fstab` (one line), with that user for `uid` and `gid`:
 
    ```
@@ -79,9 +79,9 @@ example uses `\\192.168.7.246\KAM-XL` (`smb://192.168.7.246/KAM-XL`).
 5. Point the daemon at it in `.env` and restart it:
 
    ```
-   KAMXL_BACKUP_DIR=/mnt/kamxl-backup
-   #KAMXL_BACKUP_KEEP=7
-   #KAMXL_BACKUP_TIME=03:30
+   TNCSTATION_BACKUP_DIR=/mnt/kamxl-backup
+   #TNCSTATION_BACKUP_KEEP=7
+   #TNCSTATION_BACKUP_TIME=03:30
    ```
 
    The first backup runs about five minutes after startup; or press
@@ -94,16 +94,16 @@ folder on the laptop's own disk -- and a backup there would be lost
 along with the disk. So a backup is refused when the backup folder is
 on the same disk as the database. To back up to another folder on the
 same disk on purpose (say, a second partition that the check doesn't
-recognize, or for testing), set `KAMXL_BACKUP_ALLOW_SAME_DISK=1`.
+recognize, or for testing), set `TNCSTATION_BACKUP_ALLOW_SAME_DISK=1`.
 
 ## Restoring
 
-1. Stop the daemon: `sudo systemctl stop kamxl-daemon`
+1. Stop the daemon: `sudo systemctl stop tncstation-daemon`
 2. Move the current database aside, with its `-wal` and `-shm` files
    if present:
 
    ```
-   cd /var/lib/kamxl
+   cd /var/lib/tncstation
    sudo mkdir -p broken && sudo mv reception.sqlite3* broken/
    ```
 
@@ -112,12 +112,12 @@ recognize, or for testing), set `KAMXL_BACKUP_ALLOW_SAME_DISK=1`.
 
    ```
    gunzip -c /mnt/kamxl-backup/kamxl-history-20261018-033000.sqlite3.gz \
-     | sudo tee /var/lib/kamxl/reception.sqlite3 > /dev/null
-   sudo chown dave:dave /var/lib/kamxl/reception.sqlite3
+     | sudo tee /var/lib/tncstation/reception.sqlite3 > /dev/null
+   sudo chown dave:dave /var/lib/tncstation/reception.sqlite3
    ```
 
-4. Start the daemon: `sudo systemctl start kamxl-daemon`
+4. Start the daemon: `sudo systemctl start tncstation-daemon`
 
-(Use your own `KAMXL_HISTORY_DB` path and the daemon's user.) To look
+(Use your own `TNCSTATION_HISTORY_DB` path and the daemon's user.) To look
 inside a backup without restoring it, unpack it anywhere and open it
 with `sqlite3`.

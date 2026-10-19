@@ -16,7 +16,7 @@ from test_aprs_serial import APRSTransactionFake
 from test_daemon import DaemonTestCase
 from test_rest import RestTestCase
 
-import kamxl_web
+import tncstation_web
 
 
 def _p(source, payload):
@@ -165,7 +165,7 @@ class BulletinLabelJsTests(unittest.TestCase):
         node = shutil.which("node")
         if not node:
             self.skipTest("node not available")
-        src = (kamxl_web.PAGES_DIR / "dashboard" / "app.js").read_text()
+        src = (tncstation_web.PAGES_DIR / "dashboard" / "app.js").read_text()
         m = re.search(r"  function bulletinLabel\(b\) \{(.*?)\n  \}\n", src, re.S)
         self.assertIsNotNone(m)
         harness = ('const assert = require("node:assert/strict");\n'

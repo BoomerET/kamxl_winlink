@@ -141,7 +141,7 @@
     } finally {
       // Never left sitting in the form after a submit attempt,
       // success or failure -- see this page's own comment in
-      // kamxl_rest.py for why.
+      // tncstation_rest.py for why.
       passwordInput.value = "";
       submitBtn.disabled = false;
     }

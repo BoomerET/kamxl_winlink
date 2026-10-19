@@ -1,5 +1,5 @@
 """
-Offline, end-to-end tests for kamxl_daemon.py: a real KAMDaemon,
+Offline, end-to-end tests for tncstation_daemon.py: a real KAMDaemon,
 wired to the same scripted fake serial connections used elsewhere in
 this suite, listening on a real (throwaway) Unix socket, talked to by
 a real socket client -- no KAM-XL hardware, no mocking of the socket
@@ -18,7 +18,7 @@ import winlink_api
 
 from fakes import CannedSerial, ChunkSerial, ScriptedSerial, make_kam
 
-from kamxl_daemon import KAMDaemon, _load_dotenv
+from tncstation_daemon import KAMDaemon, _load_dotenv
 from pbbs import PBBSMessage, PBBSMessageSummary
 from pathlib import Path
 from packet import Packet
@@ -1186,7 +1186,7 @@ class PingStatusTests(DaemonTestCase):
                 990.0,   # Inside one minute
             ])
 
-        with patch("kamxl_daemon.time.monotonic", return_value=1000.0):
+        with patch("tncstation_daemon.time.monotonic", return_value=1000.0):
             status = daemon._m_status({})
 
         diag = status["diagnostics"]
@@ -1218,7 +1218,7 @@ class PingStatusTests(DaemonTestCase):
             })
     
         # Minute 100 corresponds to monotonic time 6000.
-        with patch("kamxl_daemon.time.monotonic", return_value=6000.0):
+        with patch("tncstation_daemon.time.monotonic", return_value=6000.0):
             diagnostics = daemon._m_status({})["diagnostics"]
     
         history = diagnostics["activity_history"]
@@ -1689,10 +1689,10 @@ class WinlinkApiTests(DaemonTestCase):
     """
     The Winlink HTTP web-service API wiring (account lookups, gateway
     listings -- winlink_api.py, unrelated to the B2F/RF winlink.py
-    tests above). These never touch daemon.kam at all -- kamxl_daemon.py
+    tests above). These never touch daemon.kam at all -- tncstation_daemon.py
     calls winlink_api.account_exists()/get_gateway_status() directly,
     with no serial port involved -- so the real network calls are
-    swapped out here for direct module-level fakes (kamxl_daemon.py
+    swapped out here for direct module-level fakes (tncstation_daemon.py
     does `import winlink_api` rather than `from winlink_api import
     ...`, specifically so reassigning an attribute on the module
     object here is visible to it), the same "swap the real thing for
@@ -1823,7 +1823,7 @@ class WinlinkApiTests(DaemonTestCase):
 
 class LoadDotenvTests(unittest.TestCase):
     """
-    kamxl_daemon.py's minimal .env loader -- reads WINLINK_API_KEY (or
+    tncstation_daemon.py's minimal .env loader -- reads WINLINK_API_KEY (or
     anything else) out of a KEY=VALUE file so it doesn't have to be
     exported by hand every time the daemon starts. See _load_dotenv()'s
     own docstring for the full scope (no third-party dotenv dependency,
@@ -2028,7 +2028,7 @@ class MonitorSubscribeTests(DaemonTestCase):
             raise RuntimeError("Simulated monitor failure")
 
         with patch.object(daemon.kam, "read_available", side_effect=fail_read):
-            with patch("kamxl_daemon.os._exit") as mock_exit:
+            with patch("tncstation_daemon.os._exit") as mock_exit:
                 deadline = time.monotonic() + 2
 
                 while (
@@ -2269,10 +2269,10 @@ if __name__ == "__main__":
 
 
 class RestDotenvTests(unittest.TestCase):
-    """kamxl_rest.py reads the same .env as the daemon."""
+    """tncstation_rest.py reads the same .env as the daemon."""
 
     def _run_main(self, env_text, environ):
-        import kamxl_rest
+        import tncstation_rest
 
         tmp = tempfile.mkdtemp()
         with open(os.path.join(tmp, ".env"), "w") as f:
@@ -2289,18 +2289,18 @@ class RestDotenvTests(unittest.TestCase):
         os.chdir(tmp)
         try:
             with patch.dict(os.environ, environ, clear=True), \
-                 patch.object(kamxl_rest, "serve", fake_serve):
+                 patch.object(tncstation_rest, "serve", fake_serve):
                 with self.assertRaises(SystemExit):
-                    kamxl_rest.main([])
+                    tncstation_rest.main([])
         finally:
             os.chdir(cwd)
         return captured
 
     def test_settings_come_from_dotenv(self):
         got = self._run_main(
-            "KAMXL_REST_API_KEY=from-dotenv\n"
-            "KAMXL_REST_PORT=8099\n"
-            "KAMXL_SOCKET=/tmp/other.sock\n",
+            "TNCSTATION_REST_API_KEY=from-dotenv\n"
+            "TNCSTATION_REST_PORT=8099\n"
+            "TNCSTATION_SOCKET=/tmp/other.sock\n",
             {},
         )
         self.assertEqual(got["api_key"], "from-dotenv")
@@ -2309,7 +2309,7 @@ class RestDotenvTests(unittest.TestCase):
 
     def test_real_environment_still_wins(self):
         got = self._run_main(
-            "KAMXL_REST_API_KEY=from-dotenv\n",
-            {"KAMXL_REST_API_KEY": "from-systemd"},
+            "TNCSTATION_REST_API_KEY=from-dotenv\n",
+            {"TNCSTATION_REST_API_KEY": "from-systemd"},
         )
         self.assertEqual(got["api_key"], "from-systemd")

@@ -6,7 +6,7 @@ import shutil
 import subprocess
 import unittest
 
-import kamxl_web
+import tncstation_web
 from test_aprs_serial import APRSTransactionFake
 from test_rest import RestTestCase
 
@@ -17,7 +17,7 @@ class BuildServiceMessageTests(unittest.TestCase):
         node = shutil.which("node")
         if not node:
             self.skipTest("node not available")
-        src = (kamxl_web.PAGES_DIR / "dashboard" / "app.js").read_text()
+        src = (tncstation_web.PAGES_DIR / "dashboard" / "app.js").read_text()
         m = re.search(
             r"  function buildServiceMessage\(service, f\) \{(.*?)\n  \}\n",
             src, re.S,

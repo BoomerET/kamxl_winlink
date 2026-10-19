@@ -15,7 +15,7 @@ from fakes import CannedSerial, ChunkSerial, ScriptedSerial
 
 from aprs_tx import APRSTransmitError, check_aprs_tx_preflight, recover_aprs_command_mode
 from kamxl import KAMXL, KAMCommandError, KAMConnectionError, KAMError
-from kamxl_daemon import KAMDaemon
+from tncstation_daemon import KAMDaemon
 from opentnc import OpenTNC
 from packet import APRS_RADIO_PORT, PacketParser, TNC2_HEADER_RE
 from tnc import (
@@ -403,7 +403,7 @@ class DaemonWithOpenTNCTests(unittest.TestCase):
                     _CONFIRM, addressee="N0CALL", message="hi"
                 ))
 
-    def test_kamxl_daemon_status_reports_model(self):
+    def test_tncstation_daemon_status_reports_model(self):
         from fakes import make_kam
 
         daemon = KAMDaemon(

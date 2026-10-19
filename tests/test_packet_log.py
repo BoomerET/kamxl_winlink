@@ -7,7 +7,7 @@ import time
 import unittest
 
 from fakes import ScriptedSerial, make_kam
-from kamxl_daemon import KAMDaemon
+from tncstation_daemon import KAMDaemon
 from packet import Packet
 from reception_history import ReceptionHistory
 from test_rest import RestTestCase

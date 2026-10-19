@@ -642,7 +642,7 @@
   function showBeaconStatus(st) {
     if (!st.configured) {
       beaconPosition.textContent =
-        "No position set. Add KAMXL_LATITUDE and KAMXL_LONGITUDE to " +
+        "No position set. Add TNCSTATION_LATITUDE and TNCSTATION_LONGITUDE to " +
         ".env and restart the daemon.";
       beaconToggle.checked = false;
       beaconToggle.disabled = true;
@@ -1694,7 +1694,7 @@
   function showNotifyStatus(st) {
     if (!st.enabled) {
       notifyStatus.textContent =
-        "Off. Set KAMXL_NTFY_URL and KAMXL_NTFY_TOPIC in .env (and a " +
+        "Off. Set TNCSTATION_NTFY_URL and TNCSTATION_NTFY_TOPIC in .env (and a " +
         "token or Cloudflare Access keys if your server needs them), then " +
         "restart the daemon.";
       notifyTestBtn.hidden = true;
@@ -1775,7 +1775,7 @@
   function showBackupStatus(st) {
     if (!st.enabled) {
       backupStatus.className = "sub";
-      backupStatus.textContent = "Off. Set KAMXL_BACKUP_DIR to back up " +
+      backupStatus.textContent = "Off. Set TNCSTATION_BACKUP_DIR to back up " +
         "the history database every day.";
       backupNowBtn.hidden = true;
       return;
@@ -1881,7 +1881,7 @@
 
     if (!report.enabled) {
       coverageStatus.textContent =
-        "Coverage needs the history database (KAMXL_HISTORY_DB).";
+        "Coverage needs the history database (TNCSTATION_HISTORY_DB).";
       coverageTable.innerHTML = "";
       return;
     }
@@ -1900,7 +1900,7 @@
     }
 
     coverageStatus.textContent = report.home ? "" :
-      "Distances need your position (KAMXL_LATITUDE / KAMXL_LONGITUDE).";
+      "Distances need your position (TNCSTATION_LATITUDE / TNCSTATION_LONGITUDE).";
 
     function row(label, cell) {
       return "<tr><th scope='row'>" + label + "</th>" +

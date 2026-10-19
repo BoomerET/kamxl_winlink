@@ -1070,7 +1070,7 @@
       banner.hidden = false;
       if (!entry || !report.home) {
         banner.querySelector("span").textContent = !report.home
-          ? "Coverage needs your position (KAMXL_LATITUDE / KAMXL_LONGITUDE)."
+          ? "Coverage needs your position (TNCSTATION_LATITUDE / TNCSTATION_LONGITUDE)."
           : "No coverage for \u201c" + label + "\u201d in the last " + days + " days.";
         return;
       }

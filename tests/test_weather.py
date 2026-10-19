@@ -9,7 +9,7 @@ from aprs import parse_position, parse_weather
 from packet import Packet
 from stations import StationTracker
 
-import kamxl_web
+import tncstation_web
 
 
 # Captured on the air at N5BA, 2026-10-18 (KC5TIL-3 via W5NGU-3).
@@ -143,7 +143,7 @@ class MapWeatherJsTests(unittest.TestCase):
         node = shutil.which("node")
         if not node:
             self.skipTest("node not available")
-        src = (kamxl_web.PAGES_DIR / "map" / "app.js").read_text()
+        src = (tncstation_web.PAGES_DIR / "map" / "app.js").read_text()
         harness = "\n".join([
             'const assert = require("node:assert/strict");',
             'var COMPASS = ["N","NNE","NE","ENE","E","ESE","SE","SSE",'

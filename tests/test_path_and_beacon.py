@@ -1,6 +1,6 @@
 """
-Offline tests for the APRS digipeater path (KAMXL_APRS_PATH) and the
-position beacon (KAMXL_LATITUDE / KAMXL_LONGITUDE / KAMXL_BEACON).
+Offline tests for the APRS digipeater path (TNCSTATION_APRS_PATH) and the
+position beacon (TNCSTATION_LATITUDE / TNCSTATION_LONGITUDE / TNCSTATION_BEACON).
 """
 
 import io
@@ -12,7 +12,7 @@ import unittest
 from contextlib import redirect_stderr
 from unittest.mock import patch
 
-import kamxl_daemon
+import tncstation_daemon
 from aprs import format_aprs_position, parse_position
 from aprs_tx import (
     APRSTransmitError,
@@ -21,7 +21,7 @@ from aprs_tx import (
     validate_unproto,
 )
 from fakes import make_kam
-from kamxl_daemon import KAMDaemon
+from tncstation_daemon import KAMDaemon
 from packet import Packet
 from test_aprs_serial import APRSTransactionFake
 from test_daemon import _Client
@@ -294,7 +294,7 @@ class DaemonBeaconTests(_DaemonMixin, unittest.TestCase):
 
         response = client.call("aprs.beacon_enable", **_CONFIRM)
         self.assertFalse(response["ok"])
-        self.assertIn("KAMXL_LATITUDE", response["error"]["message"])
+        self.assertIn("TNCSTATION_LATITUDE", response["error"]["message"])
 
     def test_enable_requires_confirmations(self):
         serial, daemon, client = self.start()
@@ -378,29 +378,29 @@ class DaemonBeaconTests(_DaemonMixin, unittest.TestCase):
 class CommandLineTests(unittest.TestCase):
 
     def _main_exits(self, argv, env=None):
-        base = {"KAMXL_CALLSIGN": "N5BA"}
+        base = {"TNCSTATION_CALLSIGN": "N5BA"}
         base.update(env or {})
         with patch.dict(os.environ, base, clear=True), \
-             patch.object(kamxl_daemon, "_load_dotenv"), \
-             patch.object(kamxl_daemon, "KAMXL") as kamxl_cls, \
+             patch.object(tncstation_daemon, "_load_dotenv"), \
+             patch.object(tncstation_daemon, "KAMXL") as kamxl_cls, \
              redirect_stderr(io.StringIO()):
             with self.assertRaises(SystemExit):
-                kamxl_daemon.main(["--port", "/dev/null"] + argv)
+                tncstation_daemon.main(["--port", "/dev/null"] + argv)
         kamxl_cls.assert_not_called()
 
     def test_latitude_without_longitude(self):
-        self._main_exits([], {"KAMXL_LATITUDE": "33.2"})
+        self._main_exits([], {"TNCSTATION_LATITUDE": "33.2"})
 
     def test_interval_too_short(self):
         self._main_exits(["--beacon-interval", "5"])
 
     def test_bad_path(self):
-        self._main_exits([], {"KAMXL_APRS_PATH": "WIDE1-1;RESET"})
+        self._main_exits([], {"TNCSTATION_APRS_PATH": "WIDE1-1;RESET"})
 
     def test_bad_comment(self):
         self._main_exits(
-            [], {"KAMXL_LATITUDE": "33", "KAMXL_LONGITUDE": "-97",
-                 "KAMXL_BEACON_COMMENT": "x" * 50}
+            [], {"TNCSTATION_LATITUDE": "33", "TNCSTATION_LONGITUDE": "-97",
+                 "TNCSTATION_BEACON_COMMENT": "x" * 50}
         )
 
 

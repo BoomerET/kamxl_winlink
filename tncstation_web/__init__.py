@@ -1,12 +1,12 @@
 """
-Web pages served by kamxl_rest.py.
+Web pages served by tncstation_rest.py.
 
 Each page lives in its own folder as three ordinary files you can edit
 with normal HTML/CSS/JavaScript tooling:
 
-    kamxl_web/<page>/index.html   markup
-    kamxl_web/<page>/style.css    page styles
-    kamxl_web/<page>/app.js       page script
+    tncstation_web/<page>/index.html   markup
+    tncstation_web/<page>/style.css    page styles
+    tncstation_web/<page>/app.js       page script
 
 index.html references the other two with exactly
 
@@ -20,7 +20,7 @@ self-contained response from the same authenticated route as before
 index.html straight from disk also works for layout work, since the
 browser follows those relative links itself.
 
-Pages are read once, when kamxl_rest is imported -- restart the web
+Pages are read once, when tncstation_rest is imported -- restart the web
 service after editing them.
 """
 
