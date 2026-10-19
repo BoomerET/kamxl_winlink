@@ -41,7 +41,7 @@ cd kamxl_winlink
 pip install -e .
 ```
 
-Requires Python 3.8+ and [pyserial](https://pypi.org/project/pyserial/),
+Requires Python 3.13+ (tested on 3.13 -- e.g. a Raspberry Pi -- and 3.14) and [pyserial](https://pypi.org/project/pyserial/),
 which `pip install -e .` pulls in automatically.
 
 ### Persistent Serial Device (Linux)
