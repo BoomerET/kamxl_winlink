@@ -60,7 +60,7 @@
     if (command) sendCommand(command);
   });
 
-  log("kamxl web terminal -- type a command (e.g. VERSION, DISPLAY, MYCALL) and press Enter.");
+  log("tncstation web terminal -- type a command (e.g. VERSION, DISPLAY, MYCALL) and press Enter.");
   input.focus();
 
   document.getElementById("homeLink").href = authedUrl("/");

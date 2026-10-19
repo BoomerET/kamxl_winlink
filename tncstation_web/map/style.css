@@ -2,8 +2,8 @@
   html, body {
     margin: 0;
     height: 100%;
-    background: #0b0f10;
-    color: #d4f7d4;
+    background: var(--t-bg);
+    color: var(--t-ink);
     font-family: "Courier New", Courier, monospace;
   }
   body { display: flex; flex-direction: column; }
@@ -12,25 +12,25 @@
     align-items: center;
     justify-content: space-between;
     padding: 4px 10px;
-    background: #101617;
-    border-bottom: 1px solid #234;
+    background: var(--t-surface);
+    border-bottom: 1px solid var(--t-border);
     font-size: 12px;
     letter-spacing: 0.05em;
-    color: #888;
+    color: var(--t-header-ink);
     box-sizing: border-box;
     flex: 0 0 auto;
   }
   .paneHeader a, .paneHeader button {
     background: none;
-    border: 1px solid #345;
-    color: #9c9;
+    border: 1px solid var(--t-border-strong);
+    color: var(--t-control-ink);
     font: inherit;
     font-size: 11px;
     padding: 2px 8px;
     cursor: pointer;
     text-decoration: none;
   }
-  .paneHeader a:hover, .paneHeader button:hover { border-color: #5a8; color: #cfc; }
+  .paneHeader a:hover, .paneHeader button:hover { border-color: var(--t-focus); color: var(--t-ink-strong); }
   #map { flex: 1; }
   #empty {
     position: absolute;
@@ -38,7 +38,7 @@
     left: 0;
     right: 0;
     text-align: center;
-    color: #999;
+    color: var(--t-notice);
     font-style: italic;
     pointer-events: none;
     z-index: 500;
@@ -59,11 +59,11 @@
     line-height: 14px;
     text-align: center;
     font: bold 11px sans-serif;
-    color: #000;
-    background: #fc3;
+    color: var(--t-on-badge);
+    background: var(--t-badge-bg);
     border-radius: 3px;
     padding: 0 2px;
-    box-shadow: 0 0 0 1px #000;
+    box-shadow: 0 0 0 1px var(--t-badge-ring);
   }
   #stationDetails {
     position: absolute;
@@ -72,13 +72,13 @@
     width: min(360px, calc(100vw - 40px));
     max-height: calc(100vh - 70px);
     overflow-y: auto;
-    background: #101b1c;
-    border: 1px solid #3a6;
+    background: var(--t-surface-raised);
+    border: 1px solid var(--t-border-accent);
     border-radius: 6px;
     padding: 14px;
     box-sizing: border-box;
     z-index: 1100;
-    box-shadow: 0 6px 24px #0009;
+    box-shadow: 0 6px 24px var(--t-shadow-strong);
   }
 
   #stationDetails[hidden] {
@@ -87,7 +87,7 @@
 
   #stationDetails h2 {
     margin: 0 0 12px;
-    color: #9f9;
+    color: var(--t-heading);
     font-size: 17px;
   }
 
@@ -97,25 +97,25 @@
   }
 
   #stationDetails .detailLabel {
-    color: #999;
+    color: var(--t-notice);
   }
 
   #closeStationDetails {
     float: right;
     background: transparent;
-    border: 1px solid #456;
-    color: #cfc;
+    border: 1px solid var(--t-border-chip);
+    color: var(--t-ink-strong);
     cursor: pointer;
   }
 
   .packetRecord {
-    border-top: 1px solid #345;
+    border-top: 1px solid var(--t-border-strong);
     padding: 9px 0;
     overflow-wrap: anywhere;
   }
 
   .packetMeta {
-    color: #9aa;
+    color: var(--t-muted-alt);
     font-size: 11px;
     margin-bottom: 4px;
   }
@@ -123,17 +123,17 @@
   .packetPayload {
     white-space: pre-wrap;
     overflow-wrap: anywhere;
-    background: #0b1213;
-    border: 1px solid #234;
+    background: var(--t-surface-sunken);
+    border: 1px solid var(--t-border);
     padding: 7px;
     margin-top: 5px;
     font-size: 11px;
   }
 
   #digiStationFilter {
-    background: #101617;
-    color: #9c9;
-    border: 1px solid #345;
+    background: var(--t-surface);
+    color: var(--t-control-ink);
+    border: 1px solid var(--t-border-strong);
     font: inherit;
     font-size: 11px;
     padding: 2px 5px;
@@ -149,9 +149,9 @@
   }
 
   #stationSearch {
-    background: #101617;
-    color: #d4f7d4;
-    border: 1px solid #345;
+    background: var(--t-surface);
+    color: var(--t-ink);
+    border: 1px solid var(--t-border-strong);
     border-radius: 3px;
     font: inherit;
     font-size: 11px;
@@ -161,7 +161,7 @@
   }
 
   #stationSearch:focus {
-    outline: 1px solid #5a8;
+    outline: 1px solid var(--t-focus);
   }
 
   .paneHeader {
@@ -174,9 +174,9 @@
     top: 48px;
     left: 12px;
     z-index: 1100;
-    background: #101b1c;
-    color: #d4f7d4;
-    border: 1px solid #3a6;
+    background: var(--t-surface-raised);
+    color: var(--t-ink);
+    border: 1px solid var(--t-border-accent);
     border-radius: 5px;
     padding: 9px 12px;
     max-width: min(400px, calc(100vw - 40px));
@@ -185,9 +185,9 @@
 
   /* Weather: temperature labels next to WX stations, popup block. */
   .leaflet-tooltip.wxLabel {
-    background: rgba(11, 15, 16, 0.85);
-    color: #ffd27a;
-    border: 1px solid #5a4a22;
+    background: var(--t-overlay-bg);
+    color: var(--t-gold);
+    border: 1px solid var(--t-overlay-border);
     border-radius: 3px;
     padding: 0 4px;
     font: bold 11px "Courier New", Courier, monospace;
@@ -197,26 +197,26 @@
   .wxBlock {
     margin: 4px 0;
     padding: 4px 6px;
-    border-left: 3px solid #f1c40f;
-    background: rgba(241, 196, 15, 0.08);
+    border-left: 3px solid var(--t-amber);
+    background: var(--t-amber-tint);
   }
-  .wxAge { color: #888; font-weight: normal; }
+  .wxAge { color: var(--t-header-ink); font-weight: normal; }
 
   /* Objects/items and Message links */
-  .objectKind { color: #888; font-size: 11px; }
+  .objectKind { color: var(--t-header-ink); font-size: 11px; }
   .freqBlock {
-    margin: 4px 0; padding: 3px 6px; border-left: 3px solid #3388ff;
-    background: rgba(51, 136, 255, 0.08); font-weight: bold;
+    margin: 4px 0; padding: 3px 6px; border-left: 3px solid var(--t-link);
+    background: var(--t-link-tint); font-weight: bold;
   }
   .leaflet-tooltip.objectLabel {
     font: 11px "Courier New", Courier, monospace; padding: 0 4px;
   }
   .detailActions { margin-bottom: 8px; }
-  .detailActions a.messageStation, a.messageStation { color: #3388ff; }
+  .detailActions a.messageStation, a.messageStation { color: var(--t-link); }
 
 
   #trackPeriod {
-    background: #101617; color: #9c9; border: 1px solid #345;
+    background: var(--t-surface); color: var(--t-control-ink); border: 1px solid var(--t-border-strong);
     font: inherit; font-size: 11px; padding: 2px 5px; margin-right: 12px;
   }
 
@@ -229,16 +229,16 @@
     display: flex;
     align-items: center;
     gap: 10px;
-    background: #101b1c;
-    color: #d4f7d4;
-    border: 1px solid #3a6;
+    background: var(--t-surface-raised);
+    color: var(--t-ink);
+    border: 1px solid var(--t-border-accent);
     border-radius: 5px;
     padding: 8px 12px;
     max-width: min(520px, calc(100vw - 48px));
     font-size: 12px;
   }
   #coverageBanner button {
-    background: none; border: 1px solid #456; color: #cfc;
+    background: none; border: 1px solid var(--t-border-chip); color: var(--t-ink-strong);
     font: inherit; cursor: pointer;
   }
   .leaflet-tooltip.coverageLabel {

@@ -2,8 +2,8 @@
   html, body {
     margin: 0;
     min-height: 100%;
-    background: #0b0f10;
-    color: #d4f7d4;
+    background: var(--t-bg);
+    color: var(--t-ink);
     font-family: "Courier New", Courier, monospace;
   }
   .paneHeader {
@@ -11,68 +11,68 @@
     align-items: center;
     justify-content: space-between;
     padding: 4px 10px;
-    background: #101617;
-    border-bottom: 1px solid #234;
+    background: var(--t-surface);
+    border-bottom: 1px solid var(--t-border);
     font-size: 12px;
     letter-spacing: 0.05em;
-    color: #888;
+    color: var(--t-header-ink);
     box-sizing: border-box;
   }
-  .paneHeader a { color: #9c9; text-decoration: none; margin-left: 8px; }
-  .paneHeader a:hover { color: #cfc; }
+  .paneHeader a { color: var(--t-control-ink); text-decoration: none; margin-left: 8px; }
+  .paneHeader a:hover { color: var(--t-ink-strong); }
   #content { padding: 12px; max-width: 640px; }
   form { display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px; }
-  label { font-size: 12px; color: #789; }
+  label { font-size: 12px; color: var(--t-label); }
   input {
-    background: #0b0f10;
-    color: #d4f7d4;
-    border: 1px solid #345;
+    background: var(--t-bg);
+    color: var(--t-ink);
+    border: 1px solid var(--t-border-strong);
     padding: 6px 8px;
     font: inherit;
     font-size: 13px;
   }
-  input:focus { outline: none; border-color: #5a8; }
+  input:focus { outline: none; border-color: var(--t-focus); }
   button {
     background: none;
-    border: 1px solid #345;
-    color: #9c9;
+    border: 1px solid var(--t-border-strong);
+    color: var(--t-control-ink);
     font: inherit;
     font-size: 13px;
     padding: 6px 10px;
     cursor: pointer;
     align-self: flex-start;
   }
-  button:hover:not(:disabled) { border-color: #5a8; color: #cfc; }
+  button:hover:not(:disabled) { border-color: var(--t-focus); color: var(--t-ink-strong); }
   button:disabled { opacity: 0.5; cursor: default; }
-  .notice { color: #999; font-style: italic; }
-  .err { color: #f77; }
+  .notice { color: var(--t-notice); font-style: italic; }
+  .err { color: var(--t-bad); }
   .msg {
-    border: 1px solid #1c2526;
+    border: 1px solid var(--t-rule-2);
     padding: 8px 10px;
     margin-bottom: 10px;
   }
-  .msg .hdr { color: #6cf; margin-bottom: 6px; }
+  .msg .hdr { color: var(--t-info); margin-bottom: 6px; }
   .msg .body { white-space: pre-wrap; word-break: break-word; line-height: 1.4; }
   textarea {
-    background: #0b0f10;
-    color: #d4f7d4;
-    border: 1px solid #345;
+    background: var(--t-bg);
+    color: var(--t-ink);
+    border: 1px solid var(--t-border-strong);
     padding: 6px 8px;
     font: inherit;
     font-size: 13px;
     min-height: 100px;
     resize: vertical;
   }
-  textarea:focus { outline: none; border-color: #5a8; }
+  textarea:focus { outline: none; border-color: var(--t-focus); }
   .tabs { display: flex; gap: 4px; margin-bottom: 12px; }
   .tabs button {
     background: none;
-    border: 1px solid #345;
-    color: #789;
+    border: 1px solid var(--t-border-strong);
+    color: var(--t-label);
     font: inherit;
     font-size: 12px;
     padding: 4px 10px;
     cursor: pointer;
   }
-  .tabs button.active { color: #cfc; border-color: #5a8; }
+  .tabs button.active { color: var(--t-ink-strong); border-color: var(--t-focus); }
   .hidden { display: none; }

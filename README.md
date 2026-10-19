@@ -204,6 +204,20 @@ exactly as before. See [docs/opentnc.md](docs/opentnc.md) for the
 OpenTNC: setup, what's verified, and how to capture real output with
 `opentnc_capture.py`.
 
+## Themes
+
+Every web page has a theme picker beside its title:
+
+- **Terminal** -- green on black, the original look (default)
+- **Light** -- dark on light, for daylight and phones outdoors
+- **Night (red)** -- dim red on black, including the map, to keep your
+  night vision at the operating position
+- **Auto** -- Light or Terminal, following the device's setting
+
+The choice is remembered per browser, so a phone and a laptop can
+differ. All colors live in `tncstation_web/_shared/theme.css` as named
+tokens, one block per theme; page stylesheets only refer to tokens.
+
 ## Documentation
 
 - [docs/quickstart.md](docs/quickstart.md) -- connect, read/write

@@ -25,8 +25,9 @@ class LoadPageTests(unittest.TestCase):
                 self.assertTrue(html.lower().startswith("<!doctype html>"))
                 self.assertNotIn(tncstation_web.STYLE_TAG, html)
                 self.assertNotIn(tncstation_web.SCRIPT_TAG, html)
-                self.assertEqual(len(re.findall(r"<style>", html)), 1)
-                self.assertEqual(len(re.findall(r"<script>", html)), 1)
+                # The shared theme (theme.css / theme.js) plus the page's own.
+                self.assertEqual(len(re.findall(r"<style>", html)), 2)
+                self.assertEqual(len(re.findall(r"<script>", html)), 2)
 
     def test_coverage_card_and_map_overlay_present(self):
         dashboard = tncstation_web.load_page("dashboard")
@@ -99,8 +100,10 @@ class LoadPageTests(unittest.TestCase):
         node = shutil.which("node")
         if not node:
             self.skipTest("node not available")
-        for name in tncstation_web.PAGE_NAMES:
-            path = tncstation_web.PAGES_DIR / name / "app.js"
+        paths = [tncstation_web.PAGES_DIR / name / "app.js"
+                 for name in tncstation_web.PAGE_NAMES]
+        paths.append(tncstation_web.PAGES_DIR / tncstation_web.SHARED_DIR / "theme.js")
+        for path in paths:
             result = subprocess.run(
                 [node, "--check", str(path)], capture_output=True, text=True
             )
@@ -109,7 +112,8 @@ class LoadPageTests(unittest.TestCase):
     def test_package_data_covers_page_files(self):
         pyproject = (Path(tncstation_web.__file__).parent.parent / "pyproject.toml")
         text = pyproject.read_text()
-        for pattern in ("*/index.html", "*/style.css", "*/app.js"):
+        for pattern in ("*/index.html", "*/style.css", "*/app.js",
+                        "_shared/theme.css", "_shared/theme.js"):
             self.assertIn(pattern, text)
         self.assertIn('packages = ["tncstation_web"]', text)
 
