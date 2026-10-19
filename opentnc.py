@@ -10,34 +10,32 @@ set its author describes as "based on, and largely compatible with"
 the TAPR TNC-2's -- which is why the shared TerminalTNC machinery in
 tnc.py (written against the KAM-XL, another TNC-2 descendant) fits it.
 
-STATUS: UNVERIFIED AGAINST REAL HARDWARE. Everything in this file that
-describes what the firmware *prints* -- the MONITOR header format,
-the command-rejected text, the connect/disconnect banners, how a
-parameter query is answered -- comes from TNC-2 convention and the
-NA6D getting-started guide, not from captured OpenTNC output. Per this
-project's design philosophy (README, "Design philosophy"), run
-opentnc_capture.py against the real unit first and correct the class
-attributes below from what it records. What IS documented by NA6D and
-the firmware author, and relied on here:
+STATUS. Verified against a real NA6D OpenTNC (opentnc_capture.py,
+2026-10-19; transcript in tests/opentnc_capture_20261019.txt):
 
-  - ``cmd:`` prompt; ``HELP`` lists commands
-  - ``MYCALL``, ``CARRIER SQUELCH|AUDIO``, ``SAVE!`` (write to flash)
-  - ``KISS ON`` enters KISS; C0 FF C0 (or a power cycle) leaves it
-  - ``DIGIPEAT ON``, ``APRSDIGI WIDE1-1``
-  - ``FX25Connection OFF|REACTIVE|OPPORTUNISTIC|ON``
-  - ``FX25Encoding OFF|MINIMUM|MAXIMUM|AUTOMATIC``
-  - TNC-2 timing parameters (PACLEN, MAXFRAME, FRACK, RETRY, TXDELAY,
-    SLOTTIME, PERSIST, ...) -- Outpost's documented OpenTNC setup
-    sends them unchanged
-  - one AX.25 connection at a time; no STREAMSW
-  - flow control: none (USB handles it)
+  - ``cmd:`` prompt; commands are echoed; ``HELP`` lists them with the
+    shortest accepted abbreviation in capitals (``MYcall``,
+    ``CARrierdetect``) -- the command table below is that list
+  - a rejected command answers ``Unknown command: X`` and ``Type 'help'
+    to list all commands`` (not the TNC-2 ``EH?``)
+  - a bare query answers ``is VALUE`` (``MYCALL`` -> ``is N5BA-11``);
+    ``DISPLAY`` lists every setting as ``KEY is VALUE`` with the key in
+    its HELP casing, then a blank line and ``Heap allocs: N``
+  - values come back mixed-case (``SQuelch``, ``OFf``, ``OPportunistic``)
+  - not on this firmware: VERSION, STATUS, ECHO, MCOM, MRPT, MSTAMP,
+    HEADERLN, PPERSIST, APRSDIGI, BEACON
+
+Still UNVERIFIED (nothing was heard during the capture): the MONITOR
+line format and the connect/disconnect banners. Those remain TNC-2
+convention; see TNC2_HEADER_RE and CONNECT_MARKERS. KISS mode
+(OpenTNCKISS, below) depends on none of it.
 
 What this driver deliberately does NOT do yet:
 
-  - APRS transmit through aprs_tx.py (APRS_TX_SUPPORTED = False). That
-    path validates the TNC's STATUS and UNPROTO replies line by line
-    before keying the radio, and those formats haven't been seen from
-    an OpenTNC. It fails closed with a clear error until they have.
+  - APRS transmit in Terminal Mode (APRS_TX_SUPPORTED = False). That
+    path checks the TNC's STATUS reply before keying the radio, and the
+    OpenTNC has no STATUS command; it needs its own checks first. Use
+    KISS mode (OpenTNCKISS) to transmit APRS with the OpenTNC.
   - PBBS: the OpenTNC has no built-in mailbox like the KAM-XL's.
   - ``mode expert`` / ``plugh!`` (reboots into the USB bootloader) --
     never sent by this library.
@@ -70,39 +68,58 @@ FX25_ENCODING_CHOICES = ("OFF", "MINIMUM", "MAXIMUM", "AUTOMATIC")
 CARRIER_CHOICES = ("SQUELCH", "AUDIO")
 
 
+# From the firmware's own HELP/DISPLAY (see module docstring). Keys are
+# full command names; the OpenTNC also accepts any abbreviation down to
+# its HELP capitals.
 OPENTNC_COMMANDS: Dict[str, CommandInfo] = {
-    # Identity / station
+    # Station
     "MYCALL": CommandInfo("string"),
-    "VERSION": CommandInfo("string", writable=False),
+    "UNPROTO": CommandInfo("string"),
 
     # Monitoring
     "MONITOR": CommandInfo("bool"),
 
-    # Channel access. CARRIER's two documented values; other firmware
-    # versions may add more, so it's validated only through set_carrier().
-    "CARRIER": CommandInfo("string"),
+    # Channel access. CARRIERDETECT is SQUELCH or AUDIO -- validated by
+    # set_carrier(); AUDIOCARRIER is the AUDIO-mode threshold.
+    "CARRIERDETECT": CommandInfo("string"),
+    "AUDIOCARRIER": CommandInfo("int"),
 
     # Digipeating
     "DIGIPEAT": CommandInfo("bool"),
-    "APRSDIGI": CommandInfo("string"),
 
-    # FX.25 forward error correction (documented values)
+    # FX.25 forward error correction
     "FX25CONNECTION": CommandInfo("choice", choices=FX25_CONNECTION_CHOICES),
     "FX25ENCODING": CommandInfo("choice", choices=FX25_ENCODING_CHOICES),
 
-    # TNC-2 link / timing parameters
+    # Modem
+    "BAUD": CommandInfo("int"),
+    "MULTIBAUD": CommandInfo("bool"),
+    "TXLEVEL": CommandInfo("int"),
+    "TXATTEN": CommandInfo("int"),
+    "PREEMPHASIS": CommandInfo("bool"),
+
+    # AX.25 link / timing
+    "AX25VERSION": CommandInfo("string"),
     "PACLEN": CommandInfo("int"),
     "MAXFRAME": CommandInfo("int"),
+    "MAXXFRAME": CommandInfo("int"),
     "FRACK": CommandInfo("int"),
     "RETRY": CommandInfo("int"),
     "RESPTIME": CommandInfo("int"),
     "CHECK": CommandInfo("int"),
     "TXDELAY": CommandInfo("int"),
+    "TXTAIL": CommandInfo("int"),
     "SLOTTIME": CommandInfo("int"),
     "PERSIST": CommandInfo("int"),
-    "PPERSIST": CommandInfo("bool"),
+    "CONOK": CommandInfo("bool"),
     "CPACTIME": CommandInfo("bool"),
     "CR": CommandInfo("bool"),
+
+    # Read-only here: changing these switches the TNC's whole operating
+    # mode (KISS ON leaves Terminal Mode; MODE EXPERT unlocks firmware
+    # commands). Use enter_kiss_mode() / the OpenTNCKISS driver instead.
+    "KISS": CommandInfo("string", writable=False),
+    "MODE": CommandInfo("string", writable=False),
 }
 
 
@@ -123,12 +140,13 @@ class OpenTNC(TerminalTNC):
     # would wait for the next one to be heard.
     MONITOR_IDLE_FLUSH = 0.5
 
-    # Not until aprs_tx.py has been checked against real STATUS/UNPROTO
-    # output (see module docstring).
+    # The Terminal Mode APRS transmit checks need a STATUS command, which
+    # this firmware doesn't have (see module docstring). KISS mode works.
     APRS_TX_SUPPORTED = False
 
-    # TNC-2 clones print "EH?" (some "?EH") for an unrecognized command.
-    ERROR_MARKERS = ("EH?", "?EH")
+    # Seen on the real unit: "Unknown command: X". EH? kept for other
+    # TNC-2-style firmware builds.
+    ERROR_MARKERS = ("Unknown command", "EH?", "?EH")
 
     # Spelled out in full: a modern parser may not accept the TNC-2
     # eight-letter abbreviation the KAM-XL driver sends.
@@ -136,12 +154,17 @@ class OpenTNC(TerminalTNC):
 
     CONNECT_MARKERS: Dict[str, Union[bytes, re.Pattern]] = {
         **TerminalTNC.CONNECT_MARKERS,
-        "eh": re.compile(rb"EH\?|\?EH"),
+        "eh": re.compile(rb"Unknown command|EH\?|\?EH"),
     }
 
-    # A parameter query reply may be "KEY VALUE", "KEY: VALUE",
-    # "KEY = VALUE" or "KEY is VALUE" -- tolerated until the real format
-    # is confirmed.
+    # A bare query answers "is VALUE" (seen on the real unit); DISPLAY
+    # lines are "KEY is VALUE".
+    _IS_LINE_RE = re.compile(
+        r"^\s*(?:(?P<key>[A-Za-z0-9!]+)\s+)?is\s+(?P<value>.*?)\s*$",
+    )
+
+    # Other TNC-2 reply shapes ("KEY VALUE", "KEY: VALUE", "KEY = VALUE"),
+    # kept as a fallback for other firmware builds.
     _VALUE_LINE_RE = re.compile(
         r"^\s*(?P<key>[A-Za-z0-9!]+)\s*(?:[:=]\s*|\s+is\s+|\s+)(?P<value>.*?)\s*$",
         re.IGNORECASE,
@@ -169,6 +192,13 @@ class OpenTNC(TerminalTNC):
             return ""
 
         for line in lines:
+            match = self._IS_LINE_RE.match(line)
+
+            if match and (match.group("key") is None
+                          or match.group("key").upper() == command):
+                return match.group("value")
+
+        for line in lines:
             match = self._VALUE_LINE_RE.match(line)
 
             if match and match.group("key").upper() == command:
@@ -177,6 +207,24 @@ class OpenTNC(TerminalTNC):
         match = self._VALUE_LINE_RE.match(lines[0])
 
         return match.group("value") if match else ""
+
+    def get_configuration(self) -> Dict[str, str]:
+        """
+        Every setting from DISPLAY, keyed by its name upper-cased
+        ("MYCALL", "CARRIERDETECT"), values as the TNC prints them
+        ("N5BA-11", "SQuelch"). The trailing "Heap allocs" statistics
+        line isn't a setting and is left out.
+        """
+        response = self.send_command("DISPLAY", command_timeout=20)
+        config: Dict[str, str] = {}
+
+        for line in response.splitlines():
+            match = self._IS_LINE_RE.match(line)
+
+            if match and match.group("key"):
+                config[match.group("key").upper()] = match.group("value")
+
+        return config
 
     def _strip_monitor_lines(self, text: str) -> str:
         """
@@ -210,7 +258,7 @@ class OpenTNC(TerminalTNC):
 
     def get_carrier(self) -> str:
         """Return the carrier-detect mode, e.g. "SQUELCH" or "AUDIO"."""
-        return self.get("CARRIER").strip().upper()
+        return self.get("CARRIERDETECT").strip().upper()
 
     def set_carrier(self, mode: str) -> str:
         """
@@ -225,7 +273,7 @@ class OpenTNC(TerminalTNC):
                 f"CARRIER must be one of {CARRIER_CHOICES}, got {mode!r}"
             )
 
-        self.set("CARRIER", mode)
+        self.set("CARRIERDETECT", mode)
 
         return self.get_carrier()
 

@@ -1,0 +1,134 @@
+[   0.307] recv pending at open
+    b''
+[   0.307] sent (CR)
+    b'\r'
+[   0.513] recv
+    b'\r\ncmd:'
+[   0.514] sent HELP
+    b'HELP\r'
+[   0.890] recv
+    b"HELP\r\nAUDIOcarrier: Set audio threshold for squelch-closed operation\r\nAUtolf: Enable/disable linefeed-after-carriage-return to host\r\nAX25Version: Set AX.25 protocol version\r\nBAUD: Set or display radio baud rate\r\nBKondel: Enable/disable backspace-blank on character deletion\r\nCALibrate: Send repeated high/low calibration tone\r\nCANline: Set character to cancel input line\r\nCARrierdetect: Set method used to detect carrier (radio-busy)\r\nCHeck: Set/reset connection-keepalive timeout (x 10 seconds)\r\nCOMmand: Set character to exit converse mode\r\nCONMode: Select connection mode\r\nCONOk: Allow/disallow automatic inbound connections\r\nConnect: Connect to another node\r\nCONVerse: Enter conversation mode\r\nCPactime: Enable/disable timer-based packet sending\r\nCR: Enable/disable including CR in packets sent in CONVERSE mode\r\nCREdits: Display open-source credits\r\nDELete: Set character to backspace/delete input\r\nDIGIpeat: Enable/disable digipeating\r\nDisconnect: End connection to another node\r\nDISPlay: Display TNC parameters and statistics\r\nFASTpoll: Set/reset the 'fast poll during transmission' flag\r\nFRack: Set frame-acknowledgement timeout (seconds)\r\nFX25Encoding: Set/display FX.25 packet error correction level\r\nFX25Connection: Set/display use of FX.25 packet error correction\r\nKISS: Set KISS operating mode\r\nLAMPtest: Test the LEDs\r\nLFadd: Enable/disable appending linefeed after carriage return in data transmitted\r\nMAXframe: Set size of transmit window\r\nMAXXframe: Set upper limit on size of dynamic transmit window\r\nMODE: Set operating mode (normal or expert)\r\nMODUlator: Selects AFSK modulator\r\nMonitor: Enable, disable, or query packet-monitor\r\nMULTIbaud: Enable, disable, or query multi-baud operation\r\nMYcall: Set or query TNC callsign\r\nPaclen: Set max payload length of transmitted packets\r\nPACTime: Set time for automatic packet push (100 ms units)\r\nPERsist: Set P-persist transmit probability\r\nPREemphasis: Apply preemphasis to transmitted audio\r\nRESET: Reset all parameters to factory defaults\r\nRESptime: Sets minimum acknowledgement delay\r\nRESTART: Restart the TNC firmware\r\nRETry: Sets maximum number of retries\r\nSAVE!: Save current TNC parameters to flash\r\nSEndpac: Set character to trigger packet transmission\r\nSLottime: Set P-persist slot time (10 ms units)\r\nTUNINGindicator: Enable, disable, or query 300-baud tuning indicator\r\nTXDelay: Sets key-down delay on transmitter\r\nTXAtten: Sets/displays transmit-level step attenuator\r\nTXLEvel: Sets/displays transmit level\r\nTXTail: Sets end-of-PTT delay on transmitter\r\nUNproto: Set or query UNPROTO callsign\r\nHelp: Lists commands available\r\ncmd:"
+[   0.891] sent VERSION
+    b'VERSION\r'
+[   1.109] recv
+    b"VERSION\r\nUnknown command: VERSION\r\nType 'help' to list all commands\r\ncmd:"
+[   1.109] sent DISPLAY
+    b'DISPLAY\r'
+[   1.403] recv
+    b'DISPLAY\r\nAUDIOcarrier is 200\r\nAUtolf is ON\r\nAX25Version is 2.0\r\nBAUD is 1200\r\nBKondel is ON\r\nCANline is 0x18 (CTRL-X)\r\nCARrierdetect is SQuelch\r\nCHeck is 30\r\nCOMmand is 0x3 (CTRL-C)\r\nCONMode is convers\r\nCONOk is OFf\r\nCPactime is OFf\r\nCR is ON\r\nDELete is 0x8 (CTRL-H)\r\nDIGIpeat is OFf\r\nFASTpoll is ON\r\nFRack is 6\r\nFX25Encoding is Automatic\r\nFX25Connection is OPportunistic\r\nKISS is off\r\nLAMPtest is OFf\r\nLFadd is OFf\r\nMAXframe is 2\r\nMAXXframe is 2\r\nMODE is Normal\r\nMODUlator is 0\r\nMonitor is ON\r\nMULTIbaud is Off\r\nMYcall is N5BA-11\r\nPaclen is 256\r\nPACTime is after 10\r\nPERsist is 63\r\nPREemphasis is OFf\r\nRESptime is 5\r\nRETry is 9\r\nSEndpac is 0xD (CTRL-M)\r\nSLottime is 10\r\nTUNINGindicator is Discrim\r\nTXDelay is 40\r\nTXAtten is 0\r\nTXLEvel is 256\r\nTXTail is 0\r\nUNproto is CQ\r\n\r\nHeap allocs: 2\r\n\r\n\r\ncmd:'
+[   1.404] sent MYCALL
+    b'MYCALL\r'
+[   1.613] recv
+    b'MYCALL\r\nis N5BA-11\r\ncmd:'
+[   1.614] sent MONITOR
+    b'MONITOR\r'
+[   1.830] recv
+    b'MONITOR\r\nis ON\r\ncmd:'
+[   1.830] sent ECHO
+    b'ECHO\r'
+[   2.050] recv
+    b"ECHO\r\nUnknown command: ECHO\r\nType 'help' to list all commands\r\ncmd:"
+[   2.051] sent MCOM
+    b'MCOM\r'
+[   2.272] recv
+    b"MCOM\r\nUnknown command: MCOM\r\nType 'help' to list all commands\r\ncmd:"
+[   2.272] sent MRPT
+    b'MRPT\r'
+[   2.492] recv
+    b"MRPT\r\nUnknown command: MRPT\r\nType 'help' to list all commands\r\ncmd:"
+[   2.493] sent MSTAMP
+    b'MSTAMP\r'
+[   2.710] recv
+    b"MSTAMP\r\nUnknown command: MSTAMP\r\nType 'help' to list all commands\r\ncmd:"
+[   2.711] sent HEADERLN
+    b'HEADERLN\r'
+[   2.932] recv
+    b"HEADERLN\r\nUnknown command: HEADERLN\r\nType 'help' to list all commands\r\ncmd:"
+[   2.932] sent CARRIER
+    b'CARRIER\r'
+[   3.146] recv
+    b'CARRIER\r\nis SQuelch\r\ncmd:'
+[   3.146] sent DIGIPEAT
+    b'DIGIPEAT\r'
+[   3.362] recv
+    b'DIGIPEAT\r\nis OFf\r\ncmd:'
+[   3.363] sent APRSDIGI
+    b'APRSDIGI\r'
+[   3.585] recv
+    b"APRSDIGI\r\nUnknown command: APRSDIGI\r\nType 'help' to list all commands\r\ncmd:"
+[   3.586] sent FX25CONNECTION
+    b'FX25CONNECTION\r'
+[   3.802] recv
+    b'FX25CONNECTION\r\nis OPportunistic\r\ncmd:'
+[   3.802] sent FX25ENCODING
+    b'FX25ENCODING\r'
+[   4.018] recv
+    b'FX25ENCODING\r\nis Automatic\r\ncmd:'
+[   4.019] sent UNPROTO
+    b'UNPROTO\r'
+[   4.235] recv
+    b'UNPROTO\r\nis CQ\r\ncmd:'
+[   4.235] sent PACLEN
+    b'PACLEN\r'
+[   4.450] recv
+    b'PACLEN\r\nis 256\r\ncmd:'
+[   4.450] sent MAXFRAME
+    b'MAXFRAME\r'
+[   4.656] recv
+    b'MAXFRAME\r\nis 2\r\ncmd:'
+[   4.657] sent FRACK
+    b'FRACK\r'
+[   4.863] recv
+    b'FRACK\r\nis 6\r\ncmd:'
+[   4.864] sent RETRY
+    b'RETRY\r'
+[   5.072] recv
+    b'RETRY\r\nis 9\r\ncmd:'
+[   5.073] sent RESPTIME
+    b'RESPTIME\r'
+[   5.287] recv
+    b'RESPTIME\r\nis 5\r\ncmd:'
+[   5.288] sent CHECK
+    b'CHECK\r'
+[   5.503] recv
+    b'CHECK\r\nis 30\r\ncmd:'
+[   5.503] sent TXDELAY
+    b'TXDELAY\r'
+[   5.720] recv
+    b'TXDELAY\r\nis 40\r\ncmd:'
+[   5.721] sent SLOTTIME
+    b'SLOTTIME\r'
+[   5.937] recv
+    b'SLOTTIME\r\nis 10\r\ncmd:'
+[   5.938] sent PERSIST
+    b'PERSIST\r'
+[   6.143] recv
+    b'PERSIST\r\nis 63\r\ncmd:'
+[   6.144] sent PPERSIST
+    b'PPERSIST\r'
+[   6.356] recv
+    b"PPERSIST\r\nUnknown command: PPERSIST\r\nType 'help' to list all commands\r\ncmd:"
+[   6.357] sent CPACTIME
+    b'CPACTIME\r'
+[   6.570] recv
+    b'CPACTIME\r\nis OFf\r\ncmd:'
+[   6.571] sent SENDPAC
+    b'SENDPAC\r'
+[   6.787] recv
+    b'SENDPAC\r\nis 0xD (CTRL-M)\r\ncmd:'
+[   6.787] sent COMMAND
+    b'COMMAND\r'
+[   6.996] recv
+    b'COMMAND\r\nis 0x3 (CTRL-C)\r\ncmd:'
+[   6.996] sent CR
+    b'CR\r'
+[   7.210] recv
+    b'CR\r\nis ON\r\ncmd:'
+[   7.211] sent STATUS
+    b'STATUS\r'
+[   7.423] recv
+    b"STATUS\r\nUnknown command: STATUS\r\nType 'help' to list all commands\r\ncmd:"
+[   7.423] sent XYZZYQ
+    b'XYZZYQ\r'
+[   7.643] recv
+    b"XYZZYQ\r\nUnknown command: XYZZYQ\r\nType 'help' to list all commands\r\ncmd:"
