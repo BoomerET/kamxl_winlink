@@ -25,11 +25,12 @@ STATUS. Verified against a real NA6D OpenTNC (opentnc_capture.py,
   - not on this firmware: VERSION, STATUS, ECHO, MCOM, MRPT, MSTAMP,
     HEADERLN, PPERSIST, APRSDIGI, BEACON
 
-MONITOR lines, seen later the same day: "0 (???): <[To APRS from N5BA
-via WIDE1-1 WIDE2-1: 03(UI) PID ^F0 payload ]" -- see OPENTNC_MONITOR_RE.
+MONITOR lines, seen later the same day and checked against the firmware
+source (DumpPacket() in src/packetutil.c): "0 (???): <[To APRS from N5BA
+via WIDE1-1 WIDE2-1: 03(UI) PID ^F0 payload]" -- see OPENTNC_MONITOR_RE.
 
 Still UNVERIFIED: the connect/disconnect banners (TNC-2 convention, see
-CONNECT_MARKERS) and how a digipeated hop is marked in a monitor line.
+CONNECT_MARKERS).
 KISS mode (OpenTNCKISS, below) depends on none of it.
 
 What this driver deliberately does NOT do yet:
@@ -67,40 +68,48 @@ from tnc import (
 # MONITOR output
 # ---------------------------------------------------------------------------
 #
-# Seen on the real unit (2026-10-19, a KAM-XL beacon heard off the air),
-# one line per packet, here right after the prompt:
+# Printed by DumpPacket() in the firmware's src/packetutil.c, one line
+# per packet. Seen on the real unit (2026-10-19), right after the prompt:
 #
 #   cmd:0 (???): <[To APRS from N5BA via WIDE1-1 WIDE2-1: 03(UI) PID ^F0 =3314.34N/09650.70W-N5BA KAM-XL ^0D ]
 #
-# i.e. "CHANNEL (INFO): <[To DEST from SRC[ via DIGI DIGI...]: CONTROL(TYPE)
-# PID ^XX PAYLOAD ]", with non-printable payload bytes written as ^XX hex
-# (the ^0D is the beacon's trailing CR). Nothing like TNC-2's
-# "SRC>DST,DIGI:payload".
+# From the source:
 #
-# Still unverified (one sample so far): how a digipeated hop is marked
-# (assumed TNC-2's trailing "*"), what "(???)" becomes when it isn't
-# "???", and connected-mode frame shapes. A line that starts like a
-# packet but whose frame part doesn't parse is still recorded, with
-# frame_type None and the text as payload.
+#   "%d %s(%s): %c[To "   packet counter (not a channel), optional signal
+#                         details ("A01234 J0.05 B1200 F1"), AX.25 version
+#                         ("2.0", "2.2", "???"), direction ('<' received)
+#   DEST[*][[DAMA]] from SRC[*][ via DIGI[*] DIGI[*]...]:
+#                         "*" on DEST/SRC is the command/response bit;
+#                         on a digipeater it is the has-been-repeated bit
+#   " %02X(UI) " ...      control field (4 hex digits with v2.2 extended
+#                         sequence numbers) and frame type
+#   "PID ^%02X "          when the frame has one
+#   payload               printable ASCII as-is, every other byte as
+#                         " ^%02X " (a space on each side)
+#   "]"                   straight after the payload
+#
+# Only '<' (received) lines become packets.
 
 OPENTNC_MONITOR_RE: re.Pattern = re.compile(
     r"^(?:cmd:)?\s*"
-    r"(?:(?P<channel>\d+)\s*\((?P<info>[^)]*)\):\s*)?"
-    r"<\[To\s+(?P<destination>\S+)\s+from\s+(?P<source>\S+?)"
-    r"(?:\s+via\s+(?P<digipeaters>[^:]+?))?\s*:"
+    r"(?P<counter>\d+)\s+(?P<details>[^(]*?)\s*\((?P<version>[^)]*)\):\s*"
+    r"(?P<direction>\S)\[To\s+(?P<destination>\S+)\s+from\s+(?P<source>\S+?)"
+    r"(?:\s+via\s+(?P<digipeaters>[^:]+?))?:"
     r"(?P<rest>.*)$"
 )
 
 _OPENTNC_FRAME_RE: re.Pattern = re.compile(
-    r"^\s*(?P<control>[0-9A-Fa-f]{2})\((?P<frame_type>[A-Za-z]+)[^)]*\)"
-    r"(?:\s+PID\s+\^?(?P<pid>[0-9A-Fa-f]{2}))?"
-    r"(?:\s(?P<body>.*?))?\s*\]\s*$"
+    r"^\s*(?P<control>[0-9A-Fa-f]{4}|[0-9A-Fa-f]{2})"
+    r"\((?P<frame_type>[A-Za-z]+)[^)]*\) "
+    r"(?:PID \^(?P<pid>[0-9A-Fa-f]{2}) )?"
+    r"(?P<body>.*)\]\s*$",
+    re.DOTALL,
 )
 
-# The firmware appears to print a space before each escape ("PID ^F0",
-# "KAM-XL ^0D ]" for the payload "...KAM-XL\r"), so that one space is
-# part of the escape. One sample so far -- a Mic-E packet would confirm.
-_CARET_HEX_RE: re.Pattern = re.compile(r" ?\^([0-9A-Fa-f]{2})")
+_ESCAPE_RE: re.Pattern = re.compile(r" \^([0-9A-F]{2}) ")
+
+# DEST/SRC suffixes that aren't part of the callsign.
+_ADDRESS_FLAGS_RE: re.Pattern = re.compile(r"(?:\*|\[DAMA\])+$")
 
 # A packet line longer than this without its closing "]" is given up on.
 _MAX_PARTIAL = 4096
@@ -108,13 +117,15 @@ _MAX_PARTIAL = 4096
 
 def unescape_monitor_text(text: str) -> str:
     """
-    Undo the OpenTNC's ^XX escaping of non-printable bytes, then present
-    the payload the way every other path does (kiss.info_text): latin-1,
-    CRs as line breaks, trailing line breaks dropped.
+    Undo the OpenTNC's " ^XX " escaping of non-printable bytes, then
+    present the payload the way every other path does (kiss.info_text):
+    latin-1, CRs as line breaks, trailing line breaks dropped. (A
+    payload that itself contains " ^41 " can't be told apart; that's the
+    firmware's format.)
     """
     from kiss import info_text
 
-    data = _CARET_HEX_RE.sub(
+    data = _ESCAPE_RE.sub(
         lambda m: chr(int(m.group(1), 16)), text,
     ).encode("latin-1", "replace")
 
@@ -174,6 +185,10 @@ class OpenTNCPacketParser(PacketParser):
                 self._partial = line
             return None
 
+        if match.group("direction") != "<":
+            logger.debug("OpenTNC: not a received packet, skipped: %r", line)
+            return None
+
         previous = self._finalize_pending()
         packet = self._packet_from_match(match, line)
 
@@ -189,29 +204,22 @@ class OpenTNCPacketParser(PacketParser):
 
         if frame is not None:
             frame_type: Optional[str] = frame.group("frame_type").upper()
-            body = frame.group("body") or ""
+            body = frame.group("body")
         else:
             frame_type = None
             body = rest.strip()
             if body.endswith("]"):
-                body = body[:-1].rstrip()
-
-        channel = match.group("channel")
-        port = self._default_port
-        if channel is not None and int(channel) != 0:
-            port = 10 + int(channel)  # same convention as KISS channels
+                body = body[:-1]
 
         digipeaters = match.group("digipeaters")
 
-        raw = line[line.find("<["):] if "<[" in line else line
-
         return Packet(
-            source=match.group("source"),
-            destination=match.group("destination"),
+            source=_ADDRESS_FLAGS_RE.sub("", match.group("source")),
+            destination=_ADDRESS_FLAGS_RE.sub("", match.group("destination")),
             digipeaters=tuple(digipeaters.split()) if digipeaters else (),
-            port=port,
+            port=self._default_port,
             payload=unescape_monitor_text(body),
-            raw=raw,
+            raw=line[line.index("[To") - 1:],
             frame_type=frame_type,
         )
 

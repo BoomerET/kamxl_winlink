@@ -463,46 +463,70 @@ class RealMonitorLineTests(unittest.TestCase):
         self.assertEqual([p.source for p in packets], ["N5BA"])
 
     def test_shapes(self):
+        # Built the way DumpPacket() (firmware src/packetutil.c) prints.
         cases = {
-            "0 (???): <[To APZTNC from K5LRK-9: 03(UI) PID ^F0 >status ]":
-                ("K5LRK-9", "APZTNC", (), ">status"),
-            "<[To APRS from W5ABC via KD5EOC-10* WIDE2-1: 03(UI) PID ^F0 !x ]":
-                ("W5ABC", "APRS", ("KD5EOC-10*", "WIDE2-1"), "!x"),
-            # Mic-E: bytes above 0x7F come through as latin-1, like KISS.
-            "0 (???): <[To S32U6T from N0CALL: 03(UI) PID ^F0 `|^E2l ^7Fj>/ ]":
-                ("N0CALL", "S32U6T", (), "`|\xe2l\x7fj>/"),
+            # Payload runs straight into "]"; "*" on DEST is the
+            # command bit, not part of the callsign.
+            "7 (2.0): <[To APZTNC* from K5LRK-9: 03(UI) PID ^F0 >status]":
+                ("K5LRK-9", "APZTNC", (), "UI", ">status"),
+            # "*" on a digipeater means it has repeated the packet.
+            "8 (2.0): <[To APRS* from W5ABC via KD5EOC-10* WIDE2-1: "
+            "03(UI) PID ^F0 !x]":
+                ("W5ABC", "APRS", ("KD5EOC-10*", "WIDE2-1"), "UI", "!x"),
+            # Mic-E: non-ASCII bytes escaped " ^XX " (a space each side).
+            "9 (???): <[To S32U6T from N0CALL: 03(UI) PID ^F0 `| ^E2 l ^7F j>/]":
+                ("N0CALL", "S32U6T", (), "UI", "`|\xe2l\x7fj>/"),
+            # A real space next to an escape survives; CR LF in the middle.
+            "10 (2.0): <[To APRS from N0CALL: 03(UI) PID ^F0 >a  ^0D  ^0A b]":
+                ("N0CALL", "APRS", (), "UI", ">a \nb"),
+            # Signal details in front of the version; [DAMA] flag.
+            "11 A01234 J0.05 B1200 F1(2.0): <[To APRS*[DAMA] from N5BA: "
+            "03(UI) PID ^F0 >fx25]":
+                ("N5BA", "APRS", (), "UI", ">fx25"),
+            # Connected-mode frames, extended (v2.2) control field.
+            "12 (2.2): <[To N5BA* from KD5EOC-10: 0042(I n_r=1 P n_s=1) "
+            "PID ^F0 Welcome]":
+                ("KD5EOC-10", "N5BA", (), "I", "Welcome"),
+            "13 (2.0): <[To N5BA* from KD5EOC-10: 3F(SABM) ]":
+                ("KD5EOC-10", "N5BA", (), "SABM", ""),
         }
 
-        for line, (source, dest, digis, payload) in cases.items():
+        for line, (source, dest, digis, frame_type, payload) in cases.items():
             (packet,) = self._parse(line + "\r\n")
             self.assertEqual(
                 (packet.source, packet.destination, packet.digipeaters,
-                 packet.payload),
-                (source, dest, digis, payload),
+                 packet.frame_type, packet.payload),
+                (source, dest, digis, frame_type, payload),
                 line,
             )
+
+    def test_packet_counter_is_not_a_port(self):
+        packets = self._parse(
+            "1 (???): <[To APRS from N5BA: 03(UI) PID ^F0 >one]\r\n"
+            "42 (???): <[To APRS from N5BA: 03(UI) PID ^F0 >two]\r\n"
+        )
+
+        self.assertEqual([p.port for p in packets], [APRS_RADIO_PORT] * 2)
+
+    def test_only_received_packets(self):
+        self.assertEqual(self._parse(
+            "3 (2.0): >[To APRS from N5BA-11: 03(UI) PID ^F0 >sent]\r\n"
+        ), [])
 
     def test_line_split_by_the_firmware_is_joined(self):
         (packet,) = self._parse(
             "0 (???): <[To APRS from N5BA: 03(UI) PID ^F0 >one",
-            "\r\n two ]\r\n",
+            "\r\n two]\r\n",
         )
 
         self.assertEqual(packet.payload, ">one two")
 
     def test_unknown_frame_part_is_still_recorded(self):
-        (packet,) = self._parse("0 (???): <[To N5BA from KD5EOC-10: odd ]\r\n")
+        (packet,) = self._parse("0 (???): <[To N5BA from KD5EOC-10: odd]\r\n")
 
         self.assertEqual(packet.source, "KD5EOC-10")
         self.assertIsNone(packet.frame_type)
         self.assertEqual(packet.payload, "odd")
-
-    def test_other_channels_stay_off_the_aprs_port(self):
-        (packet,) = self._parse(
-            "1 (???): <[To APRS from N5BA: 03(UI) PID ^F0 >x ]\r\n"
-        )
-
-        self.assertEqual(packet.port, 11)
 
     def test_tnc2_lines_still_parse(self):
         packets = self._parse(

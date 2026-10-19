@@ -21,13 +21,16 @@ tests replay it byte for byte).
 | Rejected commands detected | **Verified** -- `Unknown command: X` |
 | `SAVE!`, `CARRIERDETECT`, FX.25 helpers | **Verified** commands; set_* round trips not yet run on the unit |
 | KISS mode: monitoring and APRS transmit | Works independently of all of the above -- see [kiss.md](kiss.md) |
-| Terminal Mode MONITOR decoding | **Verified** -- one line per packet, `0 (???): <[To APRS from N5BA via WIDE1-1 WIDE2-1: 03(UI) PID ^F0 payload ]`; how a digipeated hop is marked is still unseen |
+| Terminal Mode MONITOR decoding | **Verified** on the air and against the firmware source (`DumpPacket()` in `src/packetutil.c`): one line per packet, `0 (???): <[To APRS from N5BA via WIDE1-1 WIDE2-1: 03(UI) PID ^F0 payload]` |
 | Terminal Mode connect / disconnect banners | Unverified |
 | Terminal Mode APRS transmit | Off: the safety checks need a `STATUS` command, which this firmware lacks -- use KISS mode |
 | PBBS | Not applicable (no built-in mailbox) |
 
-Non-printable payload bytes appear as `^XX` hex with a space in front
-(the beacon's trailing CR shows as ` ^0D`); the driver turns them back
+In a monitor line the leading number is a packet counter and `(???)`
+the AX.25 version (`2.0`, `2.2`, or unknown); a `*` on the destination
+or source is the command/response bit, on a digipeater "has repeated".
+Bytes that aren't printable ASCII appear as ` ^XX ` (a space each side;
+the beacon's trailing CR is ` ^0D `), and the driver turns them back
 into bytes.
 
 Not on this firmware: `VERSION`, `STATUS`, `ECHO`, `MCOM`, `MRPT`,
