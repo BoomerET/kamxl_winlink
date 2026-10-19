@@ -508,7 +508,7 @@ class KISSTNC(TerminalTNC):
         tcp = parse_tcp_address(self.port)
 
         if tcp:
-            self.serial = TCPTransport(*tcp, timeout=self.timeout)
+            self.serial = self._connect_tcp(*tcp)
         else:
             options: Dict[str, Any] = {
                 "port": self.port, "baudrate": self.baudrate, "bytesize": 8,
@@ -521,6 +521,49 @@ class KISSTNC(TerminalTNC):
 
         self.enter_kiss_mode()
         self._entered_kiss = True
+
+    # KISS over TCP: how often to retry while the server (Direwolf)
+    # isn't accepting connections yet -- e.g. it starts a few seconds
+    # after us at boot, or is restarting. None = keep trying.
+    TCP_RETRY_SECONDS = 5.0
+    TCP_MAX_ATTEMPTS: Optional[int] = None
+
+    def _connect_tcp(self, host: str, port: int) -> "TCPTransport":
+        attempt = 0
+        last_logged = 0.0
+
+        while True:
+            attempt += 1
+            try:
+                transport = TCPTransport(host, port, timeout=self.timeout)
+            except OSError as exc:
+                if self.TCP_MAX_ATTEMPTS and attempt >= self.TCP_MAX_ATTEMPTS:
+                    raise TNCError(
+                        f"KISS TCP server at {host}:{port} isn't accepting "
+                        f"connections ({exc}). Is Direwolf running, with "
+                        f"KISSPORT {port}?"
+                    ) from exc
+
+                now = time.monotonic()
+                if attempt == 1:
+                    logger.warning(
+                        "KISS TCP server at %s:%d isn't accepting connections "
+                        "(%s) -- is Direwolf running, with KISSPORT %d? "
+                        "Retrying every %gs.",
+                        host, port, exc, port, self.TCP_RETRY_SECONDS,
+                    )
+                    last_logged = now
+                elif now - last_logged >= 60:
+                    logger.warning("Still waiting for KISS TCP server at %s:%d (%s)",
+                                   host, port, exc)
+                    last_logged = now
+
+                time.sleep(self.TCP_RETRY_SECONDS)
+                continue
+
+            if attempt > 1:
+                logger.info("Connected to KISS TCP server at %s:%d", host, port)
+            return transport
 
     def disconnect(self) -> None:
         if not self.is_connected:

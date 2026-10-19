@@ -8,6 +8,35 @@ class APRSTransmitError(ValueError):
     """APRS transmission cannot proceed safely."""
 
 
+# The AX.25 destination ("tocall") on everything this station sends.
+# APRS software is meant to identify itself here with a registered
+# identifier (https://github.com/aprsorg/aprs-deviceid); a bare "APRS"
+# is obsolete. Until tncstation has its own, this is from the APZ range
+# the registry reserves for experimental software.
+DEFAULT_TOCALL = "APZTNC"
+
+
+def validate_tocall(value) -> str:
+    """
+    Upper-cased tocall: 1-6 letters/digits, no SSID (it's an AX.25
+    destination address). Raises APRSTransmitError otherwise.
+    """
+    text = str(value or "").strip().upper()
+
+    if not re.fullmatch(r"[A-Z0-9]{1,6}", text):
+        raise APRSTransmitError(
+            f"Invalid APRS tocall {value!r}: 1-6 letters/digits, no SSID "
+            f"(e.g. {DEFAULT_TOCALL})"
+        )
+
+    return text
+
+
+def _tocall(kam) -> str:
+    """The driver's configured tocall (set by the daemon), else "APRS"."""
+    return validate_tocall(getattr(kam, "aprs_tocall", None) or "APRS")
+
+
 def is_kiss(kam) -> bool:
     """
     True for a KISS-mode driver (kiss.KISSTNC). There, transmitting is
@@ -371,6 +400,7 @@ def build_aprs_tx_plan(
     payload: str,
     original_unproto: str,
     path: str = "",
+    tocall: str = "APRS",
 ) -> tuple[str, ...]:
     """
     Build a KAM-XL APRS transmission plan without performing I/O.
@@ -398,7 +428,8 @@ def build_aprs_tx_plan(
     if path:
         path = validate_aprs_path(path)
 
-    unproto = f"APRS VIA {path}" if path else "APRS"
+    tocall = validate_tocall(tocall)
+    unproto = f"{tocall} VIA {path}" if path else tocall
 
     return (
         f"UNPROTO {unproto}",
@@ -488,11 +519,12 @@ def _execute_aprs_tx_transaction(kam, payload: str, path: str = "") -> dict:
         ) != payload:
             raise APRSTransmitError("Noncanonical APRS message")
 
-    # Validate path before touching hardware.
-    build_aprs_tx_plan(payload, "CQ/CQ", path)
+    # Validate path and tocall before touching hardware.
+    tocall = _tocall(kam)
+    build_aprs_tx_plan(payload, "CQ/CQ", path, tocall)
 
     if is_kiss(kam):
-        return _execute_kiss_aprs_tx(kam, payload, path)
+        return _execute_kiss_aprs_tx(kam, payload, path, tocall)
 
     original = None
     changed = False
@@ -506,7 +538,7 @@ def _execute_aprs_tx_transaction(kam, payload: str, path: str = "") -> dict:
 
         original = validate_unproto(kam.get("UNPROTO"))
 
-        plan = build_aprs_tx_plan(payload, original, path)
+        plan = build_aprs_tx_plan(payload, original, path, tocall)
         new_unproto = plan[0].removeprefix("UNPROTO ")
 
         # The TNC may apply the setting even if its acknowledgment
@@ -635,18 +667,18 @@ def _execute_aprs_tx_transaction(kam, payload: str, path: str = "") -> dict:
     }
 
 
-def _execute_kiss_aprs_tx(kam, payload: str, path: str = "") -> dict:
+def _execute_kiss_aprs_tx(kam, payload: str, path: str = "", tocall: str = "APRS") -> dict:
     """
     KISS: send the already-validated payload as one AX.25 UI frame from
-    the station callsign to APRS via ``path``. Same result shape as the
-    Terminal Mode transaction.
+    the station callsign to ``tocall`` via ``path``. Same result shape as
+    the Terminal Mode transaction.
     """
     hops = validate_aprs_path(path)
 
     try:
         kam.send_ui(
             payload.encode("ascii"),
-            destination="APRS",
+            destination=tocall,
             path=hops.split(",") if hops else [],
         )
     except Exception as exc:

@@ -118,6 +118,7 @@ class KAMDaemon:
         history_db: Optional[str] = None,
         station_callsign: Optional[str] = None,
         aprs_path: str = "",
+        aprs_tocall: str = "APRS",
         beacon: Optional[Dict[str, Any]] = None,
         beacon_interval_minutes: float = 30,
         watchdog_minutes: float = 30,
@@ -189,6 +190,14 @@ class KAMDaemon:
             normalize_station_callsign(station_callsign)
             if station_callsign is not None else None
         )
+
+        # AX.25 destination ("tocall") on everything we transmit -- see
+        # aprs_tx.DEFAULT_TOCALL. The command line defaults this to it;
+        # constructing the daemon directly keeps the old "APRS".
+        from aprs_tx import validate_tocall
+
+        self.aprs_tocall = validate_tocall(aprs_tocall)
+        kam.aprs_tocall = self.aprs_tocall
 
         # A KISS-mode TNC adds no source address of its own: frames go
         # out from the station callsign.
@@ -500,6 +509,7 @@ class KAMDaemon:
             "port": self.kam.port,
             "tnc_model": getattr(self.kam, "MODEL", "KAM-XL"),
             "tnc_mode": getattr(self.kam, "MODE", "terminal"),
+            "aprs_tocall": self.aprs_tocall,
             "aprs_tx_supported": getattr(self.kam, "APRS_TX_SUPPORTED", True),
             "monitor_subscribers": subscriber_count,
             "diagnostics": {
@@ -1922,6 +1932,14 @@ class KAMDaemon:
                 "transmitted": False,
             }
 
+    def _verified_reason(self) -> str:
+        """Safety-state reason after a successful session check."""
+        if getattr(self.kam, "MODE", "terminal") == "kiss":
+            return ("KISS mode: nothing to verify on the TNC; "
+                    "RF prerequisites not fully established")
+        return ("Command mode and disconnected A/2 verified; "
+                "RF prerequisites not fully established")
+
     def _verify_aprs_session_locked(self) -> Dict[str, Any]:
         """
         Ctrl-C back to command mode and confirm A/2 is disconnected.
@@ -1956,11 +1974,13 @@ class KAMDaemon:
         self._aprs_session_uncertain = False
         self._aprs_link_may_be_active = False
         self._aprs_safety_state = "unknown"
-        self._aprs_safety_reason = (
-            "Command mode and disconnected A/2 verified; "
-            "RF prerequisites not fully established"
-        )
-        logger.info("APRS session verified (command mode, A/2 idle)")
+        self._aprs_safety_reason = self._verified_reason()
+
+        if getattr(self.kam, "MODE", "terminal") == "kiss":
+            logger.info("APRS session ready (KISS mode: no command mode or "
+                        "streams on the TNC to verify)")
+        else:
+            logger.info("APRS session verified (command mode, A/2 idle)")
 
         return result
 
@@ -2003,10 +2023,7 @@ class KAMDaemon:
             # Recovery verifies command mode and disconnected A/2
             # at this instant, but does not establish RF readiness.
             self._aprs_safety_state = "unknown"
-            self._aprs_safety_reason = (
-                "Command mode and disconnected A/2 verified; "
-                "RF prerequisites not fully established"
-            )
+            self._aprs_safety_reason = self._verified_reason()
 
             return {
                 **result,
@@ -3248,6 +3265,15 @@ def main(argv: Optional[list] = None) -> None:
     )
 
     parser.add_argument(
+        "--aprs-tocall",
+        default=os.environ.get("TNCSTATION_TOCALL") or None,
+        help=(
+            "AX.25 destination (\"tocall\") on everything sent: identifies "
+            "the software (default: $TNCSTATION_TOCALL, or APZTNC, an "
+            "experimental-range identifier until tncstation has its own)"
+        ),
+    )
+    parser.add_argument(
         "--aprs-path",
         default=os.environ.get("TNCSTATION_APRS_PATH", "WIDE1-1,WIDE2-1"),
         help=(
@@ -3403,11 +3429,14 @@ def main(argv: Optional[list] = None) -> None:
     except ValueError as exc:
         parser.error(str(exc))
 
-    from aprs_tx import APRSTransmitError, validate_aprs_path
+    from aprs_tx import (
+        DEFAULT_TOCALL, APRSTransmitError, validate_aprs_path, validate_tocall,
+    )
     from aprs import format_aprs_position
 
     try:
         aprs_path = validate_aprs_path(args.aprs_path)
+        aprs_tocall = validate_tocall(args.aprs_tocall or DEFAULT_TOCALL)
     except APRSTransmitError as exc:
         parser.error(str(exc))
 
@@ -3502,6 +3531,7 @@ def main(argv: Optional[list] = None) -> None:
         history_db=args.history_db,
         station_callsign=station_callsign,
         aprs_path=aprs_path,
+        aprs_tocall=aprs_tocall,
         beacon=beacon_config,
         beacon_interval_minutes=args.beacon_interval,
         watchdog_minutes=args.watchdog_minutes,

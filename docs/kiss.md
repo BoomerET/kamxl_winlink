@@ -82,12 +82,24 @@ with APRS.
 ## Transmitting
 
 A message or beacon goes out as one AX.25 UI frame: source
-`TNCSTATION_CALLSIGN`, destination `APRS`, path `TNCSTATION_APRS_PATH`.
+`TNCSTATION_CALLSIGN`, destination `TNCSTATION_TOCALL` (see below), path
+`TNCSTATION_APRS_PATH`.
 The same per-send confirmations and safety checks apply as in Terminal
 Mode; the Terminal-only steps (Ctrl-C to command mode, STATUS, setting
 and restoring UNPROTO, CONVERS) simply aren't needed. Payloads are
 validated exactly as before -- length, line breaks, message format,
 path -- before anything is written.
+
+## The tocall (destination)
+
+APRS software identifies itself in the AX.25 destination field with an
+identifier from the [aprs-deviceid](https://github.com/aprsorg/aprs-deviceid)
+registry; a bare `APRS` is obsolete (Direwolf points it out on every
+packet). tncstation uses `TNCSTATION_TOCALL`, default `APZTNC` -- from
+the `APZ` range the registry sets aside for software in development,
+checked unallocated -- until it has its own identifier. The same
+setting applies to Terminal Mode, where it becomes the `UNPROTO`
+destination. Set `TNCSTATION_TOCALL=APRS` for the old behavior.
 
 ## Library use
 
