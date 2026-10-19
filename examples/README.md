@@ -15,7 +15,7 @@ Told apart by filename prefix:
 - **`winlink_api_check.py`** -- a third category, fitting neither
   bucket above: no KAM-XL involved, but it does need real network
   access and a real Winlink API key (`$WINLINK_API_KEY` or a `.env`
-  file, same as `kamxl_daemon.py` -- see
+  file, same as `tncstation_daemon.py` -- see
   [docs/daemon.md](../docs/daemon.md#winlink-api-key)). Makes exactly
   one cheap `account_exists()` call to confirm a key actually works --
   see the script's own docstring for why it deliberately doesn't also

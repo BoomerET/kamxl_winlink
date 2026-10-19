@@ -12,9 +12,9 @@ does NOT also call get_gateway_status()/nearby_gateways() here; if you
 want to try those too, do it separately and sparingly, not as part of
 routinely re-running this script.
 
-Reads WINLINK_API_KEY the same way kamxl_daemon.py does: a real
+Reads WINLINK_API_KEY the same way tncstation_daemon.py does: a real
 exported environment variable, or a .env file in the current directory
-(reuses kamxl_daemon.py's own _load_dotenv() rather than duplicating
+(reuses tncstation_daemon.py's own _load_dotenv() rather than duplicating
 that parsing logic) -- see docs/daemon.md's "Winlink API key" section.
 
 Usage:
@@ -28,7 +28,7 @@ import os
 import sys
 from pathlib import Path
 
-# kamxl_daemon.py and winlink_api.py (repo root) need to be importable
+# tncstation_daemon.py and winlink_api.py (repo root) need to be importable
 # even when this script is run directly (not via `pip install -e .`)
 # -- same reasoning, same fix, as offline_typed_commands.py's own
 # sys.path bootstrap. Without this, running `python
@@ -39,7 +39,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from kamxl_daemon import _load_dotenv
+from tncstation_daemon import _load_dotenv
 from winlink_api import WinlinkAPIError, account_exists
 
 

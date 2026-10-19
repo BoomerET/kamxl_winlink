@@ -1,7 +1,7 @@
 # Background Daemon
 
 Milestone 2. Only one process can hold the KAM-XL's serial port open
-at a time, so `kamxl_daemon.py` becomes the single owner of the
+at a time, so `tncstation_daemon.py` becomes the single owner of the
 connection -- everything downstream (REST API, web terminal, live
 monitor, BBS, ...) is meant to talk to *it*, not directly to the TNC.
 
@@ -11,7 +11,7 @@ Single KAM-XL / serial port per daemon instance for now -- see
 ## Running it
 
 ```
-python3 kamxl_daemon.py --port COM8 --socket /tmp/kamxl.sock
+python3 tncstation_daemon.py --port COM8 --socket /tmp/tncstation.sock
 ```
 
 Both flags are optional and fall back to environment variables, then
@@ -19,31 +19,31 @@ defaults:
 
 | Flag | Env var | Default |
 | --- | --- | --- |
-| `--port` | `KAMXL_PORT` | *(required -- no fallback)* |
-| `--socket` | `KAMXL_SOCKET` | `/tmp/kamxl.sock` |
-| `--baud` | `KAMXL_BAUD` | `19200` |
-| `--callsign` | `KAMXL_CALLSIGN` | *(required -- no fallback)* |
-| `--history-db` | `KAMXL_HISTORY_DB` | *(off)* |
-| `--history-days` | `KAMXL_HISTORY_DAYS` | `90` (`0` = keep all, else min 31) |
-| `--backup-dir` | `KAMXL_BACKUP_DIR` | *(off)* -- see [backup.md](backup.md) |
-| `--backup-keep` | `KAMXL_BACKUP_KEEP` | `7` |
-| `--backup-time` | `KAMXL_BACKUP_TIME` | `03:30` (local) |
-| `--backup-allow-same-disk` | `KAMXL_BACKUP_ALLOW_SAME_DISK=1` | *(off)* |
-| `--auto-ack` | `KAMXL_AUTO_ACK=1` | *(off)* |
-| `--aprs-path` | `KAMXL_APRS_PATH` | `WIDE1-1,WIDE2-1` (`DIRECT` = none) |
-| `--latitude` / `--longitude` | `KAMXL_LATITUDE` / `KAMXL_LONGITUDE` | *(none -- beacon unavailable)* |
-| `--beacon-symbol` | `KAMXL_BEACON_SYMBOL` | `/-` (house) |
-| `--beacon-comment` | `KAMXL_BEACON_COMMENT` | *(empty, max 43 chars)* |
-| `--beacon-interval` | `KAMXL_BEACON_INTERVAL` | `30` minutes (min 10) |
-| `--beacon` | `KAMXL_BEACON=1` | *(off)* |
-| `--watchdog-minutes` | `KAMXL_WATCHDOG_MINUTES` | `30` (`0` = off, min 5) |
-| `--auto-retry` | `KAMXL_AUTO_RETRY=1` | *(off)* |
-| `--ntfy-url` | `KAMXL_NTFY_URL` | *(off)* |
-| `--ntfy-topic` | `KAMXL_NTFY_TOPIC` | *(off)* |
-| `--ntfy-events` | `KAMXL_NTFY_EVENTS` | `messages,watchdog,backup` |
-| *(env only)* | `KAMXL_NTFY_TOKEN`, `KAMXL_NTFY_CF_ACCESS_CLIENT_ID`, `KAMXL_NTFY_CF_ACCESS_CLIENT_SECRET`, `KAMXL_NTFY_CLICK_URL` | *(none)* |
-| `--retry-count` | `KAMXL_RETRY_COUNT` | `3` (1-5) |
-| `--retry-interval` | `KAMXL_RETRY_INTERVAL` | `60` seconds (min 30), doubling |
+| `--port` | `TNCSTATION_PORT` | *(required -- no fallback)* |
+| `--socket` | `TNCSTATION_SOCKET` | `/tmp/tncstation.sock` |
+| `--baud` | `TNCSTATION_BAUD` | `19200` |
+| `--callsign` | `TNCSTATION_CALLSIGN` | *(required -- no fallback)* |
+| `--history-db` | `TNCSTATION_HISTORY_DB` | *(off)* |
+| `--history-days` | `TNCSTATION_HISTORY_DAYS` | `90` (`0` = keep all, else min 31) |
+| `--backup-dir` | `TNCSTATION_BACKUP_DIR` | *(off)* -- see [backup.md](backup.md) |
+| `--backup-keep` | `TNCSTATION_BACKUP_KEEP` | `7` |
+| `--backup-time` | `TNCSTATION_BACKUP_TIME` | `03:30` (local) |
+| `--backup-allow-same-disk` | `TNCSTATION_BACKUP_ALLOW_SAME_DISK=1` | *(off)* |
+| `--auto-ack` | `TNCSTATION_AUTO_ACK=1` | *(off)* |
+| `--aprs-path` | `TNCSTATION_APRS_PATH` | `WIDE1-1,WIDE2-1` (`DIRECT` = none) |
+| `--latitude` / `--longitude` | `TNCSTATION_LATITUDE` / `TNCSTATION_LONGITUDE` | *(none -- beacon unavailable)* |
+| `--beacon-symbol` | `TNCSTATION_BEACON_SYMBOL` | `/-` (house) |
+| `--beacon-comment` | `TNCSTATION_BEACON_COMMENT` | *(empty, max 43 chars)* |
+| `--beacon-interval` | `TNCSTATION_BEACON_INTERVAL` | `30` minutes (min 10) |
+| `--beacon` | `TNCSTATION_BEACON=1` | *(off)* |
+| `--watchdog-minutes` | `TNCSTATION_WATCHDOG_MINUTES` | `30` (`0` = off, min 5) |
+| `--auto-retry` | `TNCSTATION_AUTO_RETRY=1` | *(off)* |
+| `--ntfy-url` | `TNCSTATION_NTFY_URL` | *(off)* |
+| `--ntfy-topic` | `TNCSTATION_NTFY_TOPIC` | *(off)* |
+| `--ntfy-events` | `TNCSTATION_NTFY_EVENTS` | `messages,watchdog,backup` |
+| *(env only)* | `TNCSTATION_NTFY_TOKEN`, `TNCSTATION_NTFY_CF_ACCESS_CLIENT_ID`, `TNCSTATION_NTFY_CF_ACCESS_CLIENT_SECRET`, `TNCSTATION_NTFY_CLICK_URL` | *(none)* |
+| `--retry-count` | `TNCSTATION_RETRY_COUNT` | `3` (1-5) |
+| `--retry-interval` | `TNCSTATION_RETRY_INTERVAL` | `60` seconds (min 30), doubling |
 
 `--callsign` is this station's APRS callsign, exactly as the KAM-XL's
 MYCALL (SSID included, e.g. `N5BA` or `N5BA-10`). It decides which
@@ -52,7 +52,7 @@ incoming acks match messages you sent. Like `--port`, it has no
 default: the daemon refuses to start without it.
 
 `--auto-ack` turns automatic APRS acknowledgments on at startup (put
-`KAMXL_AUTO_ACK=1` in `.env` to make that permanent); it can also be
+`TNCSTATION_AUTO_ACK=1` in `.env` to make that permanent); it can also be
 toggled from the dashboard. If the TNC check fails at startup the
 daemon keeps running with auto-ACK off and logs why.
 
@@ -131,7 +131,7 @@ those three.
 
 ```
 export WINLINK_API_KEY=...
-python3 kamxl_daemon.py --port COM8 --socket /tmp/kamxl.sock
+python3 tncstation_daemon.py --port COM8 --socket /tmp/tncstation.sock
 ```
 
 **Or, a `.env` file** (added after the above, once re-exporting the
@@ -151,7 +151,7 @@ dotenv precedence), so this is purely a convenience layered on top of
 the env-var design above, not a replacement for it -- no third-party
 `python-dotenv` dependency, no interpolation or line-continuation
 support, just `KEY=VALUE`/blank lines/`#` comments. See
-`_load_dotenv()`'s own docstring in `kamxl_daemon.py` for the exact
+`_load_dotenv()`'s own docstring in `tncstation_daemon.py` for the exact
 parsing rules.
 
 **To confirm a key actually works** without starting the daemon or
@@ -249,7 +249,7 @@ omitted to use their default.
 | `pbbs.read_message` | `number`, `mypbbs`/`connect_timeout`/`read_timeout` (all optional, same as above) -- connect/`R n`/disconnect; returns a `PBBSMessage` dict, or `null` if the number didn't resolve to a message |
 | `stations.list` | *(none, milestone 7)* -- returns every known `Station` (see `stations.py`) as a list of dicts, sorted by callsign. Built passively by the always-on monitor thread decoding APRS position reports -- no `monitor.subscribe` needed. |
 | `stations.get` | `callsign` -- one `Station` dict, or `null` if never heard |
-| `winlink.check_mail` | `gateway`, `password`, `mycall` (optional), `connect_timeout` (optional, default 60), `read_timeout` (optional, default 30, milestone 8) -- connects to a Winlink RMS Packet gateway, logs in, downloads up to one block of waiting mail; returns a list of `WinlinkMessage` dicts. `password` is never logged anywhere on this request's path (see kamxl_daemon.py's `_m_winlink_check_mail()`). |
+| `winlink.check_mail` | `gateway`, `password`, `mycall` (optional), `connect_timeout` (optional, default 60), `read_timeout` (optional, default 30, milestone 8) -- connects to a Winlink RMS Packet gateway, logs in, downloads up to one block of waiting mail; returns a list of `WinlinkMessage` dicts. `password` is never logged anywhere on this request's path (see tncstation_daemon.py's `_m_winlink_check_mail()`). |
 | `winlink.send_message` | `gateway`, `password`, `messages` (a list of 1-5 dicts, each with `to` (list), `subject`, `body`, and optionally `cc` (list)/`msg_type`/`mid`), `mycall` (optional), `connect_timeout`/`read_timeout` (optional, same defaults as above) -- send-support extension: connects, logs in, proposes the given message(s) via B2, uploads whatever the gateway accepts, declines whatever the gateway offers back (never downloads -- that's still `winlink.check_mail`'s job). Returns a list of the MIDs actually accepted. Text-body-only, no attachments -- see `winlink.py`'s module docstring's "SEND SUPPORT" note for the full scope, and its UNVERIFIED-AGAINST-A-REAL-GATEWAY caveat. `password` is never logged (see `_m_winlink_send_message()`). |
 | `winlink.account_exists` | `callsign` -- calls Winlink's HTTP web-service API (`winlink_api.py`, not the KAM-XL at all -- no serial port, no `_kam_lock`). Returns `true`/`false`. Requires `$WINLINK_API_KEY` to be set (see "Winlink API key" below); raises `KAMError` if it isn't. |
 | `winlink.gateway_status` | `mode`/`history_hours`/`service_codes` (all optional, see `winlink_api.get_gateway_status()`) -- same API, same `$WINLINK_API_KEY` requirement. Returns a list of gateway dicts (callsign, location, channels). |

@@ -1,4 +1,4 @@
-"""Offline tests for packet-history retention (KAMXL_HISTORY_DAYS)."""
+"""Offline tests for packet-history retention (TNCSTATION_HISTORY_DAYS)."""
 
 import io
 import os
@@ -8,7 +8,7 @@ import unittest
 from contextlib import redirect_stderr
 from unittest.mock import patch
 
-import kamxl_daemon
+import tncstation_daemon
 from packet import Packet
 from reception_history import ReceptionHistory
 from reception_writer import ReceptionWriter
@@ -133,12 +133,12 @@ class WriterRetentionTests(unittest.TestCase):
 class HistoryDaysCommandLineTests(unittest.TestCase):
 
     def test_below_31_days_rejected_before_serial(self):
-        with patch.dict(os.environ, {"KAMXL_CALLSIGN": "N5BA"}, clear=True), \
-             patch.object(kamxl_daemon, "_load_dotenv"), \
-             patch.object(kamxl_daemon, "KAMXL") as kamxl_cls, \
+        with patch.dict(os.environ, {"TNCSTATION_CALLSIGN": "N5BA"}, clear=True), \
+             patch.object(tncstation_daemon, "_load_dotenv"), \
+             patch.object(tncstation_daemon, "KAMXL") as kamxl_cls, \
              redirect_stderr(io.StringIO()):
             with self.assertRaises(SystemExit):
-                kamxl_daemon.main(["--port", "/dev/null", "--history-days", "7"])
+                tncstation_daemon.main(["--port", "/dev/null", "--history-days", "7"])
         kamxl_cls.assert_not_called()
 
 

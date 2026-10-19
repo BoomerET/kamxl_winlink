@@ -1,7 +1,7 @@
 """
 Automatic backups of the history database.
 
-Once a day (at KAMXL_BACKUP_TIME, local time) -- or as soon as the
+Once a day (at TNCSTATION_BACKUP_TIME, local time) -- or as soon as the
 daemon is running again after a missed day -- the database is copied
 with SQLite's online backup API, so the daemon keeps receiving and
 writing while it runs. The copy is checked (PRAGMA quick_check),
@@ -30,7 +30,7 @@ import threading
 import time
 from typing import Any, Callable, Dict, List, Optional
 
-logger = logging.getLogger("kamxl_backup")
+logger = logging.getLogger("tncstation_backup")
 logger.addHandler(logging.NullHandler())
 
 FILE_PREFIX = "kamxl-history-"
@@ -166,7 +166,7 @@ class BackupManager:
                 raise BackupError(
                     f"Backup folder {self.backup_dir} is on the same disk as "
                     f"the database -- is the network share mounted? "
-                    f"(KAMXL_BACKUP_ALLOW_SAME_DISK=1 to allow this)"
+                    f"(TNCSTATION_BACKUP_ALLOW_SAME_DISK=1 to allow this)"
                 )
 
     def run(self) -> Dict[str, Any]:

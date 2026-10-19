@@ -10,7 +10,7 @@ from aprs_telemetry import (
     TelemetryDefinitions, build_series, is_definition, parse_telemetry,
 )
 from fakes import ScriptedSerial, make_kam
-from kamxl_daemon import KAMDaemon
+from tncstation_daemon import KAMDaemon
 from packet import Packet
 from reception_history import ReceptionHistory
 from test_rest import RestTestCase

@@ -64,8 +64,8 @@ record what it actually prints and correct the driver from that.
 
 4. **Run the daemon** against it:
 
-       KAMXL_TNC=opentnc KAMXL_PORT=/dev/ttyACM0 KAMXL_CALLSIGN=N0CALL-1 \
-           python3 kamxl_daemon.py -v
+       TNCSTATION_TNC=opentnc TNCSTATION_PORT=/dev/ttyACM0 TNCSTATION_CALLSIGN=N0CALL-1 \
+           python3 tncstation_daemon.py -v
 
    `-v` logs every raw monitor read (`monitor raw: ...`), so a header
    the parser doesn't recognize is still visible. The dashboard's
@@ -104,7 +104,7 @@ and add a rule like the KAM-XL one in the README, e.g.
 Each daemon owns one serial port, so a KAM-XL and an OpenTNC side by
 side means two daemons, each with its own socket, history database
 and web server port -- e.g. two systemd units with different `.env`
-files (`KAMXL_TNC`, `KAMXL_PORT`, `KAMXL_SOCKET`, `KAMXL_HISTORY_DB`).
+files (`TNCSTATION_TNC`, `TNCSTATION_PORT`, `TNCSTATION_SOCKET`, `TNCSTATION_HISTORY_DB`).
 That's also a good way to compare FX.25 on and off: the Coverage card
 compares station setups within one database.
 

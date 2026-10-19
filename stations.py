@@ -13,7 +13,7 @@ Each station retains its latest known position and up to 25 distinct
 consecutive positions for map trails.
 
 StationTracker.update() is meant to be fed every Packet the daemon's
-monitor loop sees (see kamxl_daemon.py) -- it's cheap to call for
+monitor loop sees (see tncstation_daemon.py) -- it's cheap to call for
 every packet, including non-APRS ones, since it just returns None
 immediately for anything that isn't a decodable position report.
 """

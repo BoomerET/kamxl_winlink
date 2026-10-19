@@ -13,7 +13,7 @@ from stations import StationTracker
 from test_aprs_serial import APRSTransactionFake
 from test_rest import RestTestCase
 
-import kamxl_web
+import tncstation_web
 
 
 REPEATER = ";147.000-T*111111z3312.34N/09707.12Wr T110 -060 R30m DCARA"
@@ -144,7 +144,7 @@ class FrequencySummaryJsTests(unittest.TestCase):
         node = shutil.which("node")
         if not node:
             self.skipTest("node not available")
-        src = (kamxl_web.PAGES_DIR / "map" / "app.js").read_text()
+        src = (tncstation_web.PAGES_DIR / "map" / "app.js").read_text()
 
         def fn(name):
             m = re.search(r"  function " + name + r"\((.*?)\) \{(.*?)\n  \}\n", src, re.S)

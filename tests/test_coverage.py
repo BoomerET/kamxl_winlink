@@ -10,7 +10,7 @@ import unittest
 
 from aprs_coverage import distance_miles, first_hop, last_hop, normalize_setup
 from fakes import ScriptedSerial, make_kam
-from kamxl_daemon import KAMDaemon
+from tncstation_daemon import KAMDaemon
 from packet import Packet
 from reception_history import ReceptionHistory
 from test_rest import RestTestCase

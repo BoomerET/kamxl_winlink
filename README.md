@@ -1,6 +1,6 @@
-# kamxl
+# tncstation
 
-[![Tests](https://github.com/BoomerET/kamxl_winlink/actions/workflows/tests.yml/badge.svg)](https://github.com/BoomerET/kamxl_winlink/actions/workflows/tests.yml)
+[![Tests](https://github.com/BoomerET/tncstation/actions/workflows/tests.yml/badge.svg)](https://github.com/BoomerET/tncstation/actions/workflows/tests.yml)
 
 <p align="center">
   <img
@@ -10,9 +10,21 @@
   />
 </p>
 
-A Python library for controlling the Kantronics KAM-XL packet TNC in
-Terminal Mode -- a clean, Pythonic API instead of hand-typed terminal
-commands.
+A packet radio station for hardware TNCs -- the Kantronics KAM-XL and
+the NA6D OpenTNC. Three layers, each usable on its own:
+
+- **A Python library** that drives a TNC in Terminal Mode -- a clean,
+  Pythonic API instead of hand-typed terminal commands (`tnc.py`, with
+  one small driver per model).
+- **A background daemon** (`tncstation_daemon.py`) that owns the serial
+  port: continuous monitoring, an APRS station database, messaging
+  with acks and retries, beacons, persistent reception history.
+- **A web dashboard** (`tncstation_rest.py`): live map, packet log,
+  telemetry graphs, coverage comparison, a web terminal, phone
+  notifications.
+
+Formerly `kamxl_winlink`; see [Upgrading from
+kamxl_winlink](#upgrading-from-kamxl_winlink).
 
 ```python
 from kamxl import KAMXL
@@ -36,8 +48,8 @@ Not yet published to PyPI (see [PROJECT.md](PROJECT.md)). For now, install
 from a local clone:
 
 ```
-git clone git@github.com:BoomerET/kamxl_winlink.git
-cd kamxl_winlink
+git clone git@github.com:BoomerET/tncstation.git
+cd tncstation
 pip install -e .
 ```
 
@@ -91,24 +103,25 @@ For the background daemon and the web dashboard, set the following in
 `.env` (one file for both; see `.env.sample` for every setting):
 
 ```dotenv
-KAMXL_PORT=/dev/kam-xl
-KAMXL_CALLSIGN=N0CALL                # your KAM-XL's MYCALL, SSID included
-KAMXL_HISTORY_DB=/var/lib/kamxl/reception.sqlite3   # optional: inbox + history
-KAMXL_AUTO_ACK=1                     # optional: auto-ack received messages
-KAMXL_APRS_PATH=WIDE1-1,WIDE2-1      # optional: digipeater path (DIRECT = none)
-KAMXL_LATITUDE=33.2275               # optional: position beacon
-KAMXL_LONGITUDE=-97.1273
-KAMXL_BEACON_COMMENT=KAM-XL
-KAMXL_BEACON=1                       # optional: beacon automatically
-KAMXL_WATCHDOG_MINUTES=30            # optional: reception alert after N quiet min (0 = off)
-KAMXL_AUTO_RETRY=1                   # optional: resend unacknowledged messages
-KAMXL_REST_API_KEY=change-me         # web dashboard / API token
-KAMXL_NTFY_URL=https://ntfy.sh       # optional: phone notifications
-KAMXL_NTFY_TOPIC=your-topic
+TNCSTATION_PORT=/dev/kam-xl
+TNCSTATION_CALLSIGN=N0CALL                # your KAM-XL's MYCALL, SSID included
+TNCSTATION_HISTORY_DB=/var/lib/tncstation/reception.sqlite3   # optional: inbox + history
+TNCSTATION_AUTO_ACK=1                     # optional: auto-ack received messages
+TNCSTATION_APRS_PATH=WIDE1-1,WIDE2-1      # optional: digipeater path (DIRECT = none)
+TNCSTATION_LATITUDE=33.2275               # optional: position beacon
+TNCSTATION_LONGITUDE=-97.1273
+TNCSTATION_BEACON_COMMENT=KAM-XL
+TNCSTATION_BEACON=1                       # optional: beacon automatically
+TNCSTATION_WATCHDOG_MINUTES=30            # optional: reception alert after N quiet min (0 = off)
+TNCSTATION_AUTO_RETRY=1                   # optional: resend unacknowledged messages
+TNCSTATION_REST_API_KEY=change-me         # web dashboard / API token
+TNCSTATION_VERBOSE=0                     # optional: 1 = detailed (DEBUG) logging, same as --verbose
+TNCSTATION_NTFY_URL=https://ntfy.sh       # optional: phone notifications
+TNCSTATION_NTFY_TOPIC=your-topic
 ```
 
 The library accepts an explicit serial port on all platforms.
-The daemon requires `--port`/`KAMXL_PORT` and `--callsign`/`KAMXL_CALLSIGN`
+The daemon requires `--port`/`TNCSTATION_PORT` and `--callsign`/`TNCSTATION_CALLSIGN`
 rather than silently guessing either.
 
 ## Status
@@ -133,6 +146,34 @@ See [PROJECT.md](PROJECT.md) for the full design philosophy, roadmap,
 and what's coming next (async support, APRS/Winlink/BBS helpers, and
 more).
 
+## Upgrading from kamxl_winlink
+
+The project was renamed when it grew past the KAM-XL and Winlink.
+Existing setups keep working without changes:
+
+- **Settings:** `KAMXL_*` names in `.env` (or the environment) are
+  still read. The new names are `TNCSTATION_*` -- same suffixes, e.g.
+  `KAMXL_PORT` -> `TNCSTATION_PORT`. If both are set, the new one
+  wins. The daemon logs which old names it found, at startup.
+- **Programs:** `kamxl_daemon.py` and `kamxl_rest.py` still run (they're
+  now aliases), so existing systemd units don't need editing. The new
+  names are `tncstation_daemon.py` and `tncstation_rest.py`.
+- **Library:** `from kamxl import KAMXL` and the `KAMError` family are
+  unchanged -- `kamxl.py` is still the KAM-XL driver.
+- **Git:** GitHub redirects the old URL. To update a clone:
+  `git remote set-url origin https://github.com/BoomerET/tncstation.git`
+- **Socket:** the default socket is now `/tmp/tncstation.sock`
+  (was `/tmp/kamxl.sock`). The daemon and web server share the
+  default, so restart both after pulling -- or set `TNCSTATION_SOCKET`.
+- **Winlink:** unchanged. The client still identifies itself as
+  `kamxl_winlink`, the name registered with Winlink -- renaming the
+  repo doesn't change that.
+
+When convenient: rename `KAMXL_` to `TNCSTATION_` in `.env`, and point
+the systemd units at the new script names (e.g. rename
+`kamxl-daemon.service` to `tncstation-daemon.service`). Docs use the
+new names throughout.
+
 ## Supported TNCs
 
 The library is split into a generic driver layer (`tnc.py`'s
@@ -145,7 +186,7 @@ daemon, REST API and web pages work with any of them.
 | Kantronics KAM-XL | `kamxl.KAMXL` | Verified over the air; everything works |
 | NA6D / AE6EO OpenTNC | `opentnc.OpenTNC` | Unverified -- receive, map, terminal, connected mode and Winlink built from TNC-2 convention; APRS transmit disabled until checked against real output |
 
-Pick one with `create_tnc()` in code, or `KAMXL_TNC` / `--tnc` for the
+Pick one with `create_tnc()` in code, or `TNCSTATION_TNC` / `--tnc` for the
 daemon:
 
 ```python
@@ -186,32 +227,32 @@ OpenTNC: setup, what's verified, and how to capture real output with
 
 ## Persistent APRS Reception History
 
-The KAM-XL daemon can optionally record received AX.25/APRS packets in a SQLite database. This provides reception statistics that survive daemon restarts and can be displayed in the web dashboard.
+The daemon can optionally record received AX.25/APRS packets in a SQLite database. This provides reception statistics that survive daemon restarts and can be displayed in the web dashboard.
 
-Persistence is disabled by default. Enable it using the `--history-db` command-line option or the `KAMXL_HISTORY_DB` environment variable:
+Persistence is disabled by default. Enable it using the `--history-db` command-line option or the `TNCSTATION_HISTORY_DB` environment variable:
 
 ```bash
-export KAMXL_HISTORY_DB=/var/lib/kamxl/reception.sqlite3
+export TNCSTATION_HISTORY_DB=/var/lib/tncstation/reception.sqlite3
 ```
 
 For a systemd installation, create a service override:
 
 ```bash
-sudo systemctl edit kamxl-daemon.service
+sudo systemctl edit tncstation-daemon.service
 ```
 
 Add:
 
 ```ini
 [Service]
-Environment=KAMXL_HISTORY_DB=/var/lib/kamxl/reception.sqlite3
+Environment=TNCSTATION_HISTORY_DB=/var/lib/tncstation/reception.sqlite3
 ```
 
 Ensure that the service account can write to the database directory. Apply the configuration with:
 
 ```bash
 sudo systemctl daemon-reload
-sudo systemctl restart kamxl-daemon.service
+sudo systemctl restart tncstation-daemon.service
 ```
 
 The SQLite database uses write-ahead logging (WAL). Packet recording is handled by a background writer so database operations do not block the serial reception path.
@@ -237,7 +278,7 @@ The web dashboard provides three reception-history display periods:
 
 The 7-day and 30-day views aggregate hourly records into calendar days using the browser's local timezone. Day boundaries account for daylight-saving transitions, including 23-hour and 25-hour days.
 
-**Backups:** set `KAMXL_BACKUP_DIR` and the daemon backs the database up every night, for example to a network share, keeping the last week. See [docs/backup.md](docs/backup.md) for setting up an SMB/Windows share and for restoring.
+**Backups:** set `TNCSTATION_BACKUP_DIR` and the daemon backs the database up every night, for example to a network share, keeping the last week. See [docs/backup.md](docs/backup.md) for setting up an SMB/Windows share and for restoring.
 
 On the **map**, the Tracks picker shows where stations went over the last 6 hours to 7 days (from the history database), not just the live last hour.
 
@@ -247,7 +288,7 @@ The **packet log** page (`/log`, "log" in every page's header) searches everythi
 
 The history database also powers the dashboard's **Coverage** card: set your current station setup (e.g. "Mag-mount, garage" or "J-pole 16 ft") and it compares setups side by side -- how often your beacons and messages were digipeated or reached APRS-IS, which digipeaters heard you, and how many stations you heard. See [docs/rest_api.md](docs/rest_api.md#coverage-by-station-setup).
 
-Persistent reception history is separate from the live reception statistics. It also stores each packet's payload, so when the daemon restarts it replays the last hour into the APRS station map: stations, trails, weather and objects reappear immediately instead of the map starting empty. Without `KAMXL_HISTORY_DB` the map starts empty after a restart.
+Persistent reception history is separate from the live reception statistics. It also stores each packet's payload, so when the daemon restarts it replays the last hour into the APRS station map: stations, trails, weather and objects reappear immediately instead of the map starting empty. Without `TNCSTATION_HISTORY_DB` the map starts empty after a restart.
 
 ## Testing
 

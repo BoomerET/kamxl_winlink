@@ -1,7 +1,7 @@
 """
-Offline, end-to-end tests for kamxl_rest.py: a real KAMDaemon (wired
+Offline, end-to-end tests for tncstation_rest.py: a real KAMDaemon (wired
 to the scripted fakes used elsewhere in this suite) plus a real
-kamxl_rest HTTP server pointed at it, talked to with real HTTP
+tncstation_rest HTTP server pointed at it, talked to with real HTTP
 requests -- no KAM-XL hardware, no mocking of the socket/HTTP layers
 themselves.
 """
@@ -20,18 +20,18 @@ import unittest
 
 from fakes import CannedSerial, ChunkSerial, ScriptedSerial, make_kam
 
-from kamxl_daemon import KAMDaemon
+from tncstation_daemon import KAMDaemon
 from packet import Packet
 from pbbs import PBBSMessage, PBBSMessageSummary
 from winlink import Proposal, WinlinkMessage
-import kamxl_rest
+import tncstation_rest
 import winlink_api
 
 
 class RestTestCase(unittest.TestCase):
     """
     Starts a KAMDaemon (wired to a caller-supplied fake serial
-    connection) and a kamxl_rest server pointed at it, both on
+    connection) and a tncstation_rest server pointed at it, both on
     throwaway addresses, in background threads.
     """
 
@@ -83,7 +83,7 @@ class RestTestCase(unittest.TestCase):
         self.addCleanup(daemon_thread.join, 2)
         self.addCleanup(daemon.shutdown)
 
-        server = kamxl_rest.serve(
+        server = tncstation_rest.serve(
             socket_path,
             "127.0.0.1",
             0,  # let the OS pick a free port
@@ -194,7 +194,7 @@ class AuthTests(RestTestCase):
         # here. Left to the normal auth-then-dispatch path, that
         # always failed auth and logged a 401 that looked like a
         # security problem but was really just routine browser
-        # behavior -- see do_GET()'s own comment in kamxl_rest.py.
+        # behavior -- see do_GET()'s own comment in tncstation_rest.py.
         # No ?token= or Authorization header given here on purpose.
         _, port = self.start_stack(ScriptedSerial({}))
 
@@ -370,7 +370,7 @@ class ConnectDisconnectTests(RestTestCase):
 class TerminalTests(RestTestCase):
     """
     Milestone 4: the raw command passthrough and the self-contained
-    web terminal page served directly by kamxl_rest.py.
+    web terminal page served directly by tncstation_rest.py.
     """
 
     def test_exec_returns_raw_command_output(self):
@@ -413,7 +413,7 @@ class TerminalTests(RestTestCase):
         self.assertEqual(
             response.getheader("Content-Type"), "text/html; charset=utf-8"
         )
-        self.assertIn("kamxl web terminal", html)
+        self.assertIn("tncstation web terminal", html)
         self.assertIn("/terminal/exec", html)
         # Milestone 5: the live monitor pane, driven by an EventSource
         # against /monitor/stream, lives on the same page.
@@ -431,7 +431,7 @@ class TerminalTests(RestTestCase):
         html = response.read().decode("utf-8")
 
         self.assertEqual(response.status, 200)
-        self.assertNotIn("kamxl web terminal", html)
+        self.assertNotIn("tncstation web terminal", html)
 
     def test_page_requires_auth_when_enabled(self):
         _, port = self.start_stack(ScriptedSerial({}))
@@ -470,7 +470,7 @@ class DashboardTests(RestTestCase):
         self.assertEqual(
             response.getheader("Content-Type"), "text/html; charset=utf-8"
         )
-        self.assertIn("kamxl dashboard", html)
+        self.assertIn("tncstation dashboard", html)
 
     def test_page_includes_persistent_reception_history(self):
         _, port = self.start_stack(ScriptedSerial({}))
@@ -512,7 +512,7 @@ class DashboardTests(RestTestCase):
         if not node:
             self.skipTest("node not available")
 
-        html = kamxl_rest.DASHBOARD_HTML
+        html = tncstation_rest.DASHBOARD_HTML
 
         # Extract the actual functions used by the dashboard.
         functions = []
@@ -692,7 +692,7 @@ checkDayLengths(2026, 11, 1, 25);
         self.assertNotIn("/winlink/check", html)
 
     def test_page_contains_reception_statistics(self):
-        html = kamxl_rest.DASHBOARD_HTML
+        html = tncstation_rest.DASHBOARD_HTML
 
         self.assertIn('id="receptionStatsCard"', html)
 
@@ -713,7 +713,7 @@ checkDayLengths(2026, 11, 1, 25);
         self.assertIn("Top Digipeaters", html)
 
     def test_page_refreshes_reception_statistics(self):
-        html = kamxl_rest.DASHBOARD_HTML
+        html = tncstation_rest.DASHBOARD_HTML
 
         self.assertIn('apiGet("/aprs/stats")', html)
         self.assertIn("refreshReceptionStats();", html)
@@ -782,7 +782,7 @@ checkDayLengths(2026, 11, 1, 25);
             + result.stderr,
         )
     def test_reception_health_markup_and_styles(self):
-        from kamxl_rest import DASHBOARD_HTML
+        from tncstation_rest import DASHBOARD_HTML
 
         html = DASHBOARD_HTML
 
@@ -804,7 +804,7 @@ checkDayLengths(2026, 11, 1, 25);
         if not node:
             self.skipTest("node not available")
 
-        from kamxl_rest import DASHBOARD_HTML
+        from tncstation_rest import DASHBOARD_HTML
 
         html = DASHBOARD_HTML
 
@@ -903,7 +903,7 @@ check(true, {
         )
 
     def test_reception_charts_render_horizontal_bars(self):
-        html = kamxl_rest.DASHBOARD_HTML
+        html = tncstation_rest.DASHBOARD_HTML
 
         self.assertIn("receptionChartRow", html)
         self.assertIn("receptionBarTrack", html)
@@ -928,7 +928,7 @@ check(true, {
         if not node:
             self.skipTest("node not available")
 
-        html = kamxl_rest.DASHBOARD_HTML
+        html = tncstation_rest.DASHBOARD_HTML
 
         match = re.search(
             r"  function filterReceptionSources"
@@ -1041,7 +1041,7 @@ console.log("Reception source filtering tests passed");
         if not node:
             self.skipTest("node not available")
 
-        html = kamxl_rest.DASHBOARD_HTML
+        html = tncstation_rest.DASHBOARD_HTML
 
         functions = []
         for name, arguments in (
@@ -1158,7 +1158,7 @@ console.log("Reception display integration tests passed");
         if not node:
             self.skipTest("node not available")
 
-        html = kamxl_rest.DASHBOARD_HTML
+        html = tncstation_rest.DASHBOARD_HTML
 
         # Extract the actual dashboard function, not a duplicate.
         match = re.search(
@@ -1334,7 +1334,7 @@ console.log("Reception chart behavior: PASS");
         if not node:
             self.skipTest("node not available")
 
-        html = kamxl_rest.MAP_HTML
+        html = tncstation_rest.MAP_HTML
 
         # Extract production code, including the form submit handler.
         match = re.search(
@@ -1520,7 +1520,7 @@ console.log("Map station search behavior: PASS");
         )
 
     def test_map_station_selection_support(self):
-        html = kamxl_rest.MAP_HTML
+        html = tncstation_rest.MAP_HTML
 
         self.assertIn(
             'params.get("station")',
@@ -1620,7 +1620,7 @@ class PBBSEndpointTests(RestTestCase):
         self.assertEqual(
             response.getheader("Content-Type"), "text/html; charset=utf-8"
         )
-        self.assertIn("kamxl PBBS", html)
+        self.assertIn("tncstation PBBS", html)
         self.assertIn("/pbbs/messages", html)
 
     def test_pbbs_page_requires_auth_when_enabled(self):
@@ -1821,7 +1821,7 @@ class WinlinkEndpointTests(RestTestCase):
         self.assertEqual(
             response.getheader("Content-Type"), "text/html; charset=utf-8"
         )
-        self.assertIn("kamxl Winlink", html)
+        self.assertIn("tncstation Winlink", html)
         self.assertIn("/winlink/check", html)
         self.assertIn("/winlink/send", html)
         self.assertIn('type="password"', html)
@@ -1845,7 +1845,7 @@ class WinlinkApiEndpointTests(RestTestCase):
     gateway listings -- winlink_api.py). Unlike WinlinkEndpointTests
     above, these never touch daemon.kam -- winlink_api.account_exists()/
     get_gateway_status() are patched directly on the module object
-    kamxl_daemon.py calls through, same technique as
+    tncstation_daemon.py calls through, same technique as
     tests/test_daemon.py's WinlinkApiTests.
     """
 
@@ -2253,7 +2253,7 @@ class StationsEndpointTests(RestTestCase):
         self.assertEqual(
             response.getheader("Content-Type"), "text/html; charset=utf-8"
         )
-        self.assertIn("kamxl station map", html)
+        self.assertIn("tncstation station map", html)
         self.assertIn("/stations", html)
         self.assertIn("leaflet", html.lower())
 
@@ -2261,7 +2261,7 @@ class StationsEndpointTests(RestTestCase):
         # Milestone 7 extension: markers use real APRS symbol-table
         # icons (hessu/aprs-symbols sprites + OK-DMR/aprs-symbols'
         # lookup logic ported inline), not Leaflet's plain default
-        # marker -- see kamxl_rest.py's module comment above MAP_HTML.
+        # marker -- see tncstation_rest.py's module comment above MAP_HTML.
         _, port = self.start_stack(ScriptedSerial({}))
 
         conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
@@ -2355,7 +2355,7 @@ class StationsEndpointTests(RestTestCase):
         )
 
     def test_map_station_details_markup(self):
-        html = kamxl_rest.MAP_HTML
+        html = tncstation_rest.MAP_HTML
 
         self.assertIn('id="stationDetails"', html)
         self.assertIn('id="closeStationDetails"', html)
@@ -2374,7 +2374,7 @@ class StationsEndpointTests(RestTestCase):
         self.assertIn("Unable to load station details:", html)
 
     def test_map_digipeater_controls(self):
-        html = kamxl_rest.MAP_HTML
+        html = tncstation_rest.MAP_HTML
 
         self.assertIn('id="showDigiPaths"', html)
         self.assertIn('id="digiStationFilter"', html)
@@ -2382,7 +2382,7 @@ class StationsEndpointTests(RestTestCase):
         self.assertIn('new Option("All stations", "")', html)
 
     def test_map_digipeater_layer_lifecycle(self):
-        html = kamxl_rest.MAP_HTML
+        html = tncstation_rest.MAP_HTML
 
         self.assertIn("L.layerGroup()", html)
         self.assertIn("digiPaths.addTo(map)", html)
@@ -2391,7 +2391,7 @@ class StationsEndpointTests(RestTestCase):
         self.assertIn("updateDigipeaterPaths(stations)", html)
 
     def test_map_digipeater_resolver_present(self):
-        html = kamxl_rest.MAP_HTML
+        html = tncstation_rest.MAP_HTML
 
         self.assertIn("function resolveDigipeaterLinks(stations)", html)
         self.assertIn("function drawDigipeaterPaths()", html)
@@ -2404,7 +2404,7 @@ class StationsEndpointTests(RestTestCase):
         if not node:
             self.skipTest("node not available")
 
-        html = kamxl_rest.MAP_HTML
+        html = tncstation_rest.MAP_HTML
 
         match = re.search(
             r"  function resolveDigipeaterLinks\(stations\) \{"
@@ -2484,7 +2484,7 @@ console.log("Digipeater resolver behavior: PASS");
         if not node:
             self.skipTest("node not available")
 
-        html = kamxl_rest.MAP_HTML
+        html = tncstation_rest.MAP_HTML
 
         def extract_function(name, args):
             pattern = (
@@ -2623,7 +2623,7 @@ console.log("Digipeater filter behavior: PASS");
         )
 
     def test_map_station_details_request_generation(self):
-        html = kamxl_rest.MAP_HTML
+        html = tncstation_rest.MAP_HTML
 
         self.assertIn("var stationDetailsRequestId = 0;", html)
         self.assertIn("var requestId = ++stationDetailsRequestId;", html)
@@ -2838,9 +2838,9 @@ class DaemonClientTimeoutTests(unittest.TestCase):
 
     def test_default_timeout_too_short_raises_daemon_timeout(self):
         socket_path = self.start_slow_daemon(delay=0.3)
-        client = kamxl_rest.DaemonClient(socket_path, timeout=0.1)
+        client = tncstation_rest.DaemonClient(socket_path, timeout=0.1)
 
-        with self.assertRaises(kamxl_rest.DaemonTimeout):
+        with self.assertRaises(tncstation_rest.DaemonTimeout):
             client.call("ping")
 
     def test_per_call_socket_timeout_override_waits_long_enough(self):
@@ -2848,7 +2848,7 @@ class DaemonClientTimeoutTests(unittest.TestCase):
         # asks for a longer wait, exactly like _h_connect/_h_disconnect
         # do when a caller passes a large "timeout" body field.
         socket_path = self.start_slow_daemon(delay=0.3)
-        client = kamxl_rest.DaemonClient(socket_path, timeout=0.1)
+        client = tncstation_rest.DaemonClient(socket_path, timeout=0.1)
 
         response = client.call("ping", _socket_timeout=1)
 
@@ -2931,7 +2931,7 @@ class StreamEventsKeepaliveTests(unittest.TestCase):
         # the first timeout -- five clean Nones in a row proves it's
         # not just surviving one cycle by luck.
         socket_path = self.start_idle_daemon()
-        client = kamxl_rest.DaemonClient(socket_path, timeout=0.05)
+        client = tncstation_rest.DaemonClient(socket_path, timeout=0.05)
 
         events = client.stream_events("monitor.subscribe")
 
@@ -2942,7 +2942,7 @@ class StreamEventsKeepaliveTests(unittest.TestCase):
         # Mirrors the real usage pattern: idle for a while (nothing on
         # the air yet), then a packet actually arrives.
         socket_path = self.start_idle_daemon(event_after=0.2)
-        client = kamxl_rest.DaemonClient(socket_path, timeout=0.05)
+        client = tncstation_rest.DaemonClient(socket_path, timeout=0.05)
 
         events = client.stream_events("monitor.subscribe")
 

@@ -12,10 +12,10 @@ from contextlib import redirect_stderr
 from unittest.mock import MagicMock, patch
 
 import db_backup
-import kamxl_daemon
+import tncstation_daemon
 from db_backup import BackupManager, parse_backup_time
 from fakes import ScriptedSerial, make_kam
-from kamxl_daemon import KAMDaemon
+from tncstation_daemon import KAMDaemon
 from packet import Packet
 from reception_history import ReceptionHistory
 from test_rest import RestTestCase
@@ -112,7 +112,7 @@ class BackupRunTests(BackupTestCase):
     def test_same_disk_refused_by_default(self):
         failures = []
         m = self.manager(allow_same_disk=False, on_failure=failures.append)
-        with self.assertLogs("kamxl_backup", "ERROR"):
+        with self.assertLogs("tncstation_backup", "ERROR"):
             result = m.run()
         self.assertFalse(result["ok"])
         self.assertIn("is the network share mounted", result["error"])
@@ -121,7 +121,7 @@ class BackupRunTests(BackupTestCase):
 
     def test_missing_folder(self):
         m = BackupManager(self.db, self.folder + "-gone", allow_same_disk=True)
-        with self.assertLogs("kamxl_backup", "ERROR"):
+        with self.assertLogs("tncstation_backup", "ERROR"):
             result = m.run()
         self.assertIn("doesn't exist", result["error"])
         self.assertFalse(m.status()["folder_reachable"])
@@ -131,7 +131,7 @@ class BackupRunTests(BackupTestCase):
         m = self.manager(on_failure=failures.append,
                          on_recovery=recoveries.append)
         os.rename(self.folder, self.folder + "-away")
-        with self.assertLogs("kamxl_backup", "ERROR"):
+        with self.assertLogs("tncstation_backup", "ERROR"):
             m.run()
             m.run()
         self.assertEqual(len(failures), 1)
@@ -222,7 +222,7 @@ class ScheduleTests(BackupTestCase):
         m = self.manager(clock=clock)
         os.rename(self.folder, self.folder + "-away")
         clock.now += db_backup.STARTUP_DELAY
-        with self.assertLogs("kamxl_backup", "ERROR"):
+        with self.assertLogs("tncstation_backup", "ERROR"):
             self.assertFalse(m.tick()["ok"])
         self.assertEqual(m.next_due_at(), clock.now + db_backup.RETRY_AFTER_FAILURE)
         self.assertIsNone(m.tick())
@@ -259,38 +259,38 @@ class DaemonBackupTests(BackupTestCase):
         self.assertEqual(result["status"]["count"], 1)
 
         os.rename(self.folder, self.folder + "-away")
-        with self.assertLogs("kamxl_backup", "ERROR"):
+        with self.assertLogs("tncstation_backup", "ERROR"):
             self.assertFalse(daemon.dispatch("backup.now", {})["ok"])
         event, title = notifier.notify.call_args[0][:2]
-        self.assertEqual((event, title), ("backup", "KAM-XL backup failed"))
+        self.assertEqual((event, title), ("backup", "tncstation backup failed"))
 
         os.rename(self.folder + "-away", self.folder)
         daemon.dispatch("backup.now", {})
         self.assertEqual(notifier.notify.call_args[0][1],
-                         "KAM-XL backup working again")
+                         "tncstation backup working again")
 
 
 class CommandLineTests(unittest.TestCase):
 
     def _main(self, argv, env):
         with patch.dict(os.environ, env, clear=True), \
-             patch.object(kamxl_daemon, "_load_dotenv"), \
-             patch.object(kamxl_daemon, "KAMXL") as kamxl_cls, \
+             patch.object(tncstation_daemon, "_load_dotenv"), \
+             patch.object(tncstation_daemon, "KAMXL") as kamxl_cls, \
              redirect_stderr(io.StringIO()):
             with self.assertRaises(SystemExit):
-                kamxl_daemon.main(argv)
+                tncstation_daemon.main(argv)
         return kamxl_cls
 
     def test_backup_needs_history_db(self):
         kamxl_cls = self._main(["--port", "/dev/null"], {
-            "KAMXL_CALLSIGN": "N5BA", "KAMXL_BACKUP_DIR": "/mnt/kamxl-backup",
+            "TNCSTATION_CALLSIGN": "N5BA", "TNCSTATION_BACKUP_DIR": "/mnt/kamxl-backup",
         })
         kamxl_cls.assert_not_called()
 
     def test_bad_backup_time_rejected_before_serial(self):
         kamxl_cls = self._main(["--port", "/dev/null"], {
-            "KAMXL_CALLSIGN": "N5BA", "KAMXL_HISTORY_DB": "/tmp/x.sqlite3",
-            "KAMXL_BACKUP_DIR": "/mnt/kamxl-backup", "KAMXL_BACKUP_TIME": "25:00",
+            "TNCSTATION_CALLSIGN": "N5BA", "TNCSTATION_HISTORY_DB": "/tmp/x.sqlite3",
+            "TNCSTATION_BACKUP_DIR": "/mnt/kamxl-backup", "TNCSTATION_BACKUP_TIME": "25:00",
         })
         kamxl_cls.assert_not_called()
 

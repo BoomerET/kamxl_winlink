@@ -12,7 +12,7 @@ import unittest
 from unittest.mock import MagicMock
 
 from fakes import ScriptedSerial, make_kam
-from kamxl_daemon import STATION_MAX_AGE, KAMDaemon
+from tncstation_daemon import STATION_MAX_AGE, KAMDaemon
 from packet import Packet
 from reception_history import ReceptionHistory
 
@@ -103,7 +103,7 @@ class DaemonRestoreTests(unittest.TestCase):
 
     def _daemon(self, **kwargs):
         daemon = KAMDaemon(
-            make_kam(ScriptedSerial({})), "/tmp/kamxl-restore-test.sock",
+            make_kam(ScriptedSerial({})), "/tmp/tncstation-restore-test.sock",
             station_callsign="N5BA", history_db=self.db, **kwargs,
         )
         self.addCleanup(daemon.shutdown)
@@ -166,7 +166,7 @@ class DaemonRestoreTests(unittest.TestCase):
 
     def test_no_history_db_starts_empty(self):
         daemon = KAMDaemon(
-            make_kam(ScriptedSerial({})), "/tmp/kamxl-restore-test2.sock",
+            make_kam(ScriptedSerial({})), "/tmp/tncstation-restore-test2.sock",
             station_callsign="N5BA",
         )
         self.addCleanup(daemon.shutdown)
@@ -177,7 +177,7 @@ class DaemonRestoreTests(unittest.TestCase):
         daemon._reception_writer.packets_since = MagicMock(
             side_effect=RuntimeError("disk on fire")
         )
-        with self.assertLogs("kamxl_daemon", level="ERROR"):
+        with self.assertLogs("tncstation_daemon", level="ERROR"):
             daemon._restore_stations()
         self.assertEqual(daemon.dispatch("stations.list", {}), [])
 

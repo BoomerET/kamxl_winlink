@@ -3,9 +3,9 @@ requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "kamxl"
+name = "tncstation"
 version = "0.1.0"
-description = "A Pythonic API for packet TNCs in Terminal Mode: Kantronics KAM-XL and NA6D OpenTNC"
+description = "Packet radio station for hardware TNCs (Kantronics KAM-XL, NA6D OpenTNC): Python library, APRS daemon and web dashboard"
 readme = "README.md"
 license = { file = "LICENSE" }
 authors = [
@@ -28,13 +28,16 @@ classifiers = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/BoomerET/kamxl_winlink"
-Repository = "https://github.com/BoomerET/kamxl_winlink"
-Issues = "https://github.com/BoomerET/kamxl_winlink/issues"
+Homepage = "https://github.com/BoomerET/tncstation"
+Repository = "https://github.com/BoomerET/tncstation"
+Issues = "https://github.com/BoomerET/tncstation/issues"
 
 [project.scripts]
-kamxl-daemon = "kamxl_daemon:main"
-kamxl-rest = "kamxl_rest:main"
+tncstation-daemon = "tncstation_daemon:main"
+tncstation-rest = "tncstation_rest:main"
+# Old names, from before the rename -- same programs.
+kamxl-daemon = "tncstation_daemon:main"
+kamxl-rest = "tncstation_rest:main"
 
 # Flat layout: all importable modules live at the repo root, alongside
 # the live-hardware test scripts (*Test.py) and the offline tests/
@@ -66,6 +69,8 @@ py-modules = [
     "winlink_api",
     "serial_errors",
     "lzhuf",
+    "tncstation_daemon",
+    "tncstation_rest",
     "kamxl_daemon",
     "kamxl_rest",
     "envfile",
@@ -76,9 +81,9 @@ py-modules = [
     "reception_writer",
     "reception_stats",
 ]
-# The web pages kamxl_rest.py serves (HTML/CSS/JS files, not Python
+# The web pages tncstation_rest.py serves (HTML/CSS/JS files, not Python
 # strings) ship as a small package with its files as package data.
-packages = ["kamxl_web"]
+packages = ["tncstation_web"]
 
 [tool.setuptools.package-data]
-kamxl_web = ["*/index.html", "*/style.css", "*/app.js"]
+tncstation_web = ["*/index.html", "*/style.css", "*/app.js"]

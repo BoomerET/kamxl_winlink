@@ -9,14 +9,14 @@ every few minutes) are suppressed for a while.
 
 Configuration (all optional; disabled unless URL and topic are set):
 
-    KAMXL_NTFY_URL            e.g. https://ntfy.sh or https://notify.example.net
-    KAMXL_NTFY_TOPIC          topic your phone subscribes to
-    KAMXL_NTFY_TOKEN          ntfy access token (Authorization: Bearer)
-    KAMXL_NTFY_CF_ACCESS_CLIENT_ID / KAMXL_NTFY_CF_ACCESS_CLIENT_SECRET
+    TNCSTATION_NTFY_URL            e.g. https://ntfy.sh or https://notify.example.net
+    TNCSTATION_NTFY_TOPIC          topic your phone subscribes to
+    TNCSTATION_NTFY_TOKEN          ntfy access token (Authorization: Bearer)
+    TNCSTATION_NTFY_CF_ACCESS_CLIENT_ID / TNCSTATION_NTFY_CF_ACCESS_CLIENT_SECRET
                               Cloudflare Access service-token headers
-    KAMXL_NTFY_EVENTS         comma list: messages, bulletins, watchdog, backup
+    TNCSTATION_NTFY_EVENTS         comma list: messages, bulletins, watchdog, backup
                               (default: messages,watchdog,backup)
-    KAMXL_NTFY_CLICK_URL      link opened when the notification is tapped
+    TNCSTATION_NTFY_CLICK_URL      link opened when the notification is tapped
 """
 
 import json
@@ -28,7 +28,7 @@ import urllib.error
 import urllib.request
 from typing import Callable, Dict, Optional
 
-logger = logging.getLogger("kamxl_notify")
+logger = logging.getLogger("tncstation_notify")
 logger.addHandler(logging.NullHandler())
 
 EVENT_TYPES = ("messages", "bulletins", "watchdog", "backup")
@@ -177,7 +177,7 @@ class Notifier:
         data = json.dumps(body).encode("utf-8")
         request = urllib.request.Request(self.url + "/", data=data, method="POST")
         request.add_header("Content-Type", "application/json")
-        request.add_header("User-Agent", "kamxl-daemon")
+        request.add_header("User-Agent", "tncstation-daemon")
         if self._token:
             request.add_header("Authorization", "Bearer " + self._token)
         if self._cf:

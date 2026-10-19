@@ -476,7 +476,7 @@ restarts (a deliberate MVP choice; see PROJECT.md). Fed by
 `update(packet, now=None)`, which only even attempts
 `aprs.parse_position()` for ordinary UI frames (`packet.frame_type` is
 `None` or `"UI"`) -- AX.25 connect-session control/supervisory frames
-never carry APRS payloads. `kamxl_daemon.py`'s always-on monitor
+never carry APRS payloads. `tncstation_daemon.py`'s always-on monitor
 thread feeds every packet it sees to a shared `StationTracker`
 instance, so the database builds passively over time, whether or not
 a client is actually watching.
