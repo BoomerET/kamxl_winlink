@@ -38,7 +38,7 @@ import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, Callable, Dict, Optional, Tuple
 
-from envfile import apply_legacy_env, load_dotenv as _load_dotenv
+from envfile import apply_legacy_env, env_flag, load_dotenv as _load_dotenv
 from tncstation_web import load_page
 from urllib.parse import urlparse, parse_qs
 
@@ -1523,8 +1523,12 @@ def main(argv: Optional[list] = None) -> None:
     )
     parser.add_argument(
         "-v", "--verbose",
-        action="store_true",
-        help="Also log each proxied daemon call (DEBUG level)",
+        action=argparse.BooleanOptionalAction,
+        default=env_flag("VERBOSE"),
+        help=(
+            "Also log each proxied daemon call (DEBUG level) "
+            "(default: $TNCSTATION_VERBOSE; --no-verbose overrides it)"
+        ),
     )
     args = parser.parse_args(argv)
 

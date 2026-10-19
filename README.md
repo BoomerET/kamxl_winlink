@@ -115,6 +115,7 @@ TNCSTATION_BEACON=1                       # optional: beacon automatically
 TNCSTATION_WATCHDOG_MINUTES=30            # optional: reception alert after N quiet min (0 = off)
 TNCSTATION_AUTO_RETRY=1                   # optional: resend unacknowledged messages
 TNCSTATION_REST_API_KEY=change-me         # web dashboard / API token
+TNCSTATION_VERBOSE=0                     # optional: 1 = detailed (DEBUG) logging, same as --verbose
 TNCSTATION_NTFY_URL=https://ntfy.sh       # optional: phone notifications
 TNCSTATION_NTFY_TOPIC=your-topic
 ```

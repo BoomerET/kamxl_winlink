@@ -88,3 +88,18 @@ def apply_legacy_env(
             used.append(key)
 
     return used
+
+
+TRUE_VALUES = ("1", "true", "yes", "on")
+
+
+def env_flag(name: str, environ: Optional[MutableMapping[str, str]] = None) -> bool:
+    """
+    True if the setting ``TNCSTATION_<name>`` is 1/true/yes/on (any
+    case). Unset or anything else is False. Call after
+    apply_legacy_env(), so an old KAMXL_<name> counts too.
+    """
+    if environ is None:
+        environ = os.environ
+
+    return environ.get(ENV_PREFIX + name, "").strip().lower() in TRUE_VALUES

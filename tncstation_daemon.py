@@ -3105,7 +3105,7 @@ class DaemonRequestHandler(socketserver.StreamRequestHandler):
 
 
 # Shared with tncstation_rest.py so both programs read the same .env file.
-from envfile import apply_legacy_env, load_dotenv as _load_dotenv  # noqa: E402
+from envfile import apply_legacy_env, env_flag, load_dotenv as _load_dotenv  # noqa: E402
 
 
 
@@ -3362,8 +3362,12 @@ def main(argv: Optional[list] = None) -> None:
 
     parser.add_argument(
         "-v", "--verbose",
-        action="store_true",
-        help="Also log individual packet broadcasts (DEBUG level)",
+        action=argparse.BooleanOptionalAction,
+        default=env_flag("VERBOSE"),
+        help=(
+            "Also log individual packet broadcasts (DEBUG level) "
+            "(default: $TNCSTATION_VERBOSE; --no-verbose overrides it)"
+        ),
     )
     args = parser.parse_args(argv)
 
