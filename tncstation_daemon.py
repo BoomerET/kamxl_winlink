@@ -511,6 +511,7 @@ class KAMDaemon:
             "tnc_mode": getattr(self.kam, "MODE", "terminal"),
             "aprs_tocall": self.aprs_tocall,
             "aprs_tx_supported": getattr(self.kam, "APRS_TX_SUPPORTED", True),
+            "features": self._features(),
             "monitor_subscribers": subscriber_count,
             "diagnostics": {
                 "packets_received": packets_received,
@@ -663,6 +664,19 @@ class KAMDaemon:
             self._aprs_session_uncertain = True
             self._invalidate_aprs_safety("TNC configuration changed")
             return self.kam.set(params["command"], params["value"])
+
+    def _features(self) -> Dict[str, bool]:
+        """
+        Which optional pages this station's TNC supports; the web pages
+        hide the rest. The terminal needs Terminal Mode; PBBS and Winlink
+        need a TNC they've been written for (the KAM-XL).
+        """
+        terminal = getattr(self.kam, "MODE", "terminal") != "kiss"
+        return {
+            "terminal": terminal,
+            "pbbs": terminal and getattr(self.kam, "HAS_PBBS", True),
+            "winlink": terminal and getattr(self.kam, "HAS_WINLINK", True),
+        }
 
     def _mark_link_may_be_active(self) -> None:
         """

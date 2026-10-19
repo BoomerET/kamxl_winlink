@@ -6,9 +6,10 @@
 <title>tncstation web terminal</title>
 <script src="../_shared/theme.js"></script>
 <link rel="stylesheet" href="../_shared/theme.css">
+<script src="../_shared/features.js"></script>
 <link rel="stylesheet" href="style.css">
 </head>
-<body>
+<body data-page-feature="terminal">
 <div id="monitorPane">
   <div class="paneHeader">
     <span>LIVE MONITOR <span id="monitorStatus" class="connecting">connecting</span></span>
@@ -21,9 +22,9 @@
     <span>TERMINAL</span>
     <span>
       <a href="#" id="homeLink">home</a>
-      <a href="#" id="pbbsLink">pbbs</a>
+      <a href="#" id="pbbsLink" data-feature="pbbs">pbbs</a>
       <a href="#" id="mapLink">map</a>
-      <a href="#" id="winlinkLink">winlink</a>
+      <a href="#" id="winlinkLink" data-feature="winlink">winlink</a>
       <a href="#" id="logLink">log</a>
       <a href="#" id="telemetryLink">telemetry</a>
     </span>

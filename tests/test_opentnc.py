@@ -681,6 +681,24 @@ class DaemonWithOpenTNCTests(unittest.TestCase):
                     _CONFIRM, addressee="N0CALL", message="hi"
                 ))
 
+    def test_status_features(self):
+        # Terminal Mode, but no mailbox, and Winlink is untried.
+        self.assertEqual(self._daemon().dispatch("status", {})["features"],
+                         {"terminal": True, "pbbs": False, "winlink": False})
+
+    def test_kamxl_has_every_feature(self):
+        from fakes import make_kam
+
+        daemon = KAMDaemon(
+            make_kam(ScriptedSerial({})),
+            "/tmp/kamxl-features-test.sock",
+            station_callsign="N5BA",
+        )
+        self.addCleanup(daemon.shutdown)
+
+        self.assertEqual(daemon.dispatch("status", {})["features"],
+                         {"terminal": True, "pbbs": True, "winlink": True})
+
     def test_tncstation_daemon_status_reports_model(self):
         from fakes import make_kam
 

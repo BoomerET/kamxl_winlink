@@ -552,6 +552,11 @@ class DaemonOverKISSTests(unittest.TestCase):
                                       if f.info.startswith(b":W5ABC    :ack")])
         self.assertEqual(acks[0].info, b":W5ABC    :ack43")
 
+    def test_status_features_hide_terminal_pages(self):
+        self.start()
+        self.assertEqual(self.daemon.dispatch("status", {})["features"],
+                         {"terminal": False, "pbbs": False, "winlink": False})
+
     def test_terminal_features_report_kiss(self):
         self.start()
         with self.assertRaises(TNCError) as ctx:

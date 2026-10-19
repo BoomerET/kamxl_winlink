@@ -24,7 +24,8 @@ tests replay it byte for byte).
 | Terminal Mode MONITOR decoding | **Verified** on the air and against the firmware source (`DumpPacket()` in `src/packetutil.c`): one line per packet, `0 (???): <[To APRS from N5BA via WIDE1-1 WIDE2-1: 03(UI) PID ^F0 payload]` |
 | Terminal Mode connect / disconnect banners | Unverified |
 | Terminal Mode APRS transmit | Off: the safety checks need a `STATUS` command, which this firmware lacks -- use KISS mode |
-| PBBS | Not applicable (no built-in mailbox) |
+| PBBS | Not applicable (no built-in mailbox) -- the web pages hide it |
+| Winlink | Untried over its connected mode -- hidden for now |
 
 In a monitor line the leading number is a packet counter and `(???)`
 the AX.25 version (`2.0`, `2.2`, or unknown); a `*` on the destination

@@ -485,6 +485,10 @@ class KISSTNC(TerminalTNC):
     # verify; subclasses can still opt out (see kamxl.KAMXLKISS).
     APRS_TX_SUPPORTED = True
 
+    # KISS passes raw frames: no command mode, no connected mode.
+    HAS_PBBS = False
+    HAS_WINLINK = False
+
     # The TNC is in KISS mode; there's no command prompt to talk to.
     PROMPT = b""
 

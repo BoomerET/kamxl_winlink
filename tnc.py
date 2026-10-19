@@ -17,6 +17,8 @@ overrides the class attributes describing how *that* firmware talks:
     HEADER_RE            regex matching one MONITOR header line
     DEFAULT_RADIO_PORT   port number for monitor lines that carry none
     APRS_TX_SUPPORTED    whether aprs_tx.py's transmit path is verified
+    HAS_PBBS             built-in mailbox (the KAM-XL's PBBS)
+    HAS_WINLINK          Winlink client verified with this TNC
                          against this model's STATUS/UNPROTO output
 
 Drivers:
@@ -164,6 +166,12 @@ class TerminalTNC:
     # model-specific way. Leave False until that parsing has been
     # verified against the real firmware.
     APRS_TX_SUPPORTED: bool = False
+
+    # Built-in mailbox (PBBS) and the Winlink client (winlink.py), both
+    # written against the KAM-XL. The web pages hide what a station's TNC
+    # can't do (daemon status "features").
+    HAS_PBBS: bool = True
+    HAS_WINLINK: bool = True
 
     def make_packet_parser(self) -> PacketParser:
         """
