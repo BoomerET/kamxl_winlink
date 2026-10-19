@@ -7,6 +7,31 @@ from kamxl import KAMTimeoutError
 class APRSTransmitError(ValueError):
     """APRS transmission cannot proceed safely."""
 
+
+def require_aprs_tx_support(kam) -> None:
+    """
+    Refuse to run the live APRS transmit path on a TNC driver whose
+    STATUS / PORT / UNPROTO replies haven't been verified against this
+    module's validators (tnc.TerminalTNC.APRS_TX_SUPPORTED).
+
+    Every check here parses the KAM-XL's real replies line by line
+    before anything keys the radio. On another model those checks
+    would either fail confusingly or, worse, pass for the wrong
+    reason -- so it fails closed, up front, with the reason stated.
+    Objects without the attribute (offline test fakes) are allowed.
+    """
+    if getattr(kam, "APRS_TX_SUPPORTED", True) is True:
+        return
+
+    model = getattr(kam, "MODEL", type(kam).__name__)
+
+    raise APRSTransmitError(
+        f"APRS transmit is not yet supported on the {model}: its "
+        f"STATUS/UNPROTO output hasn't been verified against the "
+        f"transmit safety checks. Receiving, the map and history work "
+        f"normally. See docs/opentnc.md."
+    )
+
 def validate_disconnected_status(response: str) -> None:
     """
     Require a recognized, disconnected KAM-XL STATUS response.
@@ -229,6 +254,8 @@ def recover_aprs_command_mode(kam) -> dict:
 
     Does not enable or submit RF transmission.
     """
+    require_aprs_tx_support(kam)
+
     try:
         kam.enter_command_mode()
         status = kam.send_command("STATUS")
@@ -253,6 +280,8 @@ def check_aprs_tx_preflight(kam) -> dict:
     TNC is already in command mode. Passing these checks does
     not authorize RF transmission.
     """
+    require_aprs_tx_support(kam)
+
     checks = (
         ("STATUS", validate_aprs_active_stream),
         ("PORT", validate_aprs_port),
@@ -401,6 +430,8 @@ def execute_aprs_tx_transaction(kam, payload: str, path: str = "") -> dict:
 def _execute_aprs_tx_transaction(kam, payload: str, path: str = "") -> dict:
     """Shared single-submission transaction; caller enforces access policy."""
     from aprs import format_aprs_message
+
+    require_aprs_tx_support(kam)
 
     if not isinstance(payload, str) or len(payload) < 11:
         raise APRSTransmitError("Invalid APRS payload")

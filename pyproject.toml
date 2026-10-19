@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "kamxl"
 version = "0.1.0"
-description = "A Pythonic API for the Kantronics KAM-XL packet TNC's Terminal Mode"
+description = "A Pythonic API for packet TNCs in Terminal Mode: Kantronics KAM-XL and NA6D OpenTNC"
 readme = "README.md"
 license = { file = "LICENSE" }
 authors = [
@@ -15,7 +15,7 @@ requires-python = ">=3.9"
 dependencies = [
     "pyserial>=3.5",
 ]
-keywords = ["ham radio", "amateur radio", "packet radio", "ax.25", "kantronics", "kam-xl", "tnc"]
+keywords = ["ham radio", "amateur radio", "packet radio", "ax.25", "kantronics", "kam-xl", "opentnc", "tnc"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
@@ -52,7 +52,9 @@ kamxl-rest = "kamxl_rest:main"
 # installing the released package rather than running from a clone.
 [tool.setuptools]
 py-modules = [
+    "tnc",
     "kamxl",
+    "opentnc",
     "packet",
     "pbbs",
     "aprs",

@@ -53,6 +53,7 @@ import winlink_api
 
 from kamxl import KAMXL, KAMError
 from packet import Packet, PacketParser
+from tnc import TerminalTNC, create_tnc, normalize_tnc_model
 from stations import StationTracker
 from winlink import OutgoingMessage
 from collections import deque
@@ -105,13 +106,14 @@ logger.addHandler(logging.NullHandler())
 
 class KAMDaemon:
     """
-    Owns a connected KAMXL instance and dispatches JSON requests to
-    it, serialized behind a single lock -- only one Terminal Mode
+    Owns a connected TNC driver (a tnc.TerminalTNC -- KAMXL or OpenTNC;
+    still called ``kam`` throughout) and dispatches JSON requests to it,
+    serialized behind a single lock -- only one Terminal Mode
     transaction can be in flight on the wire at a time.
     """
     def __init__(
         self,
-        kam: KAMXL,
+        kam: TerminalTNC,
         socket_path: str = DEFAULT_SOCKET_PATH,
         history_db: Optional[str] = None,
         station_callsign: Optional[str] = None,
@@ -490,6 +492,8 @@ class KAMDaemon:
         return {
             "connected": connected,
             "port": self.kam.port,
+            "tnc_model": getattr(self.kam, "MODEL", "KAM-XL"),
+            "aprs_tx_supported": getattr(self.kam, "APRS_TX_SUPPORTED", True),
             "monitor_subscribers": subscriber_count,
             "diagnostics": {
                 "packets_received": packets_received,
@@ -849,8 +853,11 @@ class KAMDaemon:
         """
         from aprs_tx import (
             APRSTransmitError, _LIVE_APRS_CAPABILITY,
-            execute_live_aprs_tx_transaction,
+            execute_live_aprs_tx_transaction, require_aprs_tx_support,
         )
+
+        # Fail closed on a TNC model whose transmit path isn't verified.
+        require_aprs_tx_support(self.kam)
 
         # Require per-call, exact confirmation; never cache authorization.
         if params.get("confirm_transmit") is not True:
@@ -1253,7 +1260,9 @@ class KAMDaemon:
         return result
 
     def _require_beacon_authorization(self, params: Dict[str, Any]) -> None:
-        from aprs_tx import APRSTransmitError
+        from aprs_tx import APRSTransmitError, require_aprs_tx_support
+
+        require_aprs_tx_support(self.kam)
 
         if params.get("confirm_transmit") is not True:
             raise APRSTransmitError("Explicit confirm_transmit=true required")
@@ -1494,7 +1503,9 @@ class KAMDaemon:
         return self._m_aprs_retry_status({})
 
     def _require_transmit_confirmations(self, params: Dict[str, Any]) -> None:
-        from aprs_tx import APRSTransmitError
+        from aprs_tx import APRSTransmitError, require_aprs_tx_support
+
+        require_aprs_tx_support(self.kam)
 
         if params.get("confirm_transmit") is not True:
             raise APRSTransmitError("Explicit confirm_transmit=true required")
@@ -1649,7 +1660,9 @@ class KAMDaemon:
         self, params: Dict[str, Any]
     ) -> Dict[str, Any]:
         """Explicitly authorize automatic APRS acknowledgments."""
-        from aprs_tx import APRSTransmitError
+        from aprs_tx import APRSTransmitError, require_aprs_tx_support
+
+        require_aprs_tx_support(self.kam)
 
         if params.get("confirm_transmit") is not True:
             raise APRSTransmitError(
@@ -2101,7 +2114,13 @@ class KAMDaemon:
         longer has any bearing on whether it runs, only on whether
         _broadcast_packet() actually has anyone to send events to.
         """
-        parser = PacketParser()
+        # The driver knows its own MONITOR header format (KAM-XL
+        # "SRC>DST/2: <UI>:" vs TNC-2 "SRC>DST:payload").
+        parser = self.kam.make_packet_parser()
+
+        # See TerminalTNC.MONITOR_IDLE_FLUSH (None for the KAM-XL).
+        idle_flush = getattr(self.kam, "MONITOR_IDLE_FLUSH", None)
+        last_data = time.monotonic()
 
         while not self._monitor_stop.is_set():
             # Brief lock acquisition per poll (rather than holding it
@@ -2139,7 +2158,15 @@ class KAMDaemon:
                 # parse".
                 logger.debug("monitor raw: %r", text)
 
+                last_data = time.monotonic()
+
                 for packet in parser.feed(text):
+                    self._handle_packet(packet)
+            elif (
+                idle_flush is not None
+                and time.monotonic() - last_data >= idle_flush
+            ):
+                for packet in parser.flush_pending():
                     self._handle_packet(packet)
 
             time.sleep(0.05)
@@ -3093,6 +3120,14 @@ def main(argv: Optional[list] = None) -> None:
         description="KAM-XL background daemon"
     )
     parser.add_argument(
+        "--tnc",
+        default=os.environ.get("KAMXL_TNC") or "kamxl",
+        help=(
+            "TNC model on --port: kamxl (Kantronics KAM-XL) or opentnc "
+            "(NA6D/AE6EO OpenTNC) (default: $KAMXL_TNC, or kamxl)"
+        ),
+    )
+    parser.add_argument(
         "--port",
         default=os.environ.get("KAMXL_PORT"),
         required=os.environ.get("KAMXL_PORT") is None,
@@ -3337,6 +3372,11 @@ def main(argv: Optional[list] = None) -> None:
     except ValueError as exc:
         parser.error(str(exc))
 
+    try:
+        tnc_model = normalize_tnc_model(args.tnc)
+    except ValueError as exc:
+        parser.error(str(exc))
+
     from aprs_tx import APRSTransmitError, validate_aprs_path
     from aprs import format_aprs_position
 
@@ -3420,7 +3460,7 @@ def main(argv: Optional[list] = None) -> None:
         datefmt="%H:%M:%S",
     )
 
-    kam = KAMXL(args.port, baudrate=args.baud)
+    kam = create_tnc(tnc_model, args.port, baudrate=args.baud)
     kam.connect()
 
     daemon = KAMDaemon(
@@ -3513,7 +3553,7 @@ def main(argv: Optional[list] = None) -> None:
     )
     server_thread.start()
 
-    logger.info("KAM-XL daemon: %s -> %s", args.port, args.socket)
+    logger.info("%s daemon: %s -> %s", kam.MODEL, args.port, args.socket)
 
     try:
         while not shutdown_requested.is_set():
