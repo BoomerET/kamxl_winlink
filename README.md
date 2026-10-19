@@ -133,6 +133,36 @@ See [PROJECT.md](PROJECT.md) for the full design philosophy, roadmap,
 and what's coming next (async support, APRS/Winlink/BBS helpers, and
 more).
 
+## Supported TNCs
+
+The library is split into a generic driver layer (`tnc.py`'s
+`TerminalTNC`: serial I/O, commands, typed parameters, connected
+mode, monitoring, Winlink) and one small subclass per TNC model. The
+daemon, REST API and web pages work with any of them.
+
+| Model | Module | Status |
+| --- | --- | --- |
+| Kantronics KAM-XL | `kamxl.KAMXL` | Verified over the air; everything works |
+| NA6D / AE6EO OpenTNC | `opentnc.OpenTNC` | Unverified -- receive, map, terminal, connected mode and Winlink built from TNC-2 convention; APRS transmit disabled until checked against real output |
+
+Pick one with `create_tnc()` in code, or `KAMXL_TNC` / `--tnc` for the
+daemon:
+
+```python
+from tnc import create_tnc
+
+tnc = create_tnc("opentnc", "/dev/ttyACM0")
+tnc.connect()
+print(tnc.get_typed("MYCALL"), tnc.get_fx25())
+for packet in tnc.monitor():
+    print(packet.source, "->", packet.destination, ":", packet.payload)
+```
+
+`from kamxl import KAMXL` and the `KAMError` exception family work
+exactly as before. See [docs/opentnc.md](docs/opentnc.md) for the
+OpenTNC: setup, what's verified, and how to capture real output with
+`opentnc_capture.py`.
+
 ## Documentation
 
 - [docs/quickstart.md](docs/quickstart.md) -- connect, read/write

@@ -36,6 +36,13 @@ from typing import Any, Dict, List, Optional, Tuple
 # "*". This is scoped to MONITOR/unsolicited traffic only -- plain
 # Convers-mode session text (e.g. a Winlink handshake or a node chat
 # session) never matches this shape and is intentionally left alone.
+# The radio port this application treats as VHF APRS. On the KAM-XL
+# that's its real Port 2 (Port 1 is HF). A single-port TNC's one radio
+# port is reported as this port too (see opentnc.py), so the daemon's
+# APRS handling, reception history and statistics work unchanged.
+APRS_RADIO_PORT = 2
+
+
 HEADER_RE: re.Pattern = re.compile(
     r"^(?P<source>[A-Za-z0-9\-]+)"
     r">(?P<destination>[A-Za-z0-9\-]+)"
@@ -43,6 +50,39 @@ HEADER_RE: re.Pattern = re.compile(
     r"/(?P<port>\d+):"
     r"(?:\s*<{1,2}(?P<frame_type>[^<>]*)>{1,2}:)?"
     r"(?P<inline_payload>.*)$"
+)
+
+
+# Matches a TNC-2-style MONITOR header line, the format TAPR TNC-2
+# clones print (and, by its author's description, what the OpenTNC's
+# TNC-2-compatible command set should print -- UNVERIFIED against real
+# OpenTNC output; check with opentnc_capture.py):
+#
+#   SOURCE>DEST[,DIGI1,DIGI2*][ <TAG>]:payload
+#
+# e.g.:
+#
+#   K5LRK>APRS,WIDE1-1*,WIDE2-1:!3313.65N/09707.64W-PHG2360
+#   WB5NZV>KD5EOC-10 <C>:
+#   KD5EOC-10>WB5NZV <I R0 S1>:Welcome
+#
+# Differences from the KAM-XL's HEADER_RE: no "/PORT" (single radio
+# port), the frame tag (if MCOM/MRPT-style annotation is on) comes
+# before the colon rather than after it, and the payload normally
+# follows on the same line. Also tolerated: an optional leading
+# timestamp (TNC-2 MSTAMP, e.g. "10/18/26 22:41:05 ") and a
+# Direwolf-style "[0] " channel prefix. ``frame_type`` captures only
+# the tag's first word ("UI" from "<UI R>", "I" from "<I R0 S1>"), the
+# same shape the daemon already compares against ("UI"); the full tag
+# stays in Packet.raw.
+TNC2_HEADER_RE: re.Pattern = re.compile(
+    r"^(?:\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\s+\d{1,2}:\d{2}(?::\d{2})?\s+)?"
+    r"(?:\[\d+\]\s*)?"
+    r"(?P<source>[A-Za-z0-9\-]+)"
+    r">(?P<destination>[A-Za-z0-9\-]+)"
+    r"(?:,(?P<digipeaters>[A-Za-z0-9\-\*,]+))?"
+    r"(?:\s*<{1,2}(?P<frame_type>[A-Za-z]+)[^<>]*>{1,2})?"
+    r":(?P<inline_payload>.*)$"
 )
 
 
@@ -121,7 +161,24 @@ class PacketParser:
             handle(packet)
     """
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        header_re: Optional[re.Pattern] = None,
+        default_port: int = APRS_RADIO_PORT,
+    ) -> None:
+        """
+        ``header_re`` recognizes one MONITOR header line; it defaults to
+        the KAM-XL's HEADER_RE. A TNC driver supplies its own (see
+        tnc.TerminalTNC.make_packet_parser()). The regex must define
+        the named groups ``source``, ``destination`` and
+        ``inline_payload``; ``digipeaters``, ``port`` and
+        ``frame_type`` are optional.
+
+        ``default_port`` is the radio port recorded for a header that
+        names none -- a single-port TNC's monitor lines don't.
+        """
+        self._header_re: re.Pattern = header_re or HEADER_RE
+        self._default_port: int = default_port
         self._buffer: str = ""
         self._pending: Optional[Dict[str, Any]] = None
 
@@ -186,6 +243,25 @@ class PacketParser:
 
         return completed
 
+    def flush_pending(self) -> List[Packet]:
+        """
+        Finish the packet currently being assembled, if its lines are
+        all complete (nothing partial left in the buffer).
+
+        For callers that know the line has gone quiet: TNC-2-style
+        monitor output gives no end-of-packet marker, so without this
+        the last packet of a burst waits for the *next* packet to
+        arrive -- possibly minutes on a quiet channel, which matters
+        for an incoming APRS message awaiting an ACK. Unlike flush(),
+        a half-received line is left alone to finish arriving.
+        """
+        if self._buffer:
+            return []
+
+        packet = self._finalize_pending()
+
+        return [packet] if packet is not None else []
+
     def _process_line(self, line: str) -> Optional[Packet]:
         """
         Handle one complete, decoded line.
@@ -197,7 +273,7 @@ class PacketParser:
         the first header, or non-MONITOR text like Convers-mode
         session traffic).
         """
-        match = HEADER_RE.match(line)
+        match = self._header_re.match(line)
 
         if match is None:
             if self._pending is not None:
@@ -207,7 +283,7 @@ class PacketParser:
                 if line == "":
                     pending = self._pending
                     if (
-                        pending["port"] == 2
+                        pending["port"] == APRS_RADIO_PORT
                         and pending["frame_type"] in ("UI", None)
                         and len(pending["payload_lines"]) == 1
                     ):
@@ -225,7 +301,9 @@ class PacketParser:
 
         completed = self._finalize_pending()
 
-        digipeaters = match.group("digipeaters")
+        groups = match.groupdict()
+        digipeaters = groups.get("digipeaters")
+        port = groups.get("port")
 
         self._pending = {
             "source": match.group("source"),
@@ -235,8 +313,8 @@ class PacketParser:
                 if digipeaters
                 else ()
             ),
-            "port": int(match.group("port")),
-            "frame_type": match.group("frame_type"),
+            "port": int(port) if port else self._default_port,
+            "frame_type": groups.get("frame_type") or None,
             "header_line": line,
             "payload_lines": (
                 [match.group("inline_payload")]
