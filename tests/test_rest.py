@@ -208,6 +208,56 @@ class AuthTests(RestTestCase):
         self.assertEqual(response.status, 204)
 
 
+class TokenRedactionTests(RestTestCase):
+    """The API key must never land in the access log (?token=...)."""
+
+    def test_redact_token(self):
+        redact = tncstation_rest.redact_token
+
+        self.assertEqual(
+            redact('"GET /status?token=abc123 HTTP/1.1" 200 -'),
+            '"GET /status?token=… HTTP/1.1" 200 -',
+        )
+        self.assertEqual(
+            redact("GET /aprs/history?since=1792335600&token=abc123&x=1"),
+            "GET /aprs/history?since=1792335600&token=…&x=1",
+        )
+        self.assertEqual(redact("GET /ping?TOKEN=abc"), "GET /ping?TOKEN=…")
+        # Only the token parameter, and only as a parameter.
+        self.assertEqual(redact("GET /ping?mytoken=abc"), "GET /ping?mytoken=abc")
+        self.assertEqual(redact("GET /stations"), "GET /stations")
+
+    def _logged(self, path):
+        _, port = self.start_stack(ScriptedSerial({}))
+
+        with self.assertLogs("tncstation_rest", "INFO") as logs:
+            self.request(port, "GET", path, token=None)
+
+            # The access log line is written after the response is
+            # sent; give the handler thread a moment to write it.
+            deadline = time.monotonic() + 2
+            while (
+                not any("GET " in line for line in logs.output)
+                and time.monotonic() < deadline
+            ):
+                time.sleep(0.01)
+
+        return "\n".join(logs.output)
+
+    def test_accepted_request_logs_no_token(self):
+        output = self._logged("/ping?token=test-token")
+
+        self.assertIn("/ping?token=…", output)
+        self.assertNotIn("test-token", output)
+
+    def test_rejected_request_logs_no_token(self):
+        # A wrong guess is still somebody's secret (or a typo of yours).
+        output = self._logged("/ping?token=almost-the-key")
+
+        self.assertIn("401", output)
+        self.assertNotIn("almost-the-key", output)
+
+
 class EndpointTests(RestTestCase):
     def test_ping(self):
         _, port = self.start_stack(ScriptedSerial({}))
