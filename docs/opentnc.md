@@ -11,21 +11,33 @@ with a small driver (`opentnc.py`) for the differences.
 
 ## Status
 
-**Unverified.** `opentnc.py` was written before the hardware arrived,
-from TNC-2 convention and NA6D's getting-started guide. Per this
-project's design philosophy, the first job with a real unit is to
-record what it actually prints and correct the driver from that.
+Checked against a real NA6D OpenTNC with `opentnc_capture.py` (October
+2026; the transcript is `tests/opentnc_capture_20261019.txt`, and the
+tests replay it byte for byte).
 
 | Feature | State |
 | --- | --- |
-| Typed get/set (MYCALL, MONITOR, FX.25, timing parameters) | Built, unverified |
-| MONITOR decoding (map, stations, history, telemetry, log) | Built, unverified |
-| Web terminal | Should just work (raw commands) |
-| AX.25 connect / disconnect | Built, unverified |
-| Winlink over packet (check / send mail) | Built, unverified |
-| `SAVE!`, `CARRIER`, FX.25 helpers, `KISS ON` | Built, unverified |
-| APRS transmit (messages, ACKs, resends, beacons) | **Disabled** -- fails closed until STATUS/UNPROTO output is checked |
-| PBBS | Not applicable (the OpenTNC has no built-in mailbox) |
+| Settings: get/set, typed values, `DISPLAY` | **Verified** -- replies are `is VALUE` / `KEY is VALUE` |
+| Rejected commands detected | **Verified** -- `Unknown command: X` |
+| `SAVE!`, `CARRIERDETECT`, FX.25 helpers | **Verified** commands; set_* round trips not yet run on the unit |
+| KISS mode: monitoring and APRS transmit | Works independently of all of the above -- see [kiss.md](kiss.md) |
+| Terminal Mode MONITOR decoding | Unverified -- nothing was heard during the capture |
+| Terminal Mode connect / disconnect banners | Unverified |
+| Terminal Mode APRS transmit | Off: the safety checks need a `STATUS` command, which this firmware lacks -- use KISS mode |
+| PBBS | Not applicable (no built-in mailbox) |
+
+Not on this firmware: `VERSION`, `STATUS`, `ECHO`, `MCOM`, `MRPT`,
+`MSTAMP`, `HEADERLN`, `PPERSIST`, `APRSDIGI`, `BEACON`. Commands accept
+any abbreviation down to the capitals `HELP` shows (`CARrierdetect` ->
+`CAR`).
+
+## Levels
+
+The OpenTNC has its own modem, so there's nothing to set in alsamixer.
+**Receive:** the radio's volume -- LED 1 blinks once a second when it's
+right, and stays lit or flickers fast when audio is too hot. **Transmit:**
+factory-set to 50 mV for HT/mic inputs; adjust with `TXLEVEL` /
+`TXATTEN`, or trimmer RV202, against `CALIBRATE` tones if ever needed.
 
 ## KISS mode: APRS without the guesswork
 

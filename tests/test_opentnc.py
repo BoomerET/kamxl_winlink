@@ -153,14 +153,14 @@ class OpenTNCCommandTests(unittest.TestCase):
         self.assertIn(b"FX25ENCODING AUTOMATIC\r", serial.written)
 
     def test_carrier(self):
-        serial = ScriptedSerial({"CARRIER": "CARRIER SQUELCH"})
+        serial = ScriptedSerial({"CARRIERDETECT": "is SQuelch"})
         tnc = make_opentnc(serial)
 
         with self.assertRaises(ValueError):
             tnc.set_carrier("DCD")
 
         self.assertEqual(tnc.set_carrier("squelch"), "SQUELCH")
-        self.assertIn(b"CARRIER SQUELCH\r", serial.written)
+        self.assertIn(b"CARRIERDETECT SQUELCH\r", serial.written)
 
     def test_save_settings_sends_save_bang(self):
         serial = ScriptedSerial()
@@ -170,11 +170,14 @@ class OpenTNCCommandTests(unittest.TestCase):
 
         self.assertEqual(serial.written, [b"SAVE!\r"])
 
-    def test_version_is_read_only(self):
-        tnc = make_opentnc(ScriptedSerial())
+    def test_mode_switching_settings_are_read_only(self):
+        serial = ScriptedSerial()
+        tnc = make_opentnc(serial)
 
-        with self.assertRaises(KAMError):
-            tnc.set_typed("VERSION", "9.9")
+        for name, value in (("KISS", "ON"), ("MODE", "EXPERT")):
+            with self.assertRaises(KAMError):
+                tnc.set_typed(name, value)
+        self.assertEqual(serial.written, [])
 
     def test_interleaved_monitor_line_does_not_eat_the_reply(self):
         # TNC-2 monitor lines carry their payload inline with no blank
@@ -194,6 +197,136 @@ class OpenTNCCommandTests(unittest.TestCase):
 
         with self.assertRaises(KAMError):
             tnc.read_pbbs_message(1)
+
+
+# ---------------------------------------------------------------------------
+# Replaying the real unit (tests/opentnc_capture_20261019.txt)
+# ---------------------------------------------------------------------------
+
+import ast
+from pathlib import Path
+
+CAPTURE = Path(__file__).resolve().parent / "opentnc_capture_20261019.txt"
+
+
+def load_capture(path=CAPTURE):
+    """sent-command bytes -> the exact bytes the OpenTNC answered."""
+    lines = path.read_text().splitlines()
+    replies, sent = {}, None
+    for i, line in enumerate(lines):
+        if "] sent " in line:
+            sent = ast.literal_eval(lines[i + 1].strip())
+        elif line.rstrip().endswith("] recv") and sent is not None:
+            replies[sent] = ast.literal_eval(lines[i + 1].strip())
+            sent = None
+    return replies
+
+
+class CaptureReplaySerial:
+    """Answers each command with what the real OpenTNC sent back."""
+
+    def __init__(self):
+        self.is_open = True
+        self.replies = load_capture()
+        self.written = []
+        self._out = bytearray()
+
+    def write(self, data):
+        self.written.append(bytes(data))
+        self._out.extend(self.replies.get(
+            bytes(data).upper(),
+            bytes(data).strip() + b"\r\nUnknown command: X\r\nType 'help' "
+            b"to list all commands\r\ncmd:"))
+        return len(data)
+
+    def flush(self):
+        pass
+
+    def reset_input_buffer(self):
+        self._out.clear()
+
+    def close(self):
+        self.is_open = False
+
+    @property
+    def in_waiting(self):
+        return len(self._out)
+
+    def read(self, n=1):
+        data = bytes(self._out[:n])
+        del self._out[:len(data)]
+        return data
+
+
+class RealUnitTests(unittest.TestCase):
+    """The driver against the OpenTNC's own replies, byte for byte."""
+
+    def setUp(self):
+        self.serial = CaptureReplaySerial()
+        self.tnc = make_opentnc(self.serial)
+
+    def test_capture_fixture_loaded(self):
+        self.assertIn(b"MYCALL\r", self.serial.replies)
+        self.assertGreater(len(self.serial.replies), 30)
+
+    def test_bare_query_is_reply(self):
+        self.assertEqual(self.tnc.get("MYCALL"), "N5BA-11")
+        self.assertEqual(self.tnc.get("COMMAND"), "0x3 (CTRL-C)")
+
+    def test_typed_settings(self):
+        expected = {
+            "MYCALL": "N5BA-11",
+            "MONITOR": True,
+            "DIGIPEAT": False,
+            "CPACTIME": False,
+            "CR": True,
+            "FX25CONNECTION": "OPPORTUNISTIC",
+            "FX25ENCODING": "AUTOMATIC",
+            "PACLEN": 256,
+            "MAXFRAME": 2,
+            "FRACK": 6,
+            "RETRY": 9,
+            "RESPTIME": 5,
+            "CHECK": 30,
+            "TXDELAY": 40,
+            "SLOTTIME": 10,
+            "PERSIST": 63,
+            "UNPROTO": "CQ",
+        }
+        for name, value in expected.items():
+            with self.subTest(setting=name):
+                self.assertEqual(self.tnc.get_typed(name), value)
+
+    def test_carrier_and_fx25_helpers(self):
+        # The capture asked "CARRIER", which the OpenTNC accepts as an
+        # abbreviation of CARRIERDETECT; replay it under the full name too.
+        self.serial.replies[b"CARRIERDETECT\r"] = self.serial.replies[b"CARRIER\r"].replace(
+            b"CARRIER\r\n", b"CARRIERDETECT\r\n")
+        self.assertEqual(self.tnc.get_carrier(), "SQUELCH")
+        self.assertEqual(self.tnc.get_fx25(), ("OPPORTUNISTIC", "AUTOMATIC"))
+
+    def test_unknown_command_is_an_error(self):
+        for command in ("XYZZYQ", "STATUS", "VERSION", "APRSDIGI"):
+            with self.subTest(command=command):
+                with self.assertRaises(KAMCommandError) as ctx:
+                    self.tnc.send_command(command)
+                self.assertIn("OpenTNC", str(ctx.exception))
+
+    def test_display(self):
+        config = self.tnc.get_configuration()
+        self.assertEqual(config["MYCALL"], "N5BA-11")
+        self.assertEqual(config["CARRIERDETECT"], "SQuelch")
+        self.assertEqual(config["FX25CONNECTION"], "OPportunistic")
+        self.assertEqual(config["TXLEVEL"], "256")
+        self.assertEqual(config["KISS"], "off")
+        self.assertNotIn("HEAP", " ".join(config))
+        self.assertEqual(len(config), 43)
+
+    def test_command_table_matches_the_firmware(self):
+        # Every typed setting is one the real DISPLAY lists.
+        displayed = set(self.tnc.get_configuration())
+        missing = set(OpenTNC.COMMANDS) - displayed
+        self.assertEqual(missing, set())
 
 
 class OpenTNCConnectedModeTests(unittest.TestCase):
