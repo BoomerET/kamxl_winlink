@@ -21,10 +21,17 @@ tests replay it byte for byte).
 | Rejected commands detected | **Verified** -- `Unknown command: X` |
 | `SAVE!`, `CARRIERDETECT`, FX.25 helpers | **Verified** commands; set_* round trips not yet run on the unit |
 | KISS mode: monitoring and APRS transmit | Works independently of all of the above -- see [kiss.md](kiss.md) |
-| Terminal Mode MONITOR decoding | Unverified -- nothing was heard during the capture |
+| Terminal Mode MONITOR decoding | **Verified** on the air and against the firmware source (`DumpPacket()` in `src/packetutil.c`): one line per packet, `0 (???): <[To APRS from N5BA via WIDE1-1 WIDE2-1: 03(UI) PID ^F0 payload]` |
 | Terminal Mode connect / disconnect banners | Unverified |
 | Terminal Mode APRS transmit | Off: the safety checks need a `STATUS` command, which this firmware lacks -- use KISS mode |
 | PBBS | Not applicable (no built-in mailbox) |
+
+In a monitor line the leading number is a packet counter and `(???)`
+the AX.25 version (`2.0`, `2.2`, or unknown); a `*` on the destination
+or source is the command/response bit, on a digipeater "has repeated".
+Bytes that aren't printable ASCII appear as ` ^XX ` (a space each side;
+the beacon's trailing CR is ` ^0D `), and the driver turns them back
+into bytes.
 
 Not on this firmware: `VERSION`, `STATUS`, `ECHO`, `MCOM`, `MRPT`,
 `MSTAMP`, `HEADERLN`, `PPERSIST`, `APRSDIGI`, `BEACON`. Commands accept
@@ -35,7 +42,14 @@ any abbreviation down to the capitals `HELP` shows (`CARrierdetect` ->
 
 The OpenTNC has its own modem, so there's nothing to set in alsamixer.
 **Receive:** the radio's volume -- LED 1 blinks once a second when it's
-right, and stays lit or flickers fast when audio is too hot. **Transmit:**
+right, and stays lit or flickers fast when audio is too hot. Test with a
+real packet, not just the LEDs: a PKT LED that flashes with nothing
+printed (with `MONITOR ON`) means the packet failed its checksum. Keep
+the test transmitter at low power and away from the TNC's radio, which
+a nearby signal at full power overloads.
+
+`MONITOR`, `MYCALL` and the rest are lost at power-off unless you
+`SAVE!` them. **Transmit:**
 factory-set to 50 mV for HT/mic inputs; adjust with `TXLEVEL` /
 `TXATTEN`, or trimmer RV202, against `CALIBRATE` tones if ever needed.
 

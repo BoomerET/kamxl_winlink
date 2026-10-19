@@ -426,6 +426,151 @@ class TNC2MonitorParsingTests(unittest.TestCase):
         self.assertEqual(parser.flush()[0].port, 1)
 
 
+# Heard by the real unit, 2026-10-19: N5BA's KAM-XL beacon, printed
+# right after the prompt.
+REAL_MONITOR_LINE = (
+    "cmd:0 (???): <[To APRS from N5BA via WIDE1-1 WIDE2-1: 03(UI) "
+    "PID ^F0 =3314.34N/09650.70W-N5BA KAM-XL ^0D ]"
+)
+
+
+class RealMonitorLineTests(unittest.TestCase):
+    def _parse(self, *chunks):
+        parser = OpenTNC("COM_FAKE").make_packet_parser()
+        packets = []
+        for chunk in chunks:
+            packets += parser.feed(chunk)
+        return packets + parser.flush()
+
+    def test_the_real_line(self):
+        (packet,) = self._parse(REAL_MONITOR_LINE + "\r\n")
+
+        self.assertEqual(packet.source, "N5BA")
+        self.assertEqual(packet.destination, "APRS")
+        self.assertEqual(packet.digipeaters, ("WIDE1-1", "WIDE2-1"))
+        self.assertFalse(packet.digipeated)
+        self.assertEqual(packet.frame_type, "UI")
+        self.assertEqual(packet.port, APRS_RADIO_PORT)
+        self.assertEqual(packet.payload, "=3314.34N/09650.70W-N5BA KAM-XL")
+        self.assertTrue(packet.raw.startswith("<[To APRS from N5BA"))
+
+    def test_emitted_as_soon_as_the_line_ends(self):
+        parser = OpenTNC("COM_FAKE").make_packet_parser()
+
+        self.assertEqual(parser.feed(REAL_MONITOR_LINE[:30]), [])
+        packets = parser.feed(REAL_MONITOR_LINE[30:] + "\r\n")
+
+        self.assertEqual([p.source for p in packets], ["N5BA"])
+
+    def test_shapes(self):
+        # Built the way DumpPacket() (firmware src/packetutil.c) prints.
+        cases = {
+            # Payload runs straight into "]"; "*" on DEST is the
+            # command bit, not part of the callsign.
+            "7 (2.0): <[To APZTNC* from K5LRK-9: 03(UI) PID ^F0 >status]":
+                ("K5LRK-9", "APZTNC", (), "UI", ">status"),
+            # "*" on a digipeater means it has repeated the packet.
+            "8 (2.0): <[To APRS* from W5ABC via KD5EOC-10* WIDE2-1: "
+            "03(UI) PID ^F0 !x]":
+                ("W5ABC", "APRS", ("KD5EOC-10*", "WIDE2-1"), "UI", "!x"),
+            # Mic-E: non-ASCII bytes escaped " ^XX " (a space each side).
+            "9 (???): <[To S32U6T from N0CALL: 03(UI) PID ^F0 `| ^E2 l ^7F j>/]":
+                ("N0CALL", "S32U6T", (), "UI", "`|\xe2l\x7fj>/"),
+            # A real space next to an escape survives; CR LF in the middle.
+            "10 (2.0): <[To APRS from N0CALL: 03(UI) PID ^F0 >a  ^0D  ^0A b]":
+                ("N0CALL", "APRS", (), "UI", ">a \nb"),
+            # Signal details in front of the version; [DAMA] flag.
+            "11 A01234 J0.05 B1200 F1(2.0): <[To APRS*[DAMA] from N5BA: "
+            "03(UI) PID ^F0 >fx25]":
+                ("N5BA", "APRS", (), "UI", ">fx25"),
+            # Connected-mode frames, extended (v2.2) control field.
+            "12 (2.2): <[To N5BA* from KD5EOC-10: 0042(I n_r=1 P n_s=1) "
+            "PID ^F0 Welcome]":
+                ("KD5EOC-10", "N5BA", (), "I", "Welcome"),
+            "13 (2.0): <[To N5BA* from KD5EOC-10: 3F(SABM) ]":
+                ("KD5EOC-10", "N5BA", (), "SABM", ""),
+        }
+
+        for line, (source, dest, digis, frame_type, payload) in cases.items():
+            (packet,) = self._parse(line + "\r\n")
+            self.assertEqual(
+                (packet.source, packet.destination, packet.digipeaters,
+                 packet.frame_type, packet.payload),
+                (source, dest, digis, frame_type, payload),
+                line,
+            )
+
+    def test_packet_counter_is_not_a_port(self):
+        packets = self._parse(
+            "1 (???): <[To APRS from N5BA: 03(UI) PID ^F0 >one]\r\n"
+            "42 (???): <[To APRS from N5BA: 03(UI) PID ^F0 >two]\r\n"
+        )
+
+        self.assertEqual([p.port for p in packets], [APRS_RADIO_PORT] * 2)
+
+    def test_only_received_packets(self):
+        self.assertEqual(self._parse(
+            "3 (2.0): >[To APRS from N5BA-11: 03(UI) PID ^F0 >sent]\r\n"
+        ), [])
+
+    def test_line_split_by_the_firmware_is_joined(self):
+        (packet,) = self._parse(
+            "0 (???): <[To APRS from N5BA: 03(UI) PID ^F0 >one",
+            "\r\n two]\r\n",
+        )
+
+        self.assertEqual(packet.payload, ">one two")
+
+    def test_unknown_frame_part_is_still_recorded(self):
+        (packet,) = self._parse("0 (???): <[To N5BA from KD5EOC-10: odd]\r\n")
+
+        self.assertEqual(packet.source, "KD5EOC-10")
+        self.assertIsNone(packet.frame_type)
+        self.assertEqual(packet.payload, "odd")
+
+    def test_tnc2_lines_still_parse(self):
+        packets = self._parse(
+            "K5LRK>APRS,WIDE1-1*:>status\r\n" + REAL_MONITOR_LINE + "\r\n"
+        )
+
+        self.assertEqual([p.source for p in packets], ["K5LRK", "N5BA"])
+
+    def test_prompt_and_noise_are_not_packets(self):
+        self.assertEqual(self._parse("cmd:\r\nMYCALL\r\nis N5BA-11\r\n"), [])
+
+    def test_monitor_line_does_not_eat_a_reply(self):
+        # Mid-reply there's no idle prompt in front of it.
+        tnc = make_opentnc(ScriptedSerial({
+            "MYCALL": REAL_MONITOR_LINE[len("cmd:"):] + "\r\nis N5BA-11",
+        }))
+
+        self.assertEqual(tnc.get("MYCALL"), "N5BA-11")
+
+    def test_beacon_reaches_the_station_list(self):
+        import os
+        import tempfile
+        import time
+
+        tmp = tempfile.mkdtemp()
+        tnc = make_opentnc(ChunkSerial([REAL_MONITOR_LINE + "\r\n"]))
+        daemon = KAMDaemon(
+            tnc,
+            os.path.join(tmp, "t.sock"),
+            station_callsign="N5BA-11",
+            history_db=os.path.join(tmp, "history.sqlite3"),
+        )
+        self.addCleanup(daemon.shutdown)
+
+        deadline = time.monotonic() + 5
+        stations = []
+        while time.monotonic() < deadline and not stations:
+            time.sleep(0.1)
+            stations = daemon.dispatch("stations.list", {})
+
+        self.assertEqual([s["callsign"] for s in stations], ["N5BA"])
+        self.assertAlmostEqual(stations[0]["latitude"], 33 + 14.34 / 60, 4)
+
+
 class IdleFlushTests(unittest.TestCase):
     """TNC-2 output has no end-of-packet marker -- see MONITOR_IDLE_FLUSH."""
 
