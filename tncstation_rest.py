@@ -400,6 +400,18 @@ ROUTES: Tuple[Tuple[str, "re.Pattern", str], ...] = (
 )
 
 
+
+# A ?token=<API key> query parameter (the dashboard pages pass the key
+# that way -- see _check_auth()) would otherwise land in the access log
+# in full, readable by anyone who can read the journal.
+_TOKEN_PARAM_RE = re.compile(r"([?&]token=)[^&\s\"']*", re.IGNORECASE)
+
+
+def redact_token(text: str) -> str:
+    """Replace the value of any ?token=/&token= query parameter with "…"."""
+    return _TOKEN_PARAM_RE.sub(r"\1…", text)
+
+
 class RESTRequestHandler(BaseHTTPRequestHandler):
     # Set on the class by serve() below, so every handler instance
     # (one per request, per BaseHTTPRequestHandler's design) shares
@@ -420,7 +432,9 @@ class RESTRequestHandler(BaseHTTPRequestHandler):
         if urlparse(self.path).path == "/favicon.ico":
             return
 
-        logger.info("%s - %s", self.address_string(), fmt % args)
+        logger.info(
+            "%s - %s", self.address_string(), redact_token(fmt % args)
+        )
 
     # -- Dispatch -----------------------------------------------------
 
