@@ -53,6 +53,10 @@
     return node;
   }
 
+  function plural(n, word) {
+    return n + " " + word + (n === 1 ? "" : "s");
+  }
+
   function ago(epoch) {
     var s = Math.max(0, Date.now() / 1000 - epoch);
     if (s < 90) return "just now";
@@ -94,7 +98,7 @@
     stations.forEach(function (s) {
       var btn = el("button", { type: "button", "class": "stationBtn" });
       btn.appendChild(el("span", { "class": "call" }, s.callsign));
-      var meta = (s.project ? s.project + " · " : "") + s.reports + " reports · " +
+      var meta = (s.project ? s.project + " · " : "") + plural(s.reports, "report") + " · " +
         ago(s.last_heard);
       btn.appendChild(el("span", { "class": "meta" }, meta));
       if (s.callsign === selected) btn.setAttribute("aria-current", "true");
@@ -172,6 +176,11 @@
     var values = series.points.map(function (p) { return p[1]; });
     var yt = ticks(Math.min.apply(null, values), Math.max.apply(null, values), 3);
     var y0 = yt[0], y1 = yt[yt.length - 1];
+    // Tick labels get as many decimals as the tick spacing needs, so
+    // 13.80 / 13.82 / 13.84 don't all print as "13.8".
+    var stepSize = yt.length > 1 ? Math.abs(yt[1] - yt[0]) : 1;
+    var decimals = Math.min(4, Math.max(0, -Math.floor(Math.log10(stepSize) + 1e-9)));
+    function tickLabel(v) { return v.toFixed(decimals); }
     var X = function (t) { return L + (t - t0) / Math.max(1, t1 - t0) * (W - L - R); };
     var Y = function (v) { return T + (1 - (v - y0) / (y1 - y0 || 1)) * (H - T - B); };
 
@@ -182,7 +191,7 @@
     yt.forEach(function (v) {
       root.appendChild(svg("line", { "class": "grid", x1: L, x2: W - R, y1: Y(v), y2: Y(v) }));
       var label = svg("text", { "class": "axis", x: L - 6, y: Y(v) + 3, "text-anchor": "end" });
-      label.textContent = fmt(v);
+      label.textContent = tickLabel(v);
       root.appendChild(label);
     });
     (W < 360 ? [t0, t1] : [t0, (t0 + t1) / 2, t1]).forEach(function (t, i, all) {
@@ -266,7 +275,7 @@
     head.appendChild(el("h1", {}, data.callsign + (data.project ? " — " + data.project : "")));
     var sub = el("div", { "class": "sub" });
     sub.appendChild(document.createTextNode(data.reports
-      ? data.reports + " reports · last " + ago(data.last_heard) + " · "
+      ? plural(data.reports, "report") + " · last " + ago(data.last_heard) + " · "
       : "No telemetry in this period · "));
     var log = el("a", { href: authedUrl("/log?callsign=" + encodeURIComponent(data.callsign) +
       "&text=" + encodeURIComponent("T#") + "&days=" + daysEl.value) }, "packets");
