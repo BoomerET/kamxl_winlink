@@ -25,9 +25,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # The versions this actually runs on: 3.13 (Raspberry Pi 3B+,
-        # Raspberry Pi OS) and 3.14 (the Maestro laptop).
-        python-version: ["3.13", "3.14"]
+        # 3.9: the oldest supported (requires-python). 3.13: Raspberry
+        # Pi 3B+ (Raspberry Pi OS). 3.14: the Maestro laptop.
+        python-version: ["3.9", "3.13", "3.14"]
 
     steps:
       - uses: actions/checkout@v5
