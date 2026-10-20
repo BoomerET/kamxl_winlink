@@ -47,6 +47,15 @@ class PacketRecord:
     raw: str
     frame_type: Optional[str]
 
+def heard_direct(digipeaters) -> bool:
+    """
+    True if a packet was heard straight from its sender: no digipeater
+    has repeated it, i.e. no "*" (has-been-repeated) anywhere in the
+    path. An unused path like WIDE1-1,WIDE2-1 still counts as direct.
+    """
+    return not any(str(d).endswith("*") for d in (digipeaters or ()))
+
+
 @dataclass(frozen=True)
 class Station:
     """
@@ -77,6 +86,10 @@ class Station:
     # was heard; None for stations that never sent weather.
     weather: Optional[dict] = None
     weather_at: Optional[float] = None
+    # When a packet from this station was last heard directly -- no
+    # digipeater had repeated it (no "*" in the path). None: only ever
+    # heard through digipeaters (or iGated) so far.
+    last_direct: Optional[float] = None
 
 @dataclass(frozen=True)
 class MapObject:
@@ -183,8 +196,13 @@ class StationTracker:
             (*(existing.recent_packets if existing else ()), record)
         )[-25:]
 
+        last_direct = existing.last_direct if existing else None
+        if heard_direct(packet.digipeaters):
+            last_direct = now
+
         if position is None:
-            changes = {"recent_packets": recent_packets}
+            changes = {"recent_packets": recent_packets,
+                       "last_direct": last_direct}
             if weather is not None:
                 changes.update(weather=weather, weather_at=now)
             station = dataclasses.replace(existing, **changes)
@@ -232,6 +250,7 @@ class StationTracker:
             recent_packets=recent_packets,
             weather=weather,
             weather_at=weather_at,
+            last_direct=last_direct,
         )
 
         self._stations[packet.source] = station

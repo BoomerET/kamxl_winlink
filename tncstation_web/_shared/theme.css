@@ -79,6 +79,7 @@
   --t-info-soft: #8cf;
   --t-mint: #8fd;
   --t-ok: #6f6;
+  --t-map-direct: #119c3a;   /* ring on the map: heard direct (over light tiles except Night) */
   --t-ok-bright: #50fa7b;
   --t-warn: #cc6;
   --t-amber: #f1c40f;
@@ -161,6 +162,7 @@
   --t-info-soft: #1a679c;
   --t-mint: #13795b;
   --t-ok: #1a7f37;
+  --t-map-direct: #1a7f37;   /* ring on the map: heard direct (over light tiles except Night) */
   --t-ok-bright: #1a7f37;
   --t-warn: #836500;
   --t-amber: #946600;
@@ -243,6 +245,7 @@
   --t-info-soft: #e0603c;
   --t-mint: #c83838;
   --t-ok: #e84444;
+  --t-map-direct: #e84444;   /* ring on the map: heard direct (over light tiles except Night) */
   --t-ok-bright: #e84444;
   --t-warn: #cc5a24;
   --t-amber: #cc5a24;

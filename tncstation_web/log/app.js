@@ -73,6 +73,12 @@
 
   function pathHtml(hops) {
     if (!hops || !hops.length) return "<span class='dim'>direct</span>";
+    // No "*": no digipeater repeated it, so it was heard direct; an
+    // unused WIDE1-1,WIDE2-1 is only what the sender asked for.
+    if (!hops.some(function (h) { return /\*$/.test(h); })) {
+      return "<span class='dim'>direct (path " +
+        escapeHtml(hops.join(",")) + ")</span>";
+    }
     return "via " + hops.map(function (hop) {
       var bare = hop.replace(/\*$/, "");
       if (/^(WIDE|TRACE|RELAY|TCPIP|TCPXX|qA)/i.test(bare)) {
