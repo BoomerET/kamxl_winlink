@@ -9,8 +9,9 @@ Ideas and problem reports are welcome as
 
 - **A registered APRS identifier.** Transmissions use `APZTNC`, from
   the range [aprs-deviceid](https://github.com/aprsorg/aprs-deviceid)
-  sets aside for software in development. Request a permanent one (an
-  `APTNC?`-style destination) and make it the default.
+  sets aside for software in development. `APTNC?` was requested in
+  [aprs-deviceid#388](https://github.com/aprsorg/aprs-deviceid/issues/388)
+  (October 2026); once assigned, it becomes the default.
 - **PyPI.** Publish so installing is `pip install tncstation`; the
   package metadata is already in `pyproject.toml`.
 
