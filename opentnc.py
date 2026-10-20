@@ -538,25 +538,32 @@ class OpenTNC(TerminalTNC):
 # KISS mode
 # ---------------------------------------------------------------------------
 
-from kiss import KISSTNC  # noqa: E402
+from kiss import KISS_EXIT, KISSTNC  # noqa: E402
 
 
 class OpenTNCKISS(KISSTNC):
     """
     The OpenTNC in KISS mode: monitoring and APRS transmit with frames
-    built here, so nothing depends on the (still unverified) Terminal
-    Mode display formats above. Per NA6D's guide: ``KISS ON`` from the
-    cmd: prompt enters KISS immediately; C0 FF C0 (or a power cycle)
-    leaves it. KISS doesn't survive a power cycle, so nothing persists.
+    built here, so nothing depends on the Terminal Mode display formats
+    above.
 
-    The daemon does NOT take it out of KISS when it stops. Seen on the
-    real unit (2026-10-19/20, twice): after C0 FF C0 and then KISS ON
-    again without a power cycle, the OpenTNC still transmits (and hands
-    the frames back) but never passes on another received packet until
-    it's unplugged. Leaving it in KISS means a daemon restart never
-    toggles it. Sending ``KISS ON`` to a unit that's already in KISS is
-    harmless: a KISS decoder ignores bytes outside FEND-delimited
-    frames. For the cmd: prompt, unplug and replug it.
+    From the firmware source (console.c kiss_handler/restart_handler,
+    checked 2026-10-20 after the "deaf after restart" reports):
+
+      KISS NOW   enter KISS immediately; C0 FF C0 leaves it. Not saved.
+      KISS ON    a *saved* setting ("enter KISS when started"), written
+                 to flash -- it does NOT enter KISS now. RESTART (or a
+                 power cycle) then does: the TNC-2 convention.
+      KISS OFF   clear that setting.
+      KISS       "is ON" / "is OFf": the saved setting.
+
+    Earlier versions of this driver sent KISS ON, so whenever the TNC
+    was at cmd: when the daemon started, it stayed there -- deaf, and
+    taking our frames as typed commands -- until a replug booted it into
+    KISS. Now: find out which mode it's in (in KISS the console prints
+    nothing), clear a saved KISS ON left by those versions, enter with
+    KISS NOW (falling back to KISS ON + RESTART for firmware without
+    it), and check that it really stopped answering at cmd:.
     """
 
     MODEL = "OpenTNC"
@@ -565,17 +572,57 @@ class OpenTNCKISS(KISSTNC):
     PORT_MAP = {0: APRS_RADIO_PORT}
     APRS_TX_CHANNEL = 0
 
-    def enter_kiss_mode(self) -> None:
+    # Seconds to wait for replies. The console ignores input for about
+    # 2 s after power-up (console.c flushes "input gunk"), so an empty
+    # first answer is retried after BOOT_QUIET before concluding KISS.
+    PROMPT_WAIT = 0.5
+    BOOT_QUIET = 2.5
+    ENTER_WAIT = 1.5     # the firmware sleeps 1 s before switching
+
+    def _prompt(self) -> bytes:
         self._write(b"\r")
-        self._settle(0.3)
-        self._write(b"KISS ON\r")
-        reply = self._settle(0.5)
-        logger.info("OpenTNC: KISS ON sent (reply %r)", reply[:80])
+        return self._settle(self.PROMPT_WAIT)
+
+    def _command(self, text: str, wait: Optional[float] = None) -> bytes:
+        self._write(text.encode("ascii") + b"\r")
+        return self._settle(self.PROMPT_WAIT if wait is None else wait)
+
+    def enter_kiss_mode(self) -> None:
+        reply = self._prompt()
+        if not reply.strip():
+            # Already in KISS -- or only just powered up, still deaf.
+            self._settle(self.BOOT_QUIET)
+            reply = self._prompt()
+        if not reply.strip():
+            logger.info("OpenTNC: already in KISS mode")
+            return
+
+        # At the cmd: prompt.
+        if b"is ON" in self._command("KISS"):
+            self._command("KISS OFF")
+            logger.info("OpenTNC: cleared the saved KISS ON setting (from an "
+                        "earlier tncstation) so a power cycle gives cmd: again")
+
+        reply = self._command("KISS NOW", self.ENTER_WAIT)
+        how = "KISS NOW"
+        if b"Entering KISS mode" not in reply:
+            # Firmware without KISS NOW: the TNC-2 way.
+            self._command("KISS ON")
+            reply = self._command("RESTART", self.ENTER_WAIT)
+            how = "KISS ON + RESTART"
+
+        check = self._prompt()
+        if check.strip():
+            raise TNCError(
+                "OpenTNC didn't enter KISS mode -- it still answers at the "
+                f"cmd: prompt ({how}; replies {reply[:60]!r} / {check[:40]!r}). "
+                "Unplug and replug it, then restart the daemon."
+            )
+        logger.info("OpenTNC: entered KISS mode (%s)", how)
 
     def leave_kiss_mode(self) -> None:
-        # Deliberately nothing sent -- see the class docstring.
-        logger.info(
-            "OpenTNC: left in KISS mode (leaving and re-entering KISS "
-            "without a power cycle stops it receiving); unplug and replug "
-            "it for the cmd: prompt"
-        )
+        # Back to the cmd: prompt, so a terminal works after the daemon
+        # stops; the next start enters KISS again with KISS NOW.
+        self._write(KISS_EXIT)
+        self._settle(0.3)
+        logger.info("OpenTNC: left KISS mode")

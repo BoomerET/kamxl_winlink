@@ -303,18 +303,15 @@ class EnterLeaveTests(unittest.TestCase):
         self.assertEqual(tnc.serial.written, [])
         self.assertFalse(tnc.serial.is_open)
 
-    def test_opentnc_kiss_on_and_stays_in_kiss(self):
-        # Leaving KISS and entering it again without a power cycle left
-        # the real OpenTNC deaf, so the daemon never sends the exit.
-        tnc = driver(OpenTNCKISS)
+    def test_opentnc_enters_with_kiss_now_and_leaves(self):
+        tnc = opentnc_driver(FakeOpenTNC())
         tnc.enter_kiss_mode()
-        self.assertEqual(tnc.serial.written, [b"\r", b"KISS ON\r"])
+        self.assertTrue(tnc.serial.kiss)
+        self.assertIn(b"KISS NOW\r", tnc.serial.written)
+        self.assertNotIn(b"KISS ON\r", tnc.serial.written)
         tnc._entered_kiss = True
-        with self.assertLogs("kamxl", "INFO") as logs:
-            tnc.disconnect()
-        self.assertEqual(tnc.serial.written, [b"\r", b"KISS ON\r"])
-        self.assertNotIn(KISS_EXIT, tnc.serial.written)
-        self.assertIn("left in KISS mode", "\n".join(logs.output))
+        tnc.disconnect()
+        self.assertEqual(tnc.serial.written[-1], KISS_EXIT)
         self.assertFalse(tnc.serial.is_open)
 
     def test_kamxl_enters_from_terminal_mode(self):
@@ -575,6 +572,93 @@ class DaemonOverKISSTests(unittest.TestCase):
         with self.assertRaises(TNCError) as ctx:
             self.daemon.dispatch("send_command", {"command": "MYCALL"})
         self.assertIn("KISS", str(ctx.exception))
+
+
+
+class FakeOpenTNC(FakeKISSSerial):
+    """
+    The OpenTNC as its firmware source (console.c) describes it: at cmd:
+    it echoes what's typed and prompts; KISS NOW enters KISS at once;
+    KISS ON only saves a setting; RESTART with that setting enters KISS;
+    in KISS the console says nothing.
+    """
+
+    def __init__(self, kiss=False, auto=False, has_now=True, stuck=False):
+        super().__init__()
+        self.kiss, self.auto, self.has_now, self.stuck = kiss, auto, has_now, stuck
+
+    def write(self, data):
+        with self._lock:
+            self.written.append(bytes(data))
+            if self.kiss:
+                return len(data)
+            line = bytes(data).rstrip(b"\r").decode("latin-1")
+            out = data.decode("latin-1") + "\r\n"
+            word = line.upper()
+            if word == "KISS":
+                out += "is ON" if self.auto else "is OFf"
+            elif word == "KISS OFF":
+                self.auto = False
+                out += "KISS ON is no longer in effect"
+            elif word == "KISS ON":
+                self.auto = True
+                out += "TNC will enter KISS mode when started."
+            elif word == "KISS NOW" and self.has_now:
+                out += "Entering KISS mode.  Send 0xC0 0xFF 0xC0 to exit."
+                self.kiss = not self.stuck
+            elif word == "KISS NOW":
+                out += "Syntax: KISS (off|on)"
+            elif word == "RESTART" and self.auto:
+                out += "Entering KISS mode.  Send 0xC0 0xFF 0xC0 to exit."
+                self.kiss = not self.stuck
+            self._out.extend((out + "\r\ncmd:").encode("latin-1"))
+        return len(data)
+
+
+def opentnc_driver(serial):
+    tnc = driver(OpenTNCKISS, serial)
+    tnc.PROMPT_WAIT = tnc.ENTER_WAIT = tnc.BOOT_QUIET = 0.05
+    return tnc
+
+
+class OpenTNCKISSEntryTests(unittest.TestCase):
+    """Seen on the real unit: KISS ON left it at cmd: -- deaf -- until a replug."""
+
+    def test_from_cmd_prompt(self):
+        serial = FakeOpenTNC()
+        with self.assertLogs("kamxl", "INFO") as logs:
+            opentnc_driver(serial).enter_kiss_mode()
+        self.assertTrue(serial.kiss)
+        self.assertFalse(serial.auto)
+        self.assertIn("entered KISS mode (KISS NOW)", "\n".join(logs.output))
+
+    def test_already_in_kiss_sends_no_commands(self):
+        serial = FakeOpenTNC(kiss=True)
+        opentnc_driver(serial).enter_kiss_mode()
+        self.assertEqual(set(serial.written), {b"\r"})  # just the two probes
+
+    def test_clears_saved_kiss_on_from_earlier_versions(self):
+        serial = FakeOpenTNC(auto=True)
+        with self.assertLogs("kamxl", "INFO") as logs:
+            opentnc_driver(serial).enter_kiss_mode()
+        self.assertTrue(serial.kiss)
+        self.assertFalse(serial.auto)
+        self.assertLess(serial.written.index(b"KISS OFF\r"),
+                        serial.written.index(b"KISS NOW\r"))
+        self.assertIn("cleared the saved KISS ON", "\n".join(logs.output))
+
+    def test_firmware_without_kiss_now_uses_restart(self):
+        serial = FakeOpenTNC(has_now=False)
+        with self.assertLogs("kamxl", "INFO") as logs:
+            opentnc_driver(serial).enter_kiss_mode()
+        self.assertTrue(serial.kiss)
+        self.assertIn(b"RESTART\r", serial.written)
+        self.assertIn("KISS ON + RESTART", "\n".join(logs.output))
+
+    def test_still_at_cmd_prompt_is_an_error_not_silence(self):
+        with self.assertRaises(TNCError) as ctx:
+            opentnc_driver(FakeOpenTNC(stuck=True)).enter_kiss_mode()
+        self.assertIn("didn't enter KISS mode", str(ctx.exception))
 
 
 if __name__ == "__main__":
