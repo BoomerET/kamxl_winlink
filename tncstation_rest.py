@@ -38,7 +38,7 @@ import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, Callable, Dict, Optional, Tuple
 
-from envfile import apply_legacy_env, env_flag, load_dotenv as _load_dotenv
+from envfile import env_flag, load_dotenv as _load_dotenv
 from tncstation_web import load_page
 from urllib.parse import urlparse, parse_qs
 
@@ -1502,7 +1502,6 @@ def main(argv: Optional[list] = None) -> None:
     # real environment variables still win), so one file configures
     # both: TNCSTATION_REST_API_KEY, TNCSTATION_REST_PORT, TNCSTATION_SOCKET, ...
     _load_dotenv()
-    legacy_settings = apply_legacy_env()
 
     parser = argparse.ArgumentParser(
         description="REST API for tncstation_daemon.py"
@@ -1551,13 +1550,6 @@ def main(argv: Optional[list] = None) -> None:
         format="%(asctime)s %(message)s",
         datefmt="%H:%M:%S",
     )
-
-    if legacy_settings:
-        logger.info(
-            "Using old setting names %s -- they still work, but rename "
-            "KAMXL_ to TNCSTATION_ in .env when convenient",
-            ", ".join(legacy_settings),
-        )
 
     if args.no_auth:
         if args.host not in ("127.0.0.1", "localhost"):
