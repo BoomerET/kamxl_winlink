@@ -538,7 +538,7 @@ class OpenTNC(TerminalTNC):
 # KISS mode
 # ---------------------------------------------------------------------------
 
-from kiss import KISS_EXIT, KISSTNC  # noqa: E402
+from kiss import KISSTNC  # noqa: E402
 
 
 class OpenTNCKISS(KISSTNC):
@@ -549,9 +549,14 @@ class OpenTNCKISS(KISSTNC):
     cmd: prompt enters KISS immediately; C0 FF C0 (or a power cycle)
     leaves it. KISS doesn't survive a power cycle, so nothing persists.
 
-    Sending ``KISS ON`` to a unit that's already in KISS (say, after the
-    daemon restarted) is harmless: a KISS decoder ignores bytes outside
-    FEND-delimited frames.
+    The daemon does NOT take it out of KISS when it stops. Seen on the
+    real unit (2026-10-19/20, twice): after C0 FF C0 and then KISS ON
+    again without a power cycle, the OpenTNC still transmits (and hands
+    the frames back) but never passes on another received packet until
+    it's unplugged. Leaving it in KISS means a daemon restart never
+    toggles it. Sending ``KISS ON`` to a unit that's already in KISS is
+    harmless: a KISS decoder ignores bytes outside FEND-delimited
+    frames. For the cmd: prompt, unplug and replug it.
     """
 
     MODEL = "OpenTNC"
@@ -568,6 +573,9 @@ class OpenTNCKISS(KISSTNC):
         logger.info("OpenTNC: KISS ON sent (reply %r)", reply[:80])
 
     def leave_kiss_mode(self) -> None:
-        self._write(KISS_EXIT)
-        self._settle(0.3)
-        logger.info("OpenTNC: left KISS mode")
+        # Deliberately nothing sent -- see the class docstring.
+        logger.info(
+            "OpenTNC: left in KISS mode (leaving and re-entering KISS "
+            "without a power cycle stops it receiving); unplug and replug "
+            "it for the cmd: prompt"
+        )

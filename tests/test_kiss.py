@@ -303,13 +303,18 @@ class EnterLeaveTests(unittest.TestCase):
         self.assertEqual(tnc.serial.written, [])
         self.assertFalse(tnc.serial.is_open)
 
-    def test_opentnc_kiss_on_and_exit(self):
+    def test_opentnc_kiss_on_and_stays_in_kiss(self):
+        # Leaving KISS and entering it again without a power cycle left
+        # the real OpenTNC deaf, so the daemon never sends the exit.
         tnc = driver(OpenTNCKISS)
         tnc.enter_kiss_mode()
         self.assertEqual(tnc.serial.written, [b"\r", b"KISS ON\r"])
         tnc._entered_kiss = True
-        tnc.disconnect()
-        self.assertEqual(tnc.serial.written[-1], KISS_EXIT)
+        with self.assertLogs("kamxl", "INFO") as logs:
+            tnc.disconnect()
+        self.assertEqual(tnc.serial.written, [b"\r", b"KISS ON\r"])
+        self.assertNotIn(KISS_EXIT, tnc.serial.written)
+        self.assertIn("left in KISS mode", "\n".join(logs.output))
         self.assertFalse(tnc.serial.is_open)
 
     def test_kamxl_enters_from_terminal_mode(self):
