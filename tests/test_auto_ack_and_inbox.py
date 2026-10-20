@@ -164,6 +164,73 @@ class ClearInboxHistoryTests(unittest.TestCase):
         self.assertEqual(history.total_packets(), 3)
 
 
+class MessageCopyTests(unittest.TestCase):
+    """A resend (or a second path) is one message in the inbox."""
+
+    def setUp(self):
+        path = os.path.join(tempfile.mkdtemp(), "h.sqlite3")
+        self.history = ReceptionHistory(path)
+        self.addCleanup(self.history.close)
+
+    def test_resends_merge_into_the_first_copy(self):
+        # Seen on the air: the KAM-XL resent #6CSQ a minute later.
+        first = 1_760_000_000
+        self.history.record(_message(text="Testing OpenTNC", message_id="6CSQ"),
+                            received_at=first)
+        self.history.record(_message(text="Testing OpenTNC", message_id="6CSQ"),
+                            received_at=first + 63)
+
+        (message,) = self.history.list_aprs_messages("N5BA")
+
+        self.assertEqual(message["received_at"], first)
+        self.assertEqual(message["copies"], 2)
+        self.assertEqual(message["last_received_at"], first + 63)
+
+    def test_different_messages_stay_apart(self):
+        t = 1_760_000_000
+        self.history.record(_message(text="one", message_id="1"), received_at=t)
+        self.history.record(_message(text="two", message_id="2"), received_at=t + 5)
+        # Same text, different ID: a new message.
+        self.history.record(_message(text="one", message_id="3"), received_at=t + 9)
+
+        messages = self.history.list_aprs_messages("N5BA")
+
+        self.assertEqual([m["message"] for m in messages], ["one", "two", "one"])
+        self.assertTrue(all(m["copies"] == 1 for m in messages))
+
+    def test_reused_id_much_later_is_a_new_message(self):
+        t = 1_760_000_000
+        self.history.record(_message(text="ok", message_id="1"), received_at=t)
+        self.history.record(_message(text="ok", message_id="1"),
+                            received_at=t + 86400)
+
+        self.assertEqual(len(self.history.list_aprs_messages("N5BA")), 2)
+
+    def test_a_long_retry_chain_stays_one_message(self):
+        # Each copy within the window of the previous one.
+        t = 1_760_000_000
+        for offset in (0, 1800, 3600, 5400):
+            self.history.record(_message(text="hello", message_id="7"),
+                                received_at=t + offset)
+
+        (message,) = self.history.list_aprs_messages("N5BA")
+        self.assertEqual(message["copies"], 4)
+
+    def test_limit_counts_messages_not_copies(self):
+        t = 1_760_000_000
+        for n in range(3):
+            for copy in range(3):
+                self.history.record(
+                    _message(text=f"msg {n}", message_id=str(n)),
+                    received_at=t + n * 10 + copy,
+                )
+
+        messages = self.history.list_aprs_messages("N5BA", limit=2)
+
+        self.assertEqual([m["message"] for m in messages], ["msg 2", "msg 1"])
+        self.assertEqual([m["copies"] for m in messages], [3, 3])
+
+
 class RestAutoAckAndInboxTests(RestTestCase):
 
     def test_ack_status_endpoint(self):

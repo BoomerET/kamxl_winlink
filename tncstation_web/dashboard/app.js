@@ -249,6 +249,16 @@
     when.title = relativeTime(item.at);
     meta.appendChild(when);
 
+    if (item.dir === "in" && msg.copies > 1) {
+      // Resends (or the same packet via two digipeaters), merged by
+      // the daemon into this one message.
+      var copies = document.createElement("span");
+      copies.textContent = "heard " + msg.copies + "\u00d7";
+      copies.title = "The sender resent it, or it arrived by more than one " +
+        "path; last copy " + relativeTime(msg.last_received_at);
+      meta.appendChild(copies);
+    }
+
     if (item.dir === "out") {
       meta.appendChild(ackBadgeFor(msg));
       var extra = [];
