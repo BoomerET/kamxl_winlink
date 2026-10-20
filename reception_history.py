@@ -486,11 +486,14 @@ class ReceptionHistory:
         """
         from aprs import parse_position
 
+        from stations import heard_direct
+
         parsed = {}
         stations = {}
-        for source, received_at, dest, payload in self._connection.execute(
+        last_direct = {}
+        for source, received_at, dest, payload, digis in self._connection.execute(
             """
-            SELECT source, received_at, destination, payload
+            SELECT source, received_at, destination, payload, digipeaters
             FROM received_packets
             WHERE received_at >= ? AND port = 2 AND payload IS NOT NULL
               AND (frame_type IS NULL OR frame_type = 'UI')
@@ -498,7 +501,14 @@ class ReceptionHistory:
             """,
             (int(since),),
         ):
-            if payload[:1] in (";", ")", "}"):
+            if payload[:1] == "}":
+                continue  # gated: the gateway was heard, not the sender
+            try:
+                if heard_direct(json.loads(digis or "[]")):
+                    last_direct[source] = received_at
+            except ValueError:
+                pass
+            if payload[:1] in (";", ")"):
                 continue
             key = (payload, dest)
             if key not in parsed:
@@ -524,6 +534,7 @@ class ReceptionHistory:
                 track.append([pos.latitude, pos.longitude, received_at])
 
         for entry in stations.values():
+            entry["last_direct"] = last_direct.get(entry["callsign"])
             track = entry["track"]
             if len(track) > max_points:
                 step = (len(track) - 1) / (max_points - 1)

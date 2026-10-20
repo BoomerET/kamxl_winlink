@@ -332,6 +332,17 @@ it took slightly longer than the old 5s window to fully arrive.
 
 ## Stations / map
 
+**Heard direct.** A station heard straight from its sender -- no
+digipeater had repeated the packet, i.e. no `*` in its path (an unused
+`WIDE1-1,WIDE2-1` still counts) -- gets a ring on the map, and its popup
+says "heard direct 3m ago" or "heard only via digipeaters". The
+**Direct only** checkbox (`?direct=1`) hides everything else, in the
+live hour and in longer Tracks periods. `GET /stations`,
+`/stations/{callsign}` and `/stations/history` carry `last_direct` (epoch
+seconds, or `null`); this station's own callsign is always `null`,
+since a KISS TNC hands our own transmissions back. The packet log and
+the station details panel label such packets "direct" too.
+
 Milestone 7 (APRS mapping). `GET /map` serves a third self-contained
 page: a live map, built with [Leaflet](https://leafletjs.com/) and
 OpenStreetMap tiles (both loaded from `cdnjs.cloudflare.com` by the

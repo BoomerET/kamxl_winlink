@@ -30,6 +30,34 @@
   var markers = {};
   var trails = {};
   var trailPoints = {};
+  // Ring around stations heard direct (no digipeater in between).
+  var directRings = {};
+  var LIVE_WINDOW = 3600;  // seconds: the live map shows the last hour
+
+  // Heard direct within the live map's hour: some packet from it had no
+  // "*" in its path (see stations.heard_direct()).
+  function isDirect(station) {
+    return station.last_direct != null &&
+      Date.now() / 1000 - station.last_direct <= LIVE_WINDOW;
+  }
+
+  function directRing(latLng) {
+    return L.circleMarker(latLng, {
+      radius: 16, weight: 2, fill: false, interactive: false,
+      className: "directRing"
+    });
+  }
+
+  function directLine(station, live) {
+    if (live ? isDirect(station) : station.last_direct != null) {
+      return "heard direct " + relativeTime(station.last_direct);
+    }
+    return "heard only via digipeaters" +
+      (live ? " in the last hour" : " in " + periodText());
+  }
+
+  var directOnly = document.getElementById("directOnly");
+  if (params.get("direct") === "1") directOnly.checked = true;
   var digiPaths = L.layerGroup();
   var fitDone = false;
 
@@ -479,6 +507,7 @@
     html += "heard " + relativeTime(station.last_heard) +
       " (" + station.packet_count + " report" +
       (station.packet_count === 1 ? "" : "s") + ")";
+    html += "<br>" + escapeHtml(directLine(station, true));
     html += "<br><a href='#' class='viewStationDetails' data-callsign='" +
       escapeHtml(station.callsign) + "'>View Details &rarr;</a>";
     html += " &middot; " + messageLinkHtml(station.callsign, "Message");
@@ -586,9 +615,14 @@
         packets.slice().reverse().forEach(function(packet) {
           var received = new Date(packet.timestamp * 1000).toLocaleString();
 
-          var path = packet.digipeaters && packet.digipeaters.length
-            ? packet.digipeaters.join(", ")
-            : "Direct (no digipeaters listed)";
+          // Direct unless some digipeater marked itself as having
+          // repeated it ("*"); an unused WIDE1-1,WIDE2-1 is just a request.
+          var hops = packet.digipeaters || [];
+          var repeated = hops.some(function (h) { return /\*$/.test(h); });
+          var path = repeated
+            ? hops.join(", ")
+            : "Heard direct" +
+              (hops.length ? " (path requested: " + hops.join(", ") + ")" : "");
 
           html += "<div class='packetRecord'>";
 
@@ -818,7 +852,9 @@
 
       if (!payload.ok) return;
 
-      var stations = payload.result;
+      var stations = payload.result.filter(function (s) {
+        return !directOnly.checked || isDirect(s);
+      });
       liveCount = stations.length;
       updateStationCount();
       empty.style.display =
@@ -849,6 +885,18 @@
           markers[station.callsign] = marker.addTo(map).bindPopup(popupHtml(station));
         }
         applyTemperatureLabel(markers[station.callsign], station);
+
+        if (isDirect(station)) {
+          if (directRings[station.callsign]) {
+            directRings[station.callsign].setLatLng(latLng);
+          } else {
+            directRings[station.callsign] = directRing(latLng).addTo(map);
+          }
+        } else if (directRings[station.callsign]) {
+          map.removeLayer(directRings[station.callsign]);
+          delete directRings[station.callsign];
+        }
+
         // Draw a trail when at least two distinct positions exist.
         var history = station.history || [];
 
@@ -882,6 +930,13 @@
         if (!seen[callsign]) {
           map.removeLayer(markers[callsign]);
           delete markers[callsign];
+        }
+      });
+
+      Object.keys(directRings).forEach(function (callsign) {
+        if (!seen[callsign]) {
+          map.removeLayer(directRings[callsign]);
+          delete directRings[callsign];
         }
       });
 
@@ -971,6 +1026,7 @@
       (s.comment ? escapeHtml(s.comment) + "<br>" : "") +
       s.reports + " position report" + (s.reports === 1 ? "" : "s") +
       " in " + escapeHtml(periodText()) + "<br>" +
+      escapeHtml(directLine(s, false)) + "<br>" +
       "<a class='messageStation' href='" + escapeHtml(authedUrl(
         "/log?callsign=" + encodeURIComponent(s.callsign) + "&days=7")) +
       "'>Packet log &rarr;</a> &middot; " + messageLinkHtml(s.callsign, "Message");
@@ -980,6 +1036,7 @@
     historyLayer.clearLayers();
     if (Number(trackPeriod.value) <= 1) return;
     historyData.forEach(function (s) {
+      if (directOnly.checked && s.last_direct == null) return;
       if (s.track.length >= 2) {
         var line = L.polyline(s.track.map(function (p) { return [p[0], p[1]]; }), {
           color: "#3388ff", weight: 2, opacity: 0.45, interactive: false
@@ -996,6 +1053,7 @@
       marker.bindPopup(historyPopupHtml(s)).bindTooltip(s.callsign, {
         direction: "top", offset: [0, -10]
       }).addTo(historyLayer);
+      if (s.last_direct != null) directRing(latLng).addTo(historyLayer);
     });
   }
 
@@ -1039,6 +1097,17 @@
       history.replaceState(null, "", location.pathname + "?" + q.toString());
     } catch (e) { /* harmless */ }
     refreshHistory(true);
+  });
+
+  directOnly.addEventListener("change", function () {
+    try {
+      var q = new URLSearchParams(location.search);
+      if (directOnly.checked) q.set("direct", "1"); else q.delete("direct");
+      history.replaceState(null, "", location.pathname + "?" + q.toString());
+    } catch (e) { /* harmless */ }
+    refresh();
+    renderHistory();
+    updateStationCount();
   });
 
   // -- Coverage overlay (/map?coverage=<setup>&days=N) ----------------

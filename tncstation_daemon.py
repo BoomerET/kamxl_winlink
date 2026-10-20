@@ -1906,7 +1906,18 @@ class KAMDaemon:
             self._stations.expire_stale(max_age_seconds=STATION_MAX_AGE)
             stations = self._stations.list_stations()
 
-        return [dataclasses.asdict(station) for station in stations]
+        return [self._station_dict(station) for station in stations]
+
+    def _station_dict(self, station) -> Dict[str, Any]:
+        return self._drop_own_direct(dataclasses.asdict(station))
+
+    def _drop_own_direct(self, entry: Dict[str, Any]) -> Dict[str, Any]:
+        # The TNC hands our own transmissions back (the OpenTNC does in
+        # KISS), so this station would always look "heard direct".
+        if self.station_callsign and \
+                str(entry.get("callsign", "")).upper() == self.station_callsign:
+            entry["last_direct"] = None
+        return entry
 
     def _m_stations_history(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -1925,6 +1936,7 @@ class KAMDaemon:
         stations = self._reception_writer.station_tracks(
             int(time.time() - hours * 3600)
         )
+        stations = [self._drop_own_direct(s) for s in stations]
         return {"hours": hours, "stations": stations}
 
     def _m_stations_get(self, params: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -1932,7 +1944,7 @@ class KAMDaemon:
             self._stations.expire_stale(max_age_seconds=STATION_MAX_AGE)
             station = self._stations.get_station(params["callsign"])
 
-        return dataclasses.asdict(station) if station is not None else None
+        return self._station_dict(station) if station is not None else None
 
     def _m_aprs_tx_initialize(
         self, params: Dict[str, Any]
