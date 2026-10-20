@@ -181,8 +181,10 @@ Direwolf? Uncomment the two `direwolf.service` lines in
   reads `.env` only at startup. "Generated API key" in
   `journalctl -u tncstation-web` means it didn't find the setting at
   all.
-- **An OpenTNC stops hearing stations but still transmits:** unplug and
-  replug it; see "What happens if..." in [docs/opentnc.md](docs/opentnc.md).
+- **An OpenTNC hears nothing, and the packet log shows only your own
+  beacons:** it's at its `cmd:` prompt instead of in KISS mode. Unplug
+  and replug it; see "What happens if..." in
+  [docs/opentnc.md](docs/opentnc.md).
 - **A Raspberry Pi reboots when the radio transmits:** check
   `vcgencmd get_throttled` -- see "Raspberry Pi power" in
   [docs/opentnc.md](docs/opentnc.md).
