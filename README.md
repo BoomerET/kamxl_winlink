@@ -23,9 +23,6 @@ the NA6D OpenTNC -- or Direwolf. Three layers, each usable on its own:
   telemetry graphs, coverage comparison, a web terminal, phone
   notifications.
 
-Formerly `kamxl_winlink`; see [Upgrading from
-kamxl_winlink](#upgrading-from-kamxl_winlink).
-
 ![The dashboard: TNC link, stations, APRS messaging and services](docs/images/dashboard.png)
 
 ![The live APRS map around Dallas-Fort Worth](docs/images/map.jpg)
@@ -126,34 +123,6 @@ Terminal Mode and an OpenTNC in KISS mode, both on 1200-baud VHF APRS.
 Not yet on PyPI. See [Supported TNCs](#supported-tncs) for what's
 verified on each, and [PROJECT.md](PROJECT.md) for the design notes and
 roadmap.
-
-## Upgrading from kamxl_winlink
-
-The project was renamed when it grew past the KAM-XL and Winlink.
-Existing setups keep working without changes:
-
-- **Settings:** `KAMXL_*` names in `.env` (or the environment) are
-  still read. The new names are `TNCSTATION_*` -- same suffixes, e.g.
-  `KAMXL_PORT` -> `TNCSTATION_PORT`. If both are set, the new one
-  wins. The daemon logs which old names it found, at startup.
-- **Programs:** `kamxl_daemon.py` and `kamxl_rest.py` still run (they're
-  now aliases), so existing systemd units don't need editing. The new
-  names are `tncstation_daemon.py` and `tncstation_rest.py`.
-- **Library:** `from kamxl import KAMXL` and the `KAMError` family are
-  unchanged -- `kamxl.py` is still the KAM-XL driver.
-- **Git:** GitHub redirects the old URL. To update a clone:
-  `git remote set-url origin https://github.com/BoomerET/tncstation.git`
-- **Socket:** the default socket is now `/tmp/tncstation.sock`
-  (was `/tmp/kamxl.sock`). The daemon and web server share the
-  default, so restart both after pulling -- or set `TNCSTATION_SOCKET`.
-- **Winlink:** unchanged. The client still identifies itself as
-  `kamxl_winlink`, the name registered with Winlink -- renaming the
-  repo doesn't change that.
-
-When convenient: rename `KAMXL_` to `TNCSTATION_` in `.env`, and point
-the systemd units at the new script names (e.g. rename
-`kamxl-daemon.service` to `tncstation-daemon.service`). Docs use the
-new names throughout.
 
 ## Supported TNCs
 

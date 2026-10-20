@@ -2,7 +2,6 @@
 > `kamxl_winlink`). This file is the design history, so names below are
 > as they were at the time -- `kamxl_daemon.py` is now
 > `tncstation_daemon.py`, `KAMXL_*` settings are `TNCSTATION_*`, etc.
-> See the README's "Upgrading from kamxl_winlink".
 
 # KAM-XL Python Library — Project Overview
 
