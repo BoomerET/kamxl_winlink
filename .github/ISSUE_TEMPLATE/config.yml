@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: OpenTNC setup guide
+    url: https://github.com/BoomerET/tncstation/blob/main/docs/opentnc.md
+    about: Step by step, including levels, radio settings and Raspberry Pi power.
+  - name: KISS mode and Direwolf
+    url: https://github.com/BoomerET/tncstation/blob/main/docs/kiss.md
+    about: What works in KISS mode, and setting up Direwolf.

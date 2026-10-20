@@ -1,0 +1,25 @@
+name: Idea or request
+description: Something tncstation could do, or a TNC it could support.
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would you like it to do?
+      description: And what you'd use it for -- the station setup or operating situation behind it.
+    validations:
+      required: true
+  - type: dropdown
+    id: tnc
+    attributes:
+      label: Your TNC
+      options:
+        - NA6D OpenTNC
+        - Kantronics KAM-XL
+        - Direwolf (soundcard / AIOC)
+        - Other (say which below)
+  - type: textarea
+    id: more
+    attributes:
+      label: Anything else
+      description: Links, screenshots, or how another program does it.
