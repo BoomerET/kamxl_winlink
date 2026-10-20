@@ -4,24 +4,152 @@ The [NA6D OpenTNC](https://na6d.com/products/na6d-opentnc) is an
 RP2040 / Zephyr RTOS hardware TNC built on Dave Platt's (AE6EO)
 open-source [OpenTNC](https://gitlab.com/davidplatt/opentnc) design.
 It has its own AX.25 stack and modems (1200 AFSK, 2400 V.26, 9600
-G3RUH, FX.25 forward error correction) and a TNC-2-style command line
-at a `cmd:` prompt over USB serial. That last part is why it fits this
-project: the same Terminal Mode code that drives the KAM-XL drives it,
-with a small driver (`opentnc.py`) for the differences.
+G3RUH, FX.25 forward error correction), a USB serial port, and a
+TNC-2-style command line at a `cmd:` prompt.
+
+tncstation runs it in **KISS mode** for APRS -- monitoring, the map,
+messages with ACKs, beacons -- which is verified over the air.
+Terminal Mode works for settings and monitoring; see [Status](#status).
+
+## Setting it up
+
+This is the order that worked on a Raspberry Pi 3B+ with an Anytone
+D878UV II Plus on 144.390.
+
+### 1. Configure the OpenTNC
+
+Open its USB serial port in a terminal (`screen /dev/ttyACM0`; quit
+with Ctrl-A, K, y) and, per NA6D's guide:
+
+    MYCALL N0CALL-11
+    MONITOR ON
+    CARRIER SQUELCH      (or AUDIO if you run the radio's squelch open)
+    SAVE!
+
+**`SAVE!` matters**: without it every setting is lost at the next power
+cycle. Unplug and replug the OpenTNC, then type `MYCALL`, `MONITOR` and
+`CARRIER` to check they stuck.
+
+### 2. Set up the radio
+
+The OpenTNC plugs into the radio's mic/speaker jack. On the radio:
+
+- **Turn off its own APRS or TNC** (the TH-D75's `APRS12`, the D878's
+  analog APRS). Two TNCs on one radio double up beacons and collide.
+  On the D878 also set **Analog APRS PTT mode: Off** -- otherwise the
+  radio adds its own APRS burst after every transmission.
+- **Wide (25 kHz)** channel, **no CTCSS/DCS** on receive, squelch as low
+  as it goes without opening on noise.
+- **Off:** battery saver / power save (it clips the start of packets),
+  busy-channel lockout, VOX, key beeps and voice prompts (they go out
+  the jack too).
+- On a dual-band radio, single-band display with 144.390 on the PTT
+  band.
+- **Low power** for the first tests (see [Pi power](#raspberry-pi-power)).
+
+### 3. Levels
+
+There's nothing in alsamixer -- the OpenTNC has its own modem.
+
+**Receive** is the radio's volume. LED 1's once-a-second blink is the
+idle heartbeat, not a level reading. The real test is a packet: with
+`MONITOR ON`, every packet it decodes prints a line in the terminal,
+such as
+
+    0 (???): <[To APRS from N5BA via WIDE1-1 WIDE2-1: 03(UI) PID ^F0 =3314.34N/09650.70W-N5BA KAM-XL ^0D ]
+
+If the PKT LED flashes but nothing prints, the packet failed its
+checksum: change the volume and try again. A test transmitter a few
+feet away at full power overloads the receiver, so use low power, or
+another room. If no LED reacts at all, no audio is reaching the
+OpenTNC: unplug the cable and check you can hear the radio, then check
+the plug is fully seated.
+
+**Transmit** is factory-set to 50 mV for HT/mic inputs. If it ever needs
+adjusting: `TXLEVEL` / `TXATTEN` or trimmer RV202, against `CALIBRATE`
+tones (which key the transmitter -- do that by hand, into a dummy load).
+
+### 4. A stable device name (Linux)
+
+The OpenTNC shows up as `/dev/ttyACM*`, and the number can change. Its
+USB ID is `1209:ae6e`; create `/etc/udev/rules.d/99-opentnc.rules`:
+
+    SUBSYSTEM=="tty", ATTRS{idVendor}=="1209", ATTRS{idProduct}=="ae6e", SYMLINK+="opentnc"
+
+then `sudo udevadm control --reload-rules && sudo udevadm trigger`, or
+replug it. `ls -l /dev/opentnc` should point at the `ttyACM` device.
+
+### 5. Configure tncstation
+
+Close the terminal first -- only one program can have the port open.
+In `.env` (copy `.env.sample`):
+
+    TNCSTATION_TNC=opentnc
+    TNCSTATION_MODE=kiss
+    TNCSTATION_PORT=/dev/opentnc
+    TNCSTATION_CALLSIGN=N0CALL-11
+    TNCSTATION_HISTORY_DB=/var/lib/tncstation/reception.sqlite3
+    TNCSTATION_REST_API_KEY=pick-a-long-random-token
+    # Automatic transmissions off until the first tests pass:
+    TNCSTATION_BEACON=0
+    TNCSTATION_AUTO_ACK=0
+    TNCSTATION_AUTO_RETRY=0
+
+Then install and start the services (README, "Running as a service"):
+
+    sudo deploy/install.sh
+    sudo systemctl enable --now tncstation-daemon tncstation-web
+    journalctl -u tncstation-daemon -n 30
+
+The log should show `OpenTNC: KISS ON sent` and `tncstation daemon
+(OpenTNC, kiss mode)`. The daemon puts the OpenTNC in KISS mode at
+startup and takes it out again when it stops; if it's ever left in
+KISS (no `cmd:` prompt), unplug and replug it.
+
+### 6. First on-air tests
+
+1. **Receive:** beacon from another station; it should appear on the
+   dashboard's map and packet log.
+2. **Transmit:** at low power, press **Beacon now**. Check another
+   station (or aprs.fi) hears it, and on a Pi run
+   `vcgencmd get_throttled` -- it should still say `0x0`.
+3. **Messages:** send one each way. The OpenTNC station's sent message
+   should turn **Acknowledged**.
+
+Then set `TNCSTATION_BEACON`, `TNCSTATION_AUTO_ACK` and
+`TNCSTATION_AUTO_RETRY` to `1` and `sudo systemctl restart
+tncstation-daemon`. Raise the power a step at a time, checking
+`get_throttled` after each.
+
+## Raspberry Pi power
+
+If the Pi reboots the moment the radio transmits, look at power before
+anything else. `vcgencmd get_throttled` reporting `0x50000` (or
+`dmesg` saying "Undervoltage detected") means the supply sagged. On the
+test station the original supply already dipped during boot; a
+stronger 5.1 V supply with a short, heavy cable fixed the transmit
+reboots completely, without any ferrites. Don't power
+the radio or a USB SSD from the Pi.
+
+If the supply is solid (`0x0` after boot) and the Pi still resets on
+transmit, it's RF getting in over the cables: clip-on ferrites (mix 31)
+on the radio cable and the USB cable near the OpenTNC, and the antenna
+away from the Pi -- an HT's rubber duck next to it is the worst case.
 
 ## Status
 
-Checked against a real NA6D OpenTNC with `opentnc_capture.py` (October
-2026; the transcript is `tests/opentnc_capture_20261019.txt`, and the
-tests replay it byte for byte).
+Checked against a real NA6D OpenTNC (October 2026): its command
+replies with `opentnc_capture.py` (the transcript is
+`tests/opentnc_capture_20261019.txt`, replayed byte for byte by the
+tests), its monitor output on the air, and the firmware source.
 
 | Feature | State |
 | --- | --- |
+| KISS mode: monitoring, map, APRS messages with ACKs, beacons | **Verified** over the air -- see [kiss.md](kiss.md) |
 | Settings: get/set, typed values, `DISPLAY` | **Verified** -- replies are `is VALUE` / `KEY is VALUE` |
 | Rejected commands detected | **Verified** -- `Unknown command: X` |
 | `SAVE!`, `CARRIERDETECT`, FX.25 helpers | **Verified** commands; set_* round trips not yet run on the unit |
-| KISS mode: monitoring and APRS transmit | Works independently of all of the above -- see [kiss.md](kiss.md) |
-| Terminal Mode MONITOR decoding | **Verified** on the air and against the firmware source (`DumpPacket()` in `src/packetutil.c`): one line per packet, `0 (???): <[To APRS from N5BA via WIDE1-1 WIDE2-1: 03(UI) PID ^F0 payload]` |
+| Terminal Mode MONITOR decoding | **Verified** on the air and against the firmware source (`DumpPacket()` in `src/packetutil.c`) |
 | Terminal Mode connect / disconnect banners | Unverified |
 | Terminal Mode APRS transmit | Off: the safety checks need a `STATUS` command, which this firmware lacks -- use KISS mode |
 | PBBS | Not applicable (no built-in mailbox) -- the web pages hide it |
@@ -39,82 +167,6 @@ Not on this firmware: `VERSION`, `STATUS`, `ECHO`, `MCOM`, `MRPT`,
 any abbreviation down to the capitals `HELP` shows (`CARrierdetect` ->
 `CAR`).
 
-## Levels
-
-The OpenTNC has its own modem, so there's nothing to set in alsamixer.
-**Receive:** the radio's volume -- LED 1 blinks once a second when it's
-right, and stays lit or flickers fast when audio is too hot. Test with a
-real packet, not just the LEDs: a PKT LED that flashes with nothing
-printed (with `MONITOR ON`) means the packet failed its checksum. Keep
-the test transmitter at low power and away from the TNC's radio, which
-a nearby signal at full power overloads.
-
-`MONITOR`, `MYCALL` and the rest are lost at power-off unless you
-`SAVE!` them. **Transmit:**
-factory-set to 50 mV for HT/mic inputs; adjust with `TXLEVEL` /
-`TXATTEN`, or trimmer RV202, against `CALIBRATE` tones if ever needed.
-
-## KISS mode: APRS without the guesswork
-
-Everything above about unverified display formats applies to Terminal
-Mode. In KISS mode (`TNCSTATION_MODE=kiss`, see [kiss.md](kiss.md)) the
-OpenTNC passes raw AX.25 frames, so monitoring *and APRS transmit*
-work from day one -- nothing depends on how the firmware formats text.
-What KISS can't do is connected mode (PBBS, Winlink, the web
-terminal). If the OpenTNC's job is APRS, KISS is the easier start; the
-capture below is still worth doing for Terminal Mode later.
-
-## Day-one checklist
-
-1. **Configure it** in a terminal (PuTTY, `screen /dev/ttyACM0`, ...),
-   per NA6D's guide:
-
-       MYCALL N0CALL-1
-       CARRIER SQUELCH      (or AUDIO if your squelch is open)
-       SAVE!
-
-2. **Capture its output** -- read-only, nothing is changed or
-   transmitted:
-
-       python3 opentnc_capture.py /dev/ttyACM0 --listen 600
-
-   With `MONITOR` on and the radio on 144.390, ten minutes usually
-   catches plenty of APRS. Optionally add `--connect KD5EOC-10` (or
-   another node or gateway) to record the connect/disconnect banners;
-   that one *does* transmit and asks first.
-
-3. **Compare the capture with the driver's assumptions** (all class
-   attributes at the top of `opentnc.OpenTNC`):
-
-   | What to look for in the capture | Driver attribute | Assumed |
-   | --- | --- | --- |
-   | A monitored packet's header line | `HEADER_RE` (packet.`TNC2_HEADER_RE`) | `SRC>DST,DIGI*:payload`, optional ` <UI>` tag before the colon |
-   | Whether packets ever span lines / end with a blank line | `_strip_monitor_lines()` | one line per packet |
-   | Reply to the unknown command `XYZZYQ` | `ERROR_MARKERS` | `EH?` or `?EH` |
-   | Reply to a bare `MYCALL` | `get()` | `MYCALL N0CALL` (also `:`, `=`, `is`) |
-   | Connect / disconnect banners (`--connect`) | `CONNECT_MARKERS`, `DISCONNECT_MARKERS` | `*** CONNECTED to X`, `*** DISCONNECTED` |
-   | Whether a stray `cmd:` shows up between monitored packets | -- | not expected |
-| How quickly a burst's last packet is followed by silence | `MONITOR_IDLE_FLUSH` | 0.5 s of quiet means the packet is complete |
-
-   Fix what differs, put the real lines into `tests/test_opentnc.py`
-   in place of the TNC-2 guesses, and run `python3 run_tests.py`.
-
-4. **Run the daemon** against it:
-
-       TNCSTATION_TNC=opentnc TNCSTATION_PORT=/dev/ttyACM0 TNCSTATION_CALLSIGN=N0CALL-1 \
-           python3 tncstation_daemon.py -v
-
-   `-v` logs every raw monitor read (`monitor raw: ...`), so a header
-   the parser doesn't recognize is still visible. The dashboard's
-   status now reports `tnc_model` and `aprs_tx_supported`.
-
-5. **APRS transmit, later.** `aprs_tx.py` checks the TNC's `STATUS`,
-   `PORT`, `PACLEN`, `CPACTIME`, `SENDPAC`, `COMMAND` and `UNPROTO`
-   replies line by line before it ever keys the radio, and those were
-   written against the KAM-XL's two-port output. The capture records
-   all of them. Once there's an OpenTNC version of those checks,
-   set `OpenTNC.APRS_TX_SUPPORTED = True`.
-
 ## Port numbering
 
 The KAM-XL has two radio ports (1 = HF, 2 = VHF), and this application
@@ -124,26 +176,16 @@ its traffic is reported as port 2 (`packet.APRS_RADIO_PORT`), so all of
 that works unchanged, and a history database recorded with one TNC
 can be read with the other.
 
-## Linux: a stable device name
-
-The OpenTNC is a USB CDC-ACM device, so it shows up as `/dev/ttyACM*`
-rather than `/dev/ttyUSB*`. Get its IDs with:
-
-    udevadm info -q property -n /dev/ttyACM0 | grep -E 'ID_VENDOR_ID|ID_MODEL_ID|ID_SERIAL_SHORT'
-
-and add a rule like the KAM-XL one in the README, e.g.
-`/etc/udev/rules.d/99-opentnc.rules`:
-
-    SUBSYSTEM=="tty", ATTRS{idVendor}=="XXXX", ATTRS{idProduct}=="YYYY", ATTRS{serial}=="ZZZZ", SYMLINK+="opentnc"
-
 ## Running both TNCs
 
 Each daemon owns one serial port, so a KAM-XL and an OpenTNC side by
 side means two daemons, each with its own socket, history database
 and web server port -- e.g. two systemd units with different `.env`
-files (`TNCSTATION_TNC`, `TNCSTATION_PORT`, `TNCSTATION_SOCKET`, `TNCSTATION_HISTORY_DB`).
-That's also a good way to compare FX.25 on and off: the Coverage card
-compares station setups within one database.
+files (`TNCSTATION_TNC`, `TNCSTATION_PORT`, `TNCSTATION_SOCKET`,
+`TNCSTATION_HISTORY_DB`, `TNCSTATION_REST_PORT`). Or simply two
+computers, as on the test station. That's also a good way to compare
+FX.25 on and off: the Coverage card compares station setups within one
+database.
 
 ## Never sent by this library
 

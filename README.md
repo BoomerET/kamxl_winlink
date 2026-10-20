@@ -27,19 +27,35 @@ the NA6D OpenTNC -- or Direwolf. Three layers, each usable on its own:
 
 ![The live APRS map around Dallas-Fort Worth](docs/images/map.jpg)
 
+## Getting started
+
+1. [Install](#installation) tncstation on the computer the TNC plugs
+   into -- a Raspberry Pi is plenty.
+2. Set up your TNC:
+   - **NA6D OpenTNC:** follow [docs/opentnc.md](docs/opentnc.md) --
+     OpenTNC settings, radio, levels, `.env`, first on-air tests.
+   - **Kantronics KAM-XL:** a [stable device name](#persistent-serial-device-linux)
+     and the [`.env` settings](#configuration) below.
+   - **Direwolf** (soundcard, or an AIOC): [docs/kiss.md](docs/kiss.md).
+3. [Run it as a service](#running-as-a-service), then open the
+   dashboard in a browser.
+
 ## Installation
 
-Not yet published to PyPI (see [PROJECT.md](PROJECT.md)). For now, install
-from a local clone:
+Not yet on PyPI; install from a clone, into a virtual environment
+(current Raspberry Pi OS and Debian refuse a system-wide `pip install`):
 
-```
-git clone git@github.com:BoomerET/tncstation.git
+```bash
+git clone https://github.com/BoomerET/tncstation.git
 cd tncstation
-pip install -e .
+python3 -m venv .venv
+.venv/bin/pip install -e .
+sudo usermod -aG dialout $USER     # serial port access; log out and back in
 ```
 
-Requires Python 3.9+ (tested on 3.9, 3.13 -- e.g. a Raspberry Pi -- and 3.14) and [pyserial](https://pypi.org/project/pyserial/),
-which `pip install -e .` pulls in automatically.
+Requires Python 3.9+ (tested on 3.9, 3.13 -- e.g. a Raspberry Pi -- and
+3.14). The only dependency, [pyserial](https://pypi.org/project/pyserial/),
+comes with it.
 
 ### Persistent Serial Device (Linux)
 
@@ -89,8 +105,16 @@ finally:
     kam.disconnect()
 ```
 
-For the background daemon and the web dashboard, set the following in
-`.env` (one file for both; see `.env.sample` for every setting):
+### Configuration
+
+The daemon and the web server both read `.env` in the tncstation
+folder. Start from the sample, which explains every setting:
+
+```bash
+cp .env.sample .env
+```
+
+The main ones:
 
 ```dotenv
 TNCSTATION_TNC=kamxl                      # kamxl, opentnc, or kiss (Direwolf)
@@ -112,9 +136,27 @@ TNCSTATION_NTFY_URL=https://ntfy.sh       # optional: phone notifications
 TNCSTATION_NTFY_TOPIC=your-topic
 ```
 
-The library accepts an explicit serial port on all platforms.
-The daemon requires `--port`/`TNCSTATION_PORT` and `--callsign`/`TNCSTATION_CALLSIGN`
-rather than silently guessing either.
+The daemon requires `TNCSTATION_PORT` and `TNCSTATION_CALLSIGN` rather
+than guessing either. `.env` holds your dashboard token: keep it out of
+git (it's in `.gitignore`).
+
+### Running as a service
+
+`deploy/` has systemd units for the daemon and the web server.
+`deploy/install.sh` fills in your user, this folder and the `.venv`,
+and installs them:
+
+```bash
+sudo deploy/install.sh               # --dry-run shows the units first
+sudo systemctl enable --now tncstation-daemon tncstation-web
+journalctl -u tncstation-daemon -f   # watch it start
+```
+
+Then open `http://<this-computer>:8080/?token=<TNCSTATION_REST_API_KEY>`.
+After a `git pull`, restart both:
+`sudo systemctl restart tncstation-daemon tncstation-web`. Using
+Direwolf? Uncomment the two `direwolf.service` lines in
+`deploy/tncstation-daemon.service` before installing.
 
 ## Status
 

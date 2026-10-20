@@ -1,0 +1,29 @@
+# tncstation daemon: owns the TNC's serial port (or Direwolf's KISS port).
+#
+# Installed by deploy/install.sh as /etc/systemd/system/tncstation-daemon.service,
+# with the user, folder and Python filled in. Settings come from .env in
+# WorkingDirectory (see .env.sample), not from this file.
+
+[Unit]
+Description=tncstation daemon (TNC link, APRS, history)
+After=network-online.target
+Wants=network-online.target
+# Using Direwolf as the TNC? Start it first:
+#After=network-online.target direwolf.service
+#Wants=network-online.target direwolf.service
+
+[Service]
+Type=simple
+User=@USER@
+# For the serial port.
+SupplementaryGroups=dialout
+WorkingDirectory=@DIR@
+ExecStart=@PYTHON@ @DIR@/tncstation_daemon.py
+# Creates /var/lib/tncstation, owned by User, for TNCSTATION_HISTORY_DB.
+StateDirectory=tncstation
+# The daemon exits on a lost serial link so it can be restarted cleanly.
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
