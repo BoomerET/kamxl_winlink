@@ -158,6 +158,40 @@ After a `git pull`, restart both:
 Direwolf? Uncomment the two `direwolf.service` lines in
 `deploy/tncstation-daemon.service` before installing.
 
+### If something doesn't work
+
+- **The web server won't start: "Port 8080 is already in use".**
+  Another program has it -- Pat's web interface uses 8080, for one.
+  Set `TNCSTATION_REST_PORT=8090` (or any free port) in `.env`, restart
+  `tncstation-web`, and use that port in the address. `sudo ss -ltnp`
+  shows what's listening where.
+- **The dashboard says `Unauthorized`.** The token in the address
+  doesn't match `TNCSTATION_REST_API_KEY` -- a copy-paste that dropped a
+  character is the usual cause. To check the key itself, from the
+  tncstation folder:
+
+  ```bash
+  key=$(grep '^TNCSTATION_REST_API_KEY=' .env | cut -d= -f2- | tr -d "\"'")
+  curl -s "http://localhost:8080/status?token=$key" | head -c 80; echo
+  echo "http://$(hostname -I | awk '{print $1}'):8080/?token=$key"
+  ```
+
+  (use your port). `{"ok": true` means the key is right: open the
+  printed address. Still `Unauthorized`: restart `tncstation-web`, which
+  reads `.env` only at startup. "Generated API key" in
+  `journalctl -u tncstation-web` means it didn't find the setting at
+  all.
+- **An OpenTNC hears nothing, and the packet log shows only your own
+  beacons:** it's at its `cmd:` prompt instead of in KISS mode. Unplug
+  and replug it; see "What happens if..." in
+  [docs/opentnc.md](docs/opentnc.md).
+- **A Raspberry Pi reboots when the radio transmits:** check
+  `vcgencmd get_throttled` -- see "Raspberry Pi power" in
+  [docs/opentnc.md](docs/opentnc.md).
+- Anything else: `journalctl -u tncstation-daemon -n 50` usually says
+  why; [open an issue](https://github.com/BoomerET/tncstation/issues)
+  with it.
+
 ## Status
 
 Actively developed and in daily use on two stations: a KAM-XL in
