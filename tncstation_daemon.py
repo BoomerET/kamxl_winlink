@@ -1007,6 +1007,11 @@ class KAMDaemon:
                 path=path,
             )
             self._log_own_tx("message", message_id, path)
+            logger.info(
+                "TX message %s to %s via %s%s",
+                message_id, addressee, path or "DIRECT",
+                "" if resend_id is None else " (resent by hand)",
+            )
 
             if resend_id is None:
                 with self._retry_lock:
@@ -1464,6 +1469,10 @@ class KAMDaemon:
             raise
 
         self._log_own_tx("beacon", "", self.aprs_path)
+        logger.info(
+            "TX beacon via %s (%s)", self.aprs_path or "DIRECT",
+            "by hand" if operator_initiated else "automatic",
+        )
         now = time.time()
         with self._beacon_lock:
             self._beacons_sent += 1
@@ -1635,8 +1644,9 @@ class KAMDaemon:
                 self._retries_sent += 1
 
             logger.info(
-                "APRS message %s to %s resent automatically (attempt %d)",
-                record.message_id, record.addressee, record.attempts + 1,
+                "TX message %s to %s via %s (resent automatically, attempt %d)",
+                record.message_id, record.addressee,
+                record.path or "DIRECT", record.attempts + 1,
             )
 
     def _m_aprs_bulletins(self, params: Dict[str, Any]) -> Dict[str, Any]:
@@ -2380,6 +2390,11 @@ class KAMDaemon:
             self._aprs_safety_state = "unknown"
             self._aprs_safety_reason = (
                 "APRS ACK submitted; RF delivery not confirmed"
+            )
+
+            logger.info(
+                "TX ack to %s for message %s via %s",
+                source, message_id, self.aprs_path or "DIRECT",
             )
 
             with self._aprs_ack_lock:

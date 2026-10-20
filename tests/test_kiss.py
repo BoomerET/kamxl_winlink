@@ -504,12 +504,15 @@ class DaemonOverKISSTests(unittest.TestCase):
 
     def test_send_message(self):
         self.start()
-        result = self.daemon.dispatch("aprs.send_message", {
+        with self.assertLogs("tncstation_daemon", "INFO") as logs:
+            result = self.daemon.dispatch("aprs.send_message", {
             "addressee": "W5ABC", "message": "hi from KISS",
             "confirm_transmit": True, "confirm_vhf_port2_radio_ready": True,
             "confirm_hf_port1_disconnected": True,
-        })
+            })
         self.assertTrue(result["submitted_to_tnc"])
+        self.assertRegex("\n".join(logs.output),
+                         r"TX message \S+ to W5ABC via WIDE1-1,WIDE2-1")
         [(_, frame)] = frames_written(self.serial)
         self.assertEqual((frame.source, frame.destination, frame.digipeaters),
                          ("N5BA", "APRS", ("WIDE1-1", "WIDE2-1")))
@@ -521,10 +524,14 @@ class DaemonOverKISSTests(unittest.TestCase):
             "confirm_transmit": True, "confirm_vhf_port2_radio_ready": True,
             "confirm_hf_port1_disconnected": True,
         })
-        self.serial.push(kiss_frame(ui("W5ABC", "APRS", [], b":N5BA     :ack me{42")))
-        acks = self.wait_for(lambda: [f for _, f in frames_written(self.serial)
-                                      if f.info.startswith(b":W5ABC    :ack")])
+        with self.assertLogs("tncstation_daemon", "INFO") as logs:
+            self.serial.push(kiss_frame(ui("W5ABC", "APRS", [], b":N5BA     :ack me{42")))
+            acks = self.wait_for(lambda: [f for _, f in frames_written(self.serial)
+                                          if f.info.startswith(b":W5ABC    :ack")])
+            self.wait_for(lambda: any("TX ack" in line for line in logs.output))
         self.assertEqual(acks[0].info, b":W5ABC    :ack42")
+        self.assertIn("TX ack to W5ABC for message 42 via WIDE1-1,WIDE2-1",
+                      "\n".join(logs.output))
         self.assertEqual(acks[0].source, "N5BA")
 
     def test_opening_terminal_pages_does_not_pause_auto_ack(self):

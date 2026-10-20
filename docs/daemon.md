@@ -60,6 +60,12 @@ daemon keeps running with auto-ACK off and logs why.
 transmits on APRS: messages, resends, automatic ACKs and beacons. A
 per-request `path` on `aprs.send_message` overrides it.
 
+Every transmission is logged with a `TX` line -- `TX message 6DOH to
+N5BA via WIDE1-1,WIDE2-1`, `TX beacon via WIDE1-1,WIDE2-1 (automatic)`,
+`TX ack to W5ABC for message 42 via ...`, resends marked as such -- so
+`journalctl -u tncstation-daemon | grep ' TX '` lists everything the
+station sent.
+
 The position beacon needs `--latitude` and `--longitude` (decimal
 degrees, west/south negative). `--beacon` starts it at boot; it can
 also be switched on/off or fired once from the dashboard. All beacon

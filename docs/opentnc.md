@@ -131,6 +131,12 @@ stronger 5.1 V supply with a short, heavy cable fixed the transmit
 reboots completely, without any ferrites. Don't power
 the radio or a USB SSD from the Pi.
 
+To see whether dips line up with transmissions, put the two logs side
+by side -- both in clock time:
+
+    journalctl -k -b | grep -i voltage          # undervoltage warnings
+    journalctl -u tncstation-daemon -b | grep ' TX '   # every beacon, message, ack
+
 If the supply is solid (`0x0` after boot) and the Pi still resets on
 transmit, it's RF getting in over the cables: clip-on ferrites (mix 31)
 on the radio cable and the USB cable near the OpenTNC, and the antenna

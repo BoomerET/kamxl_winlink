@@ -323,7 +323,10 @@ class DaemonBeaconTests(_DaemonMixin, unittest.TestCase):
     def test_beacon_now(self):
         serial, daemon, client = self.start()
 
-        response = client.call("aprs.beacon_now", **_CONFIRM)
+        with self.assertLogs("tncstation_daemon", "INFO") as logs:
+            response = client.call("aprs.beacon_now", **_CONFIRM)
+
+        self.assertIn("TX beacon via WIDE1-1,WIDE2-1 (by hand)", "\n".join(logs.output))
 
         self.assertTrue(response["ok"], response)
         self.assertIn(_BEACON_PAYLOAD.encode() + b"\r", serial.written)
