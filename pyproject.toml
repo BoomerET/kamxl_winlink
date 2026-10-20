@@ -35,9 +35,6 @@ Issues = "https://github.com/BoomerET/tncstation/issues"
 [project.scripts]
 tncstation-daemon = "tncstation_daemon:main"
 tncstation-rest = "tncstation_rest:main"
-# Old names, from before the rename -- same programs.
-kamxl-daemon = "tncstation_daemon:main"
-kamxl-rest = "tncstation_rest:main"
 
 # Flat layout: all importable modules live at the repo root, alongside
 # the hand-run hardware scripts (tools/) and the offline tests/
@@ -72,8 +69,6 @@ py-modules = [
     "lzhuf",
     "tncstation_daemon",
     "tncstation_rest",
-    "kamxl_daemon",
-    "kamxl_rest",
     "envfile",
     "notify",
     "aprs_tx",
