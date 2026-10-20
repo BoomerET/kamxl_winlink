@@ -430,6 +430,11 @@ def _decode_mice_position(
         raw=payload,
     )
 
+# A tracker without a GPS fix often reports 0 N, 0 E ("Null Island",
+# in the Gulf of Guinea). Nobody is really there, so it isn't a position.
+_NULL_ISLAND_TOLERANCE = 0.01   # degrees, about half a mile
+
+
 def parse_position(
     payload: str,
     destination: Optional[str] = None,
@@ -442,8 +447,23 @@ def parse_position(
     other APRS data type, or non-APRS traffic entirely) or doesn't
     match either encoding's expected shape. Deliberately permissive
     like pbbs.py's parsers: a format surprise means "no position",
-    not an exception.
+    not an exception. A report of 0 N, 0 E (a tracker without a GPS
+    fix) is also "no position", so it never lands on the map.
     """
+    position = _parse_position(payload, destination)
+    if (
+        position is not None
+        and abs(position.latitude) < _NULL_ISLAND_TOLERANCE
+        and abs(position.longitude) < _NULL_ISLAND_TOLERANCE
+    ):
+        return None
+    return position
+
+
+def _parse_position(
+    payload: str,
+    destination: Optional[str] = None,
+) -> Optional[AprsPosition]:
     if not payload:
         return None
 
