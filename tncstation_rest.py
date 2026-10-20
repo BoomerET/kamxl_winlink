@@ -25,6 +25,7 @@ forwarding) without putting TLS in front of it first.
 """
 
 import argparse
+import errno
 import json
 import logging
 import os
@@ -1497,6 +1498,32 @@ def serve(
     return _RestHTTPServer((host, port), RESTRequestHandler)
 
 
+def _bind_failure_hint(exc: OSError, host: str, port: int) -> Optional[str]:
+    """
+    One clear line for the usual reasons the web server can't listen,
+    instead of a traceback -- or None for anything else.
+    """
+    if exc.errno == errno.EADDRINUSE:
+        return (
+            f"Port {port} is already in use by another program (Pat's web "
+            f"interface, a proxy or another web app often takes 8080). Set "
+            f"TNCSTATION_REST_PORT in .env to a free port, e.g. 8090 -- "
+            f"'ss -ltnp' shows what is listening where."
+        )
+    if exc.errno == errno.EACCES:
+        return (
+            f"Not allowed to listen on port {port}: ports below 1024 need "
+            f"root. Set TNCSTATION_REST_PORT in .env to 1024 or higher."
+        )
+    if exc.errno == errno.EADDRNOTAVAIL:
+        return (
+            f"Can't listen on address {host!r}: it isn't one of this "
+            f"computer's addresses. Leave TNCSTATION_REST_HOST unset (whole "
+            f"LAN) or set it to 127.0.0.1."
+        )
+    return None
+
+
 def main(argv: Optional[list] = None) -> None:
     # Same .env file as the daemon (read from the working directory;
     # real environment variables still win), so one file configures
@@ -1565,7 +1592,14 @@ def main(argv: Optional[list] = None) -> None:
         if not args.api_key:
             logger.info("Generated API key (save this): %s", api_key)
 
-    server = serve(args.daemon_socket, args.host, args.port, api_key)
+    try:
+        server = serve(args.daemon_socket, args.host, args.port, api_key)
+    except OSError as exc:
+        hint = _bind_failure_hint(exc, args.host, args.port)
+        if hint is None:
+            raise
+        logger.error("%s", hint)
+        raise SystemExit(2)
 
     # Same reasoning as tncstation_daemon.py's main(): serve_forever() runs
     # on a background thread so that shutdown() -- called from the
