@@ -18,7 +18,7 @@ this module, both fetched and cross-checked before writing any code:
     one piece of this module that's actually confirmed correct, as
     opposed to "matches the spec as written."
 
-SCOPE (chosen deliberately, see PROJECT.md milestone 8): plain ASCII
+SCOPE (chosen deliberately, see docs/history.md milestone 8): plain ASCII
 FBB tier only -- this module never claims B/B1/B2 (compressed
 protocol) support in its own SID, so a real Winlink gateway (which
 must stay backward-compatible with plain FBB per its own spec) will
@@ -153,7 +153,7 @@ used for the compression codec itself: the official B2F spec's
 independently confirm the same SOH-header / STX-chunk / EOT+checksum
 framing.
 
-ATTACHMENT SCOPE (deliberately chosen, see PROJECT.md): this first B2
+ATTACHMENT SCOPE (deliberately chosen, see docs/history.md): this first B2
 pass parses and exposes the real structured header and message body,
 and reports each attachment's name and size (Attachment, below) -- but
 does NOT extract or expose attachment file contents. Extracting
@@ -361,7 +361,7 @@ def build_sid(app_name: str, app_version: str) -> str:
     proposal line this module sends or expects -- must be the last
     character per the SID format).
 
-    This used to claim only "F$" (see PROJECT.md's milestone 8
+    This used to claim only "F$" (see docs/history.md's milestone 8
     writeup) until a real gateway (KD5EOC-10) was found to require B2
     and disconnect rather than fall back to ASCII for a client that
     doesn't advertise it -- see parse_disconnect_reason()'s docstring.

@@ -1,6 +1,6 @@
 # Troubleshooting
 
-This project's design philosophy (see [PROJECT.md](../PROJECT.md)) is
+This project's design philosophy (see the [design history](history.md)) is
 to never trust the manual over observed hardware behavior. Several
 real bugs were only ever found by testing against a live KAM-XL over
 the air. This page documents them, along with what to check if you

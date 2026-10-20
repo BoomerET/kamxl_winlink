@@ -22,7 +22,7 @@ IMPORTANT: unlike most of this project, the parsing here has NOT yet
 been validated against a real KAM-XL -- it's built from the manual's
 documented output format (message list and message header examples),
 not from a captured live session. Per this project's own design
-philosophy (see PROJECT.md), that makes it a best-effort first draft,
+philosophy (see docs/history.md), that makes it a best-effort first draft,
 not a confirmed-correct implementation -- expect it to need
 adjustment the same way packet.py's HEADER_RE did once tested for
 real. Lines that don't match the expected shape are skipped rather

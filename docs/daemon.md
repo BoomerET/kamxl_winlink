@@ -103,7 +103,7 @@ returned by the API or logged.
 serial device should fail immediately with a clear error, not
 silently try to open a port that isn't there and hang every
 subsequent command until its timeout (a real bug found the hard way
--- see PROJECT.md's milestone 3 notes).
+-- see [history.md](history.md)'s milestone 3 notes).
 
 `--baud` must match the KAM-XL's own host baud rate (`HBAUD`) or
 every command will time out instead of failing fast with a clear
@@ -176,7 +176,7 @@ arrived but didn't look like a packet header" -- e.g. a line
 `HEADER_RE` had no allowance at all for the KAM-XL's own
 `<C>`/`<UA>`/`<UI>`-style control-packet annotations, shown by default
 via `MCOM`/`MRESP` -- meaning *no* real-hardware MONITOR line ever
-matched, silently. See PROJECT.md's milestone 5 notes.)
+matched, silently. See [history.md](history.md)'s milestone 5 notes.)
 
 ```
 20:29:03 conn-5344: connected
@@ -354,5 +354,5 @@ run_tests.py`.
 
 Single KAM-XL / serial port per daemon instance. Multi-device support
 (more than one TNC managed by one daemon) isn't planned until there's
-an actual need for it -- see PROJECT.md's roadmap notes for the
+an actual need for it -- see [history.md](history.md)'s roadmap notes for the
 reasoning.
