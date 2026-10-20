@@ -163,8 +163,8 @@ Direwolf? Uncomment the two `direwolf.service` lines in
 Actively developed and in daily use on two stations: a KAM-XL in
 Terminal Mode and an OpenTNC in KISS mode, both on 1200-baud VHF APRS.
 Not yet on PyPI. See [Supported TNCs](#supported-tncs) for what's
-verified on each, and [PROJECT.md](PROJECT.md) for the design notes and
-roadmap.
+verified on each, [ROADMAP.md](ROADMAP.md) for what's next, and the
+[design history](docs/history.md) for how it got here.
 
 ## Supported TNCs
 
@@ -231,6 +231,8 @@ tokens, one block per theme; page stylesheets only refer to tokens.
   network share, and restoring
 - [docs/troubleshooting.md](docs/troubleshooting.md) -- real hardware
   quirks and how this library works around them
+- [docs/history.md](docs/history.md) -- the design history, milestone
+  by milestone, and the reasoning behind decisions
 - [examples/](examples/) -- runnable scripts, including two that need
   no hardware at all
 

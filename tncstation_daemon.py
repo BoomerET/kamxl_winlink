@@ -30,7 +30,7 @@ Run directly:
 
     python3 tncstation_daemon.py --port COM8 --socket /tmp/tncstation.sock
 
-Single KAM-XL / serial port per daemon instance -- see PROJECT.md for
+Single KAM-XL / serial port per daemon instance -- see docs/history.md for
 why multi-device support isn't in scope yet.
 """
 
@@ -1154,7 +1154,7 @@ class KAMDaemon:
                 "WINLINK_API_KEY is not set -- the Winlink web-service "
                 "API (account lookups, gateway listings) needs the "
                 "access key issued by the Winlink Development Team. "
-                "See PROJECT.md's \"Winlink Web Service API\" milestone."
+                "See docs/history.md's \"Winlink Web Service API\" milestone."
             )
 
         return api_key

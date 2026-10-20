@@ -551,7 +551,7 @@ CONFIRMED" note: the distance sort is plain client-side geometry over
 data `gateway/status.json` already returns, not a separate WDT
 endpoint. All three endpoints (and the underlying `winlink_api.py`
 module) are themselves unverified against the live API with a real
-key -- see PROJECT.md's "Winlink Web Service API" milestone.
+key -- see [history.md](history.md)'s "Winlink Web Service API" milestone.
 
 ## APRS messaging and acknowledgments
 

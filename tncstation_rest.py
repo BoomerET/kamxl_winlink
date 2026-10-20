@@ -53,7 +53,7 @@ DEFAULT_PORT = 8080
 _DAEMON_ERROR_STATUS = 502
 
 # Dashboard: the landing page at GET / (moved there from the terminal
-# page below, which now lives at GET /terminal -- see PROJECT.md for
+# page below, which now lives at GET /terminal -- see docs/history.md for
 # the reasoning). A self-contained page summarizing the other four:
 # KAM-XL serial link health (GET /status), APRS station count/most-
 # recently-heard (GET /stations), and a manual "Check PBBS" button
@@ -125,7 +125,7 @@ WINLINK_HTML = load_page("winlink")
 #
 # Markers use real APRS symbol-table/symbol-code icons (Dave's explicit
 # choice: the full ~190-symbol set from an external icon pack, not a
-# hand-built SVG subset or plain color-coded dots -- see PROJECT.md).
+# hand-built SVG subset or plain color-coded dots -- see docs/history.md).
 # This is a deliberate, one-off exception to the cdnjs-only rule above,
 # since no APRS icon set is available there. Two real, separately
 # licensed third-party sources are used, both pinned to a specific

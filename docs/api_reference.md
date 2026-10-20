@@ -129,7 +129,7 @@ protocol (`winlink.py`) -- a real, separately-documented protocol
 (<https://winlink.org/B2F>, <http://www.f6fbb.org/protocole.html>),
 not something derived from the KAM-XL manual.
 
-**Scope, chosen deliberately** (see PROJECT.md's milestone 8
+**Scope, chosen deliberately** (see [history.md](history.md)'s milestone 8
 writeup): receive-only (never proposes an outbound message of its
 own) -- this can't send mail yet. Originally ASCII-only (no
 compression), extended to also support Winlink's own **B2 protocol**
@@ -472,7 +472,7 @@ class Station:
 `StationTracker` maintains an in-memory "who's where" database, one
 `Station` per source callsign (SSIDs are distinct stations), keeping
 only the latest known position -- no history, no persistence across
-restarts (a deliberate MVP choice; see PROJECT.md). Fed by
+restarts (a deliberate MVP choice; see [history.md](history.md)). Fed by
 `update(packet, now=None)`, which only even attempts
 `aprs.parse_position()` for ordinary UI frames (`packet.frame_type` is
 `None` or `"UI"`) -- AX.25 connect-session control/supervisory frames

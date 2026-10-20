@@ -8,7 +8,7 @@ involved anywhere in this module.
 Access requires an API key issued by the WDT. Dave's key (issued
 August 2026, in response to the kamxl_winlink registration request)
 carries four permissions: AccountExists, GatewayChannelReport,
-GatewayListing, GatewayProximity -- see PROJECT.md's "Winlink Web
+GatewayListing, GatewayProximity -- see docs/history.md's "Winlink Web
 Service API" milestone for the full approval email. tncstation_daemon.py
 reads the key from the WINLINK_API_KEY environment variable at call
 time (deliberately no --winlink-api-key CLI flag -- chosen over the

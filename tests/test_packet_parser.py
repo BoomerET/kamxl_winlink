@@ -8,7 +8,7 @@ from packet import PacketParser
 class PacketParserTests(unittest.TestCase):
     """
     Uses real chunked text captured from the KAM-XL over the air
-    during live testing (see PROJECT.md) -- fed in the same
+    during live testing (see docs/history.md) -- fed in the same
     non-line-aligned pieces actually observed on real hardware, not
     clean synthetic lines.
     """
@@ -217,7 +217,7 @@ class RealHardwareFrameTypeTests(unittest.TestCase):
     the very first header onward -- the live monitor pane stayed
     empty no matter how much traffic the KAM-XL was actually
     receiving. These fixtures are taken verbatim from a live daemon
-    log (see PROJECT.md's milestone 5 notes).
+    log (see docs/history.md's milestone 5 notes).
     """
 
     def test_single_bracket_ui_frame(self):

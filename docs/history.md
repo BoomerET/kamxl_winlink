@@ -1,11 +1,14 @@
-> **Renamed:** this project is now **tncstation** (formerly
-> `kamxl_winlink`). This file is the design history, so names below are
-> as they were at the time -- `kamxl_daemon.py` is now
-> `tncstation_daemon.py`, `KAMXL_*` settings are `TNCSTATION_*`, etc.
+# Design history
 
-# KAM-XL Python Library — Project Overview
+How tncstation got here, milestone by milestone, written as the work
+happened -- kept for the reasoning behind decisions ("why does it do
+it this way?"). It started as `kamxl_winlink`, a KAM-XL library, so
+names below are as they were at the time: `kamxl_daemon.py` is now
+`tncstation_daemon.py`, `KAMXL_*` settings are `TNCSTATION_*`, and so
+on. "Current status" and "next milestones" sections are as of when they
+were written. For what's open now, see [ROADMAP.md](../ROADMAP.md).
 
-## Roadmap (updated)
+## Milestones
 
 The original milestone list below (Terminal Mode robustness, Convers
 Mode, packet parsing, monitoring, tests, type hints) is the

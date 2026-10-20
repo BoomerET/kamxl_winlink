@@ -499,7 +499,7 @@ class TerminalTests(RestTestCase):
 class DashboardTests(RestTestCase):
     """
     The dashboard (GET /) landing page: replaces the terminal as the
-    page served at "/" -- see PROJECT.md's "real home/dashboard page"
+    page served at "/" -- see docs/history.md's "real home/dashboard page"
     milestone. Summarizes KAM-XL link status and APRS station count
     (both cheap, passive reads) plus a manual PBBS check; deliberately
     does not auto-check PBBS or Winlink mail (both drive a real AX.25
