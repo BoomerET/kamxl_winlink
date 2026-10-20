@@ -15,10 +15,21 @@ class ReceptionStats:
         self._total = 0
         self._used_digi_packets = 0
         self._no_used_digi_packets = 0
+        # Heard direct vs through a digipeater: any "*" in the path,
+        # including an alias like WIDE1* (stations.heard_direct()).
+        self._direct_packets = 0
+        self._digipeated_packets = 0
 
     def update(self, packet: Packet) -> None:
+        from stations import heard_direct
+
         self._total += 1
         self._sources[packet.source] += 1
+
+        if heard_direct(packet.digipeaters):
+            self._direct_packets += 1
+        else:
+            self._digipeated_packets += 1
 
         used = set()
 
@@ -63,6 +74,11 @@ class ReceptionStats:
                 {"callsign": callsign, "packets": count}
                 for callsign, count in self._digipeaters.most_common(10)
             ],
+            "direct_packets": self._direct_packets,
+            "digipeated_packets": self._digipeated_packets,
+            # Older fields: a digipeater that marked itself by callsign
+            # (top_digipeaters) vs not -- an alias-only WIDE1* counts as
+            # "no identified" here. Kept for API compatibility.
             "used_digipeater_packets": self._used_digi_packets,
             "no_identified_digipeater_packets": self._no_used_digi_packets,
         }

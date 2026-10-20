@@ -114,6 +114,22 @@ class ReceptionStatsTests(unittest.TestCase):
             result["no_identified_digipeater_packets"], 1,
         )
 
+    def test_direct_and_digipeated(self):
+        # Same rule as the map's "heard direct": any "*" means a
+        # digipeater repeated it -- an alias-only WIDE1* included.
+        stats = ReceptionStats()
+        stats.update(self.packet("N5BA", ()))
+        stats.update(self.packet("N5BA", ("WIDE1-1", "WIDE2-1")))   # unused path
+        stats.update(self.packet("N5BA", ("W5NGU-3*", "WIDE2-1")))
+        stats.update(self.packet("N5BA", ("WIDE1*", "WIDE2-1")))
+
+        result = stats.snapshot()
+
+        self.assertEqual(result["direct_packets"], 2)
+        self.assertEqual(result["digipeated_packets"], 2)
+        # The older field still counts only callsign-marked digipeaters.
+        self.assertEqual(result["used_digipeater_packets"], 1)
+
     def test_deduplicates_digipeaters_per_packet(self):
         stats = ReceptionStats()
 
