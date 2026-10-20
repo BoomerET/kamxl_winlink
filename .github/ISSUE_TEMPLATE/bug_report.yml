@@ -1,0 +1,79 @@
+name: Problem report
+description: Something doesn't work -- on the air, in the dashboard, or installing.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for trying tncstation. The details below are what it usually
+        takes to find a problem. Please **remove your API token** from anything
+        you paste (it's the `token=` in dashboard links and
+        `TNCSTATION_REST_API_KEY` in `.env`).
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: dropdown
+    id: tnc
+    attributes:
+      label: TNC
+      options:
+        - NA6D OpenTNC
+        - Kantronics KAM-XL
+        - Direwolf (soundcard / AIOC)
+        - Other KISS TNC
+    validations:
+      required: true
+  - type: dropdown
+    id: mode
+    attributes:
+      label: Mode (TNCSTATION_MODE)
+      options:
+        - KISS
+        - Terminal
+    validations:
+      required: true
+  - type: input
+    id: computer
+    attributes:
+      label: Computer and OS
+      placeholder: e.g. Raspberry Pi 3B+, Raspberry Pi OS Bookworm; or Windows 11
+    validations:
+      required: true
+  - type: input
+    id: radio
+    attributes:
+      label: Radio
+      placeholder: e.g. Anytone D878UV II Plus, Kenwood TH-D75
+  - type: input
+    id: version
+    attributes:
+      label: tncstation version
+      description: "`git log --oneline -1` in the tncstation folder, or the release you installed."
+      placeholder: e.g. v0.1.0, or 74bd412
+    validations:
+      required: true
+  - type: textarea
+    id: log
+    attributes:
+      label: Daemon log
+      description: |
+        From around the time it happened:
+        `journalctl -u tncstation-daemon -n 100 --no-pager`
+        (for more detail, set `TNCSTATION_VERBOSE=1` in `.env`, restart, and reproduce it).
+      render: text
+  - type: textarea
+    id: env
+    attributes:
+      label: Settings
+      description: The `TNCSTATION_*` lines from `.env` -- **without** `TNCSTATION_REST_API_KEY` or notification topics.
+      render: shell
+  - type: input
+    id: throttled
+    attributes:
+      label: "Raspberry Pi: `vcgencmd get_throttled`"
+      description: Especially if the Pi reboots or the link drops when the radio transmits. `0x0` means the power supply is fine.
+      placeholder: e.g. throttled=0x0
