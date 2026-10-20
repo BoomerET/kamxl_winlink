@@ -7,11 +7,6 @@ Ideas and problem reports are welcome as
 
 ## Next
 
-- **Recovery without a hand on the keyboard.** Unplugging and
-  replugging the OpenTNC, rebooting the Pi, restarting Direwolf: each
-  should bring the station back by itself -- KISS mode re-entered, the
-  map refilled, auto-ACK still on. To be checked on the real stations
-  and fixed where it doesn't.
 - **A registered APRS identifier.** Transmissions use `APZTNC`, from
   the range [aprs-deviceid](https://github.com/aprsorg/aprs-deviceid)
   sets aside for software in development. Request a permanent one (an
@@ -35,6 +30,14 @@ Ideas and problem reports are welcome as
   on the air (channel 1 = VHF Port 2, per the manual), then enable it.
   Terminal Mode transmits normally, so this only matters for running
   the KAM-XL in KISS.
+
+## Done recently
+
+- **Recovery without a hand on the keyboard** (October 2026): unplugging
+  the OpenTNC (back on any USB port) and rebooting the Pi both bring the
+  station back by itself -- see "What happens if..." in
+  [docs/opentnc.md](docs/opentnc.md). Restarting Direwolf is the same
+  path (the daemon waits for its KISS port) but untested on the air.
 
 ## Ideas
 

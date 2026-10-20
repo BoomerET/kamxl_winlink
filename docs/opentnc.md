@@ -121,6 +121,26 @@ Then set `TNCSTATION_BEACON`, `TNCSTATION_AUTO_ACK` and
 tncstation-daemon`. Raise the power a step at a time, checking
 `get_throttled` after each.
 
+## What happens if...
+
+Tested on the station: it looks after itself.
+
+- **The OpenTNC is unplugged** (or its USB cable is bumped): the daemon
+  notices the port vanish, exits, and systemd restarts it every 5
+  seconds until `/dev/opentnc` is back -- any USB port will do -- then
+  it puts the OpenTNC back in KISS mode and carries on.
+- **The Pi reboots or loses power:** both services start at boot, the
+  map and inbox come back from the history database, and beacon /
+  auto-ACK / auto-resend follow `.env` (anything switched on the
+  dashboard alone resets to the `.env` setting at every restart).
+- **The radio is switched off:** nothing breaks; the station just hears
+  nothing. After `TNCSTATION_WATCHDOG_MINUTES` of silence the dashboard
+  shows a reception warning, and phone notifications send one if the
+  `watchdog` event is on.
+- **The daemon is killed without a clean stop:** the OpenTNC may be
+  left in KISS mode (no `cmd:` prompt in a terminal). The daemon runs
+  it in KISS anyway; for a terminal session, unplug and replug it.
+
 ## Raspberry Pi power
 
 If the Pi reboots the moment the radio transmits, look at power before
