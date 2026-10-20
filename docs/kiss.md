@@ -35,10 +35,10 @@ Two settings in `.env`: which TNC (`TNCSTATION_TNC`) and the mode
     TNCSTATION_MODE=kiss
     TNCSTATION_PORT=/dev/opentnc
 
-The daemon sends `KISS ON` at startup and leaves the OpenTNC in KISS
-when it stops -- leaving and re-entering KISS without a power cycle
-stops it receiving (see [opentnc.md](opentnc.md)); unplug and replug it
-for the `cmd:` prompt. Set `MYCALL` and `SAVE!` on the OpenTNC once beforehand (see
+The daemon enters KISS with `KISS NOW` at startup (and checks it took),
+and leaves it with C0 FF C0 at shutdown -- not `KISS ON`, which on the
+OpenTNC is a saved "enter KISS at the next restart" setting (see
+[opentnc.md](opentnc.md)). Set `MYCALL` and `SAVE!` on the OpenTNC once beforehand (see
 [opentnc.md](opentnc.md), which walks through the whole setup) -- in KISS mode the frames carry
 `TNCSTATION_CALLSIGN` as the source, but the OpenTNC's own digipeater
 still uses MYCALL.

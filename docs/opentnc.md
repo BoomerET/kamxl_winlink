@@ -101,13 +101,17 @@ Then install and start the services (README, "Running as a service"):
     sudo systemctl enable --now tncstation-daemon tncstation-web
     journalctl -u tncstation-daemon -n 30
 
-The log should show `OpenTNC: KISS ON sent` and `tncstation daemon
-(OpenTNC, kiss mode)`. The daemon puts the OpenTNC in KISS mode at
-startup and **leaves it there** when it stops: taking it out of KISS
-and back in without a power cycle leaves this OpenTNC unable to
-receive (it still transmits) until it's unplugged. So after stopping
-the daemon there's no `cmd:` prompt in a terminal -- unplug and replug
-the OpenTNC to get it back.
+The log should show `OpenTNC: entered KISS mode (KISS NOW)` and
+`tncstation daemon (OpenTNC, kiss mode)`. The daemon puts the OpenTNC
+in KISS mode at startup with `KISS NOW`, checks that it really stopped
+answering at `cmd:`, and takes it out again (C0 FF C0) when it stops,
+so a terminal works whenever the daemon isn't running.
+
+Don't put the OpenTNC in KISS yourself with `KISS ON`: on this firmware
+that's a *saved* setting meaning "enter KISS at the next restart", not
+"now" -- it leaves the TNC at `cmd:` (deaf to the daemon) until a power
+cycle. Earlier versions of tncstation sent it; the daemon now clears
+it (`KISS OFF`) the first time it finds it set.
 
 ### 6. First on-air tests
 
@@ -141,14 +145,13 @@ Tested on the station: it looks after itself.
   shows a reception warning, and phone notifications send one if the
   `watchdog` event is on.
 - **The daemon restarts** (after a `git pull`, a crash, or a clean
-  stop): the OpenTNC stays in KISS mode throughout and keeps hearing.
-  For a terminal session, stop the daemon and unplug and replug the
-  OpenTNC.
-- **It stops hearing anything but transmits fine** (the reception
-  watchdog says only your own station is heard): unplug and replug it.
-  This is the OpenTNC's receive side getting stuck; its known trigger
-  (leaving and re-entering KISS) no longer happens, so if you see it,
-  please report it with the daemon log.
+  stop): it puts the OpenTNC back in KISS mode at startup and checks.
+  If the OpenTNC won't go, the daemon stops with "OpenTNC didn't enter
+  KISS mode" in its log (and systemd retries) instead of running deaf.
+- **It hears nothing and the packet log shows only your own beacons:**
+  the OpenTNC is at `cmd:` rather than in KISS -- our frames come back
+  as the command line's echo. Unplug and replug it, and please report
+  it with the daemon log.
 
 ## Raspberry Pi power
 
