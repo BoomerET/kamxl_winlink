@@ -556,6 +556,7 @@ class DaemonOverKISSTests(unittest.TestCase):
         self.start()
         self.assertEqual(self.daemon.dispatch("status", {})["features"],
                          {"terminal": False, "pbbs": False, "winlink": False})
+        self.assertEqual(self.daemon.dispatch("status", {})["radio_ports"], 1)
 
     def test_terminal_features_report_kiss(self):
         self.start()
