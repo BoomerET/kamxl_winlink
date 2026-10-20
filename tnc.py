@@ -19,6 +19,7 @@ overrides the class attributes describing how *that* firmware talks:
     APRS_TX_SUPPORTED    whether aprs_tx.py's transmit path is verified
     HAS_PBBS             built-in mailbox (the KAM-XL's PBBS)
     HAS_WINLINK          Winlink client verified with this TNC
+    RADIO_PORTS          radio ports on the TNC (KAM-XL: 2)
                          against this model's STATUS/UNPROTO output
 
 Drivers:
@@ -31,7 +32,7 @@ Drivers:
 The defaults below are the KAM-XL's, because that's the firmware this
 code was written and debugged against over the air. Per the project's
 design philosophy, a new model's overrides should come from captured
-real-hardware transcripts (see opentnc_capture.py), not from a manual.
+real-hardware transcripts (see tools/opentnc_capture.py), not from a manual.
 """
 
 import logging
@@ -172,6 +173,10 @@ class TerminalTNC:
     # can't do (daemon status "features").
     HAS_PBBS: bool = True
     HAS_WINLINK: bool = True
+
+    # Radio ports on the TNC. The KAM-XL has two (1 = HF, 2 = VHF), so the
+    # web pages name ports in its transmit wording; with one they don't.
+    RADIO_PORTS: int = 1
 
     def make_packet_parser(self) -> PacketParser:
         """

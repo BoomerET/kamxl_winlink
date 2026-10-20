@@ -5,7 +5,7 @@ the KAM-XL tests use.
 
 The OpenTNC's output formats used here are TNC-2 convention, not yet
 captured from a real unit (see opentnc.py's module docstring). When
-opentnc_capture.py records the real thing, replace these fixtures with
+tools/opentnc_capture.py records the real thing, replace these fixtures with
 it, the way packet.py's HEADER_RE was corrected for the KAM-XL.
 """
 
@@ -698,6 +698,17 @@ class DaemonWithOpenTNCTests(unittest.TestCase):
 
         self.assertEqual(daemon.dispatch("status", {})["features"],
                          {"terminal": True, "pbbs": True, "winlink": True})
+
+    def test_radio_ports_drive_the_transmit_wording(self):
+        # The dashboard names ports ("VHF Port 2") only on a two-port TNC.
+        from fakes import make_kam
+
+        kamxl = KAMDaemon(make_kam(ScriptedSerial({})),
+                          "/tmp/kamxl-ports-test.sock", station_callsign="N5BA")
+        self.addCleanup(kamxl.shutdown)
+
+        self.assertEqual(kamxl.dispatch("status", {})["radio_ports"], 2)
+        self.assertEqual(self._daemon().dispatch("status", {})["radio_ports"], 1)
 
     def test_tncstation_daemon_status_reports_model(self):
         from fakes import make_kam

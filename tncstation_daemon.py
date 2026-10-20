@@ -43,7 +43,6 @@ import signal
 import socketserver
 import threading
 import time
-import serial
 import queue
 import re
 
@@ -51,8 +50,9 @@ from typing import Any, Callable, Dict, List, Optional, Set
 
 import winlink_api
 
-from kamxl import KAMXL, KAMError
-from packet import Packet, PacketParser
+# KAMXL: tests patch tncstation_daemon.KAMXL.
+from kamxl import KAMXL, KAMError  # noqa: F401
+from packet import Packet
 from tnc import TerminalTNC, create_tnc, normalize_tnc_mode, normalize_tnc_model
 from stations import StationTracker
 from winlink import OutgoingMessage
@@ -512,6 +512,7 @@ class KAMDaemon:
             "aprs_tocall": self.aprs_tocall,
             "aprs_tx_supported": getattr(self.kam, "APRS_TX_SUPPORTED", True),
             "features": self._features(),
+            "radio_ports": getattr(self.kam, "RADIO_PORTS", 1),
             "monitor_subscribers": subscriber_count,
             "diagnostics": {
                 "packets_received": packets_received,

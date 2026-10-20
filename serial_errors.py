@@ -3,11 +3,11 @@ Small, focused helper for turning pyserial's low-level "could not
 open/configure port" exceptions into an actionable message, when a
 specific known cause can be identified.
 
-Shared by exitKissMode.py and enterKissMode.py rather than duplicated
+Shared by tools/exitKissMode.py and tools/enterKissMode.py rather than duplicated
 in both -- this is pure diagnostic logic, unrelated to kamxl.py's
 Terminal Mode protocol machinery, so pulling it in here doesn't
 compromise either script's own reasons for staying independent of
-kamxl.py's connection handling (exitKissMode.py in particular is
+kamxl.py's connection handling (tools/exitKissMode.py in particular is
 deliberately pyserial-only; see its own module docstring).
 
 The one cause confirmed so far -- a real report from Dave's own setup,

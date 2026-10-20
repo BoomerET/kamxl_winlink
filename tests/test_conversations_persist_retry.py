@@ -293,7 +293,7 @@ class AutoRetryTests(_Stack, unittest.TestCase):
     def test_paused_after_terminal_use(self):
         serial, daemon, client = self.start()
         client.call("aprs.retry_enable", **_CONFIRM)
-        sent = self._send(client)
+        self._send(client)
         client.call("send_command", command="STATUS")
         before = len(serial.written)
 
@@ -307,7 +307,7 @@ class AutoRetryTests(_Stack, unittest.TestCase):
     def test_failed_resend_turns_auto_resend_off(self):
         serial, daemon, client = self.start()
         client.call("aprs.retry_enable", **_CONFIRM)
-        sent = self._send(client)
+        self._send(client)
         serial.fail_command = "PACLEN"
 
         daemon._retry_tick(now=time.time() + 3600)

@@ -10,7 +10,7 @@ set its author describes as "based on, and largely compatible with"
 the TAPR TNC-2's -- which is why the shared TerminalTNC machinery in
 tnc.py (written against the KAM-XL, another TNC-2 descendant) fits it.
 
-STATUS. Verified against a real NA6D OpenTNC (opentnc_capture.py,
+STATUS. Verified against a real NA6D OpenTNC (tools/opentnc_capture.py,
 2026-10-19; transcript in tests/opentnc_capture_20261019.txt):
 
   - ``cmd:`` prompt; commands are echoed; ``HELP`` lists them with the

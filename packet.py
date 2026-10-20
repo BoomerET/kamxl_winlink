@@ -56,7 +56,7 @@ HEADER_RE: re.Pattern = re.compile(
 # Matches a TNC-2-style MONITOR header line, the format TAPR TNC-2
 # clones print (and, by its author's description, what the OpenTNC's
 # TNC-2-compatible command set should print -- UNVERIFIED against real
-# OpenTNC output; check with opentnc_capture.py):
+# OpenTNC output; check with tools/opentnc_capture.py):
 #
 #   SOURCE>DEST[,DIGI1,DIGI2*][ <TAG>]:payload
 #

@@ -173,7 +173,7 @@ class AuthTests(RestTestCase):
         _, port = self.start_stack(ScriptedSerial({}))
 
         status, payload = self.request(
-            port, "GET", f"/ping?token=test-token", token=None
+            port, "GET", "/ping?token=test-token", token=None
         )
 
         self.assertEqual(status, 200)

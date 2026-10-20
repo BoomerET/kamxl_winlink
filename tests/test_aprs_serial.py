@@ -162,7 +162,7 @@ class APRSSerialTests(unittest.TestCase):
 
     def test_convers_does_not_return_command_prompt(self):
         serial = APRSSerialFake()
-        kam = make_kam(serial)
+        make_kam(serial)
 
         serial.write(b"CONVERS\r")
 

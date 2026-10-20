@@ -1,3 +1,9 @@
+import os as _os
+import sys as _sys
+from pathlib import Path as _Path
+
+_sys.path.insert(0, str(_Path(__file__).resolve().parent.parent))  # the repo root
+
 from kamxl import (
     KAMXL,
     KAMError,
@@ -19,7 +25,11 @@ TARGET = "N0CALL-15"
 TIMEOUT = 180
 
 
-kam = KAMXL("COM8")
+# Serial port: first argument, else TNCSTATION_PORT, else /dev/kamxl.
+PORT = (_sys.argv[1] if len(_sys.argv) > 1
+        else _os.environ.get("TNCSTATION_PORT", "/dev/kamxl"))
+
+kam = KAMXL(PORT)
 
 try:
     kam.connect()

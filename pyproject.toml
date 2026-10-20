@@ -40,9 +40,9 @@ kamxl-daemon = "tncstation_daemon:main"
 kamxl-rest = "tncstation_rest:main"
 
 # Flat layout: all importable modules live at the repo root, alongside
-# the live-hardware test scripts (*Test.py) and the offline tests/
+# the hand-run hardware scripts (tools/) and the offline tests/
 # suite. Only the importable modules are packaged -- everything else is
-# left out of the distribution deliberately, since the *Test.py scripts
+# left out of the distribution deliberately, since the tools/ scripts
 # need a real KAM-XL on a serial port and aren't meant to ship.
 #
 # NOTE: aprs.py, stations.py, and winlink.py (milestones 7-8) were

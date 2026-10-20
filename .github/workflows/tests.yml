@@ -18,6 +18,26 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  lint:
+    name: Lint (pyflakes checks)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
+      # flake8 limited to the pyflakes checks (F): unused imports and
+      # variables, undefined names, ... No style rules. flake8 rather
+      # than plain pyflakes because it honours "# noqa: F401" on the
+      # deliberate re-exports (kamxl.py and friends).
+      - name: flake8 --select=F
+        run: |
+          python -m pip install flake8
+          python -m flake8 --select=F .
+
   test:
     name: Python ${{ matrix.python-version }}
     runs-on: ubuntu-latest
@@ -48,7 +68,7 @@ jobs:
 
       - name: Check web page JavaScript syntax
         run: |
-          for f in tncstation_web/*/app.js tncstation_web/_shared/theme.js; do echo "node --check $f"; node --check "$f"; done
+          for f in tncstation_web/*/app.js tncstation_web/_shared/*.js; do echo "node --check $f"; node --check "$f"; done
 
       - name: Run test suite
         run: python run_tests.py

@@ -1,5 +1,11 @@
 import time
 
+import os as _os
+import sys as _sys
+from pathlib import Path as _Path
+
+_sys.path.insert(0, str(_Path(__file__).resolve().parent.parent))  # the repo root
+
 from kamxl import (
     KAMXL,
     KAMError,
@@ -9,34 +15,43 @@ from kamxl import (
 
 
 TARGET = "KD5EOC-10"
+VIA = "RSSTN"
 
-# How long to sit in Convers mode capturing whatever the Winlink RMS
-# gateway sends before we disconnect, if it doesn't disconnect first.
+# How long to sit in Convers mode capturing whatever the far end sends
+# before we disconnect, if it doesn't disconnect first.
 SESSION_SECONDS = 60
 
-# If nothing arrives for this many seconds, assume the exchange is over
-# and wrap up early instead of waiting out the full SESSION_SECONDS.
+# If nothing arrives for this many seconds, assume the exchange is
+# over and wrap up early instead of waiting out SESSION_SECONDS.
 IDLE_TIMEOUT = 15
 
+# Digipeated connects may need longer to resolve than a direct one.
+CONNECT_TIMEOUT = 90
 
-kam = KAMXL("COM8")
 
-# Tracks whether connect_station() actually succeeded, so the finally
-# block below only tries to disconnect the *station* (not just the
-# serial port) if there's really an AX.25 link up.
+# Serial port: first argument, else TNCSTATION_PORT, else /dev/kamxl.
+PORT = (_sys.argv[1] if len(_sys.argv) > 1
+        else _os.environ.get("TNCSTATION_PORT", "/dev/kamxl"))
+
+kam = KAMXL(PORT)
+
 connected_station = False
 
 try:
     kam.connect()
 
-    print(f"Connecting to {TARGET}...")
+    print(f"Connecting to {TARGET} via {VIA}...")
     print()
 
-    banner = kam.connect_station(TARGET)
+    banner = kam.connect_station(
+        TARGET,
+        via=VIA,
+        timeout=CONNECT_TIMEOUT
+    )
     connected_station = True
 
     print("Connected:")
-    print(banner)
+    print(repr(banner))
     print()
     print(
         f"Capturing traffic for up to {SESSION_SECONDS}s "
@@ -52,10 +67,6 @@ try:
 
         if text:
             last_data = time.monotonic()
-
-            # Winlink's B2F handshake is largely binary/control-code
-            # data, not friendly text -- repr() so nothing gets lost
-            # or misread as terminal control codes.
             print(f"[{len(text)} bytes] {text!r}")
 
         if time.monotonic() - last_data > IDLE_TIMEOUT:
@@ -74,11 +85,13 @@ except KeyboardInterrupt:
 
 except KAMTimeoutError as exc:
     print()
-    print("Timed out:", exc)
+    print("KAMTimeoutError (our own timeout fired first):")
+    print(exc)
 
 except KAMConnectionError as exc:
     print()
-    print("Connection failed:", exc)
+    print("KAMConnectionError (KAM-XL itself reported failure):")
+    print(exc)
 
 except KAMError as exc:
     print()

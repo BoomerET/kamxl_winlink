@@ -258,7 +258,7 @@ class TypedMultiportIntTests(unittest.TestCase):
 
 class TypedMultiportStringTests(unittest.TestCase):
     def test_get_typed_matches_real_hardware_shape(self):
-        # Matches what whoami.py actually returned from the real
+        # Matches what tools/whoami.py actually returned from the real
         # KAM-XL: the same callsign on both ports, no SSID.
         kam = make_kam(
             ScriptedSerial(script={"MYCALL": "MYCALL N5BA/N5BA"})

@@ -139,7 +139,7 @@ away from the Pi -- an HT's rubber duck next to it is the worst case.
 ## Status
 
 Checked against a real NA6D OpenTNC (October 2026): its command
-replies with `opentnc_capture.py` (the transcript is
+replies with `tools/opentnc_capture.py` (the transcript is
 `tests/opentnc_capture_20261019.txt`, replayed byte for byte by the
 tests), its monitor output on the air, and the firmware source.
 

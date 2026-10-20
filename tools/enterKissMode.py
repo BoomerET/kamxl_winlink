@@ -50,11 +50,16 @@ serial_errors.py for the detail; this script surfaces that guidance
 automatically rather than showing a raw traceback.
 
 Usage:
-    python3 enterKissMode.py /dev/kamxl
+    python3 tools/enterKissMode.py /dev/kamxl
 """
 
 import sys
 import time
+
+import sys as _sys
+from pathlib import Path as _Path
+
+_sys.path.insert(0, str(_Path(__file__).resolve().parent.parent))  # the repo root
 
 from kamxl import KAMXL, KAMError
 from serial_errors import describe_serial_open_failure

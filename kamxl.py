@@ -89,6 +89,8 @@ class KAMXL(TerminalTNC):
     # parsing was written against this firmware's real output.
     APRS_TX_SUPPORTED = True
 
+    RADIO_PORTS = 2  # 1 = HF, 2 = VHF
+
     # The KAM-XL's MONITOR headers always carry "/PORT:" (see packet.py),
     # so DEFAULT_RADIO_PORT is never actually used for it.
     HEADER_RE = HEADER_RE
@@ -241,12 +243,12 @@ class KAMXLKISS(KISSTNC):
     The KAM-XL in KISS mode -- UNVERIFIED against the real unit.
 
     Entering, per the manual: ``INTFACE KISS`` at cmd:, then ``RESET``
-    (see enterKissMode.py). INTFACE is a *saved* setting, so leaving
+    (see tools/enterKissMode.py). INTFACE is a *saved* setting, so leaving
     has to put it back, or the KAM-XL boots into KISS from then on and
     every Terminal Mode tool stops working: at shutdown this sends the
-    KISS exit (C0 FF C0, see exitKissMode.py), then ``INTFACE
+    KISS exit (C0 FF C0, see tools/exitKissMode.py), then ``INTFACE
     TERMINAL`` and ``RESET``. If the daemon dies without a clean
-    shutdown, run exitKissMode.py and do that by hand.
+    shutdown, run tools/exitKissMode.py and do that by hand.
 
     Port mapping is the KAM-XL's two-radio layout as KISS channels --
     channel 0 = Port 1 (HF), channel 1 = Port 2 (VHF) -- assumed from
@@ -259,6 +261,7 @@ class KAMXLKISS(KISSTNC):
     NAME = "kamxl"
 
     PORT_MAP = {0: 1, 1: 2}
+    RADIO_PORTS = 2
     APRS_TX_CHANNEL = 1
     APRS_TX_SUPPORTED = False
 
