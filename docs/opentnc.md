@@ -103,8 +103,11 @@ Then install and start the services (README, "Running as a service"):
 
 The log should show `OpenTNC: KISS ON sent` and `tncstation daemon
 (OpenTNC, kiss mode)`. The daemon puts the OpenTNC in KISS mode at
-startup and takes it out again when it stops; if it's ever left in
-KISS (no `cmd:` prompt), unplug and replug it.
+startup and **leaves it there** when it stops: taking it out of KISS
+and back in without a power cycle leaves this OpenTNC unable to
+receive (it still transmits) until it's unplugged. So after stopping
+the daemon there's no `cmd:` prompt in a terminal -- unplug and replug
+the OpenTNC to get it back.
 
 ### 6. First on-air tests
 
@@ -137,9 +140,15 @@ Tested on the station: it looks after itself.
   nothing. After `TNCSTATION_WATCHDOG_MINUTES` of silence the dashboard
   shows a reception warning, and phone notifications send one if the
   `watchdog` event is on.
-- **The daemon is killed without a clean stop:** the OpenTNC may be
-  left in KISS mode (no `cmd:` prompt in a terminal). The daemon runs
-  it in KISS anyway; for a terminal session, unplug and replug it.
+- **The daemon restarts** (after a `git pull`, a crash, or a clean
+  stop): the OpenTNC stays in KISS mode throughout and keeps hearing.
+  For a terminal session, stop the daemon and unplug and replug the
+  OpenTNC.
+- **It stops hearing anything but transmits fine** (the reception
+  watchdog says only your own station is heard): unplug and replug it.
+  This is the OpenTNC's receive side getting stuck; its known trigger
+  (leaving and re-entering KISS) no longer happens, so if you see it,
+  please report it with the daemon log.
 
 ## Raspberry Pi power
 
