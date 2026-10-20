@@ -26,6 +26,10 @@ the NA6D OpenTNC. Three layers, each usable on its own:
 Formerly `kamxl_winlink`; see [Upgrading from
 kamxl_winlink](#upgrading-from-kamxl_winlink).
 
+![The dashboard: TNC link, stations, APRS messaging and services](docs/images/dashboard.png)
+
+![The live APRS map around Dallas-Fort Worth](docs/images/map.jpg)
+
 ```python
 from kamxl import KAMXL
 
