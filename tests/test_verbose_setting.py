@@ -78,9 +78,6 @@ class DaemonVerboseTests(unittest.TestCase):
     def test_setting_turns_it_on(self):
         self.assertEqual(_daemon_log_level({"TNCSTATION_VERBOSE": "1"}), logging.DEBUG)
 
-    def test_old_setting_name_works(self):
-        self.assertEqual(_daemon_log_level({"KAMXL_VERBOSE": "yes"}), logging.DEBUG)
-
     def test_flag_still_works(self):
         self.assertEqual(_daemon_log_level({}, ["--verbose"]), logging.DEBUG)
         self.assertEqual(_daemon_log_level({}, ["-v"]), logging.DEBUG)

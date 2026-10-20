@@ -3158,7 +3158,7 @@ class DaemonRequestHandler(socketserver.StreamRequestHandler):
 
 
 # Shared with tncstation_rest.py so both programs read the same .env file.
-from envfile import apply_legacy_env, env_flag, load_dotenv as _load_dotenv  # noqa: E402
+from envfile import env_flag, load_dotenv as _load_dotenv  # noqa: E402
 
 
 
@@ -3168,7 +3168,6 @@ def main(argv: Optional[list] = None) -> None:
     # os.environ -- so a .env-supplied value is indistinguishable from
     # a real exported one by the time either of those look for it.
     _load_dotenv()
-    legacy_settings = apply_legacy_env()
 
     parser = argparse.ArgumentParser(
         description="tncstation background daemon"
@@ -3543,13 +3542,6 @@ def main(argv: Optional[list] = None) -> None:
         format="%(asctime)s %(message)s",
         datefmt="%H:%M:%S",
     )
-
-    if legacy_settings:
-        logger.info(
-            "Using old setting names %s -- they still work, but rename "
-            "KAMXL_ to TNCSTATION_ in .env when convenient",
-            ", ".join(legacy_settings),
-        )
 
     kam = create_tnc(tnc_model, args.port, baudrate=args.baud, mode=tnc_mode)
     kam.connect()
