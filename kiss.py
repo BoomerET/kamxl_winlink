@@ -582,6 +582,12 @@ class KISSTNC(TerminalTNC):
             self._entered_kiss = False
             self.serial.close()
 
+    # Whether reset_tnc() can reboot the TNC from here (OpenTNC only).
+    RESET_SUPPORTED = False
+
+    def reset_tnc(self) -> None:
+        raise TNCError(f"{self.MODEL}: no software reset")
+
     def enter_kiss_mode(self) -> None:
         """Put the TNC into KISS mode. Generic: it already is."""
 

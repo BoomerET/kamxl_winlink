@@ -51,6 +51,11 @@ The OpenTNC plugs into the radio's mic/speaker jack. On the radio:
 
 There's nothing in alsamixer -- the OpenTNC has its own modem.
 
+Two LEDs worth knowing: the green one blinking once a second is the
+firmware's heartbeat, and the white **CON** LED is lit while the
+OpenTNC is in KISS mode (it's dark at the `cmd:` prompt). With the
+daemon running, CON should be on.
+
 **Receive** is the radio's volume. LED 1's once-a-second blink is the
 idle heartbeat, not a level reading. The real test is a packet: with
 `MONITOR ON`, every packet it decodes prints a line in the terminal,
@@ -148,6 +153,16 @@ Tested on the station: it looks after itself.
   stop): it puts the OpenTNC back in KISS mode at startup and checks.
   If the OpenTNC won't go, the daemon stops with "OpenTNC didn't enter
   KISS mode" in its log (and systemd retries) instead of running deaf.
+- **Its receiver locks up:** seen on firmware 4.04, about an hour into a
+  KISS session -- no receive LEDs on signals the radio clearly hears,
+  while the heartbeat, CON (KISS mode) and transmit carry on. A power
+  cycle or a firmware `RESTART` cures it, so after
+  `TNCSTATION_TNC_RESET_MINUTES` (default 10) with nothing heard, the
+  daemon sends `RESTART`, waits for the OpenTNC to come back on USB, and
+  puts it in KISS mode again -- at most every 30 minutes. The log says
+  "reset the OpenTNC", and a phone notification goes out if the
+  `watchdog` event is on. On a quiet channel that's just a harmless
+  few-second reset now and then; set it to 0 to turn it off.
 - **It hears nothing and the packet log shows only your own beacons:**
   the OpenTNC is at `cmd:` rather than in KISS -- our frames come back
   as the command line's echo. Unplug and replug it, and please report

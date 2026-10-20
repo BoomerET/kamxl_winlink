@@ -50,6 +50,7 @@ and dashboards work unchanged and KAM-XL and OpenTNC history stays
 comparable.
 """
 
+import os
 import re
 import time
 
@@ -626,3 +627,60 @@ class OpenTNCKISS(KISSTNC):
         self._write(KISS_EXIT)
         self._settle(0.3)
         logger.info("OpenTNC: left KISS mode")
+
+    # -- Receiver lockup recovery ---------------------------------------
+    #
+    # Seen on the real unit (firmware 4.04, 2026-10-20, twice): about an
+    # hour into a KISS session the receiver stops -- no LEDs on signals,
+    # nothing passed on -- while transmit, the heartbeat and KISS mode
+    # carry on. A power cycle cures it, and so does RESTART at cmd:
+    # (a firmware reboot, now that no saved KISS ON turns it into a
+    # KISS entry). The daemon calls reset_tnc() when nothing has been
+    # heard for a while.
+
+    RESET_SUPPORTED = True
+    # Seconds: how long the USB port may take to vanish and come back.
+    RESET_GONE_TIMEOUT = 5.0
+    RESET_BACK_TIMEOUT = 30.0
+    RESET_POLL = 0.25
+
+    def reset_tnc(self) -> None:
+        """
+        Reboot the OpenTNC (out of KISS, RESTART), wait for its serial
+        port to come back, and put it in KISS mode again. Raises
+        TNCError if it doesn't come back.
+        """
+        logger.warning("OpenTNC: resetting it (RESTART) -- nothing heard")
+        try:
+            self._write(KISS_EXIT)
+            self._settle(0.5)
+            self._write(b"\r")
+            self._settle(0.3)
+            self._write(b"RESTART\r")
+            self._settle(0.5)
+        except Exception:
+            pass  # it may already be dropping off USB
+        finally:
+            self._entered_kiss = False
+            try:
+                self.serial.close()
+            except Exception:
+                pass
+
+        self._wait_for_port(present=False, timeout=self.RESET_GONE_TIMEOUT)
+        if not self._wait_for_port(present=True, timeout=self.RESET_BACK_TIMEOUT):
+            raise TNCError(
+                f"OpenTNC didn't come back on {self.port} within "
+                f"{self.RESET_BACK_TIMEOUT:.0f} s of RESTART"
+            )
+        time.sleep(self.BOOT_QUIET)  # console ignores input just after boot
+        self.connect()
+        logger.warning("OpenTNC: reset done, back in KISS mode")
+
+    def _wait_for_port(self, present: bool, timeout: float) -> bool:
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            if os.path.exists(self.port) == present:
+                return True
+            time.sleep(self.RESET_POLL)
+        return os.path.exists(self.port) == present
