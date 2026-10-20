@@ -30,22 +30,6 @@ kamxl_winlink](#upgrading-from-kamxl_winlink).
 
 ![The live APRS map around Dallas-Fort Worth](docs/images/map.jpg)
 
-```python
-from kamxl import KAMXL
-
-kam = KAMXL("COM8")
-kam.connect()
-
-kam.set_typed("MONITOR", (True, False))
-kam.connect_station("KD5EOC-10", via="RSSTN")
-
-for packet in kam.monitor():
-    print(packet.source, "->", packet.destination, ":", packet.payload)
-```
-
-This is not a Winlink client -- it's meant to be the general-purpose
-layer underneath one (or a BBS, a chat tool, an APRS decoder, ...).
-
 ## Installation
 
 Not yet published to PyPI (see [PROJECT.md](PROJECT.md)). For now, install
