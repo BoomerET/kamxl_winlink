@@ -686,6 +686,24 @@ above the cards while the state is `only_own` or `silent`.
   when a message arrives). Read state and the alerts setting are kept
   per browser in `localStorage`.
 
+### Reception history
+
+With `TNCSTATION_HISTORY_DB` set, the daemon records every received
+packet in SQLite (write-ahead logging, written by a background thread
+so the serial reception path never waits on the database).
+
+```http
+GET /aprs/history
+GET /aprs/history?since=UNIX_TIMESTAMP
+```
+
+`since` is a Unix timestamp in seconds. The response has the stored
+packet total, hourly reception counts, and whether recording is
+enabled. The dashboard charts it over the last 24 hours (hourly,
+including the current partial hour) or the last 7 or 30 days (daily).
+Days are calendar days in the browser's time zone, including the 23-
+and 25-hour days at daylight-saving changes.
+
 ### Packet history retention
 
 `GET /aprs/history` also reports `retention_days` (0 = keep all),

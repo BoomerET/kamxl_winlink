@@ -11,11 +11,11 @@
 </p>
 
 A packet radio station for hardware TNCs -- the Kantronics KAM-XL and
-the NA6D OpenTNC. Three layers, each usable on its own:
+the NA6D OpenTNC -- or Direwolf. Three layers, each usable on its own:
 
-- **A Python library** that drives a TNC in Terminal Mode -- a clean,
-  Pythonic API instead of hand-typed terminal commands (`tnc.py`, with
-  one small driver per model).
+- **A Python library** that drives a TNC in Terminal Mode or KISS -- a
+  clean, Pythonic API instead of hand-typed terminal commands
+  (`tnc.py`, with one small driver per model).
 - **A background daemon** (`tncstation_daemon.py`) that owns the serial
   port: continuous monitoring, an APRS station database, messaging
   with acks and retries, beacons, persistent reception history.
@@ -65,6 +65,11 @@ SUBSYSTEM=="tty", ATTRS{idVendor}=="0403", ATTRS{idProduct}=="6001", ATTRS{seria
 
 Replace the identifiers with those reported for your own adapter.
 The values above identify a specific FTDI FT232R USB serial adapter.
+For an OpenTNC (USB ID `1209:ae6e`), `/etc/udev/rules.d/99-opentnc.rules`:
+
+```udev
+SUBSYSTEM=="tty", ATTRS{idVendor}=="1209", ATTRS{idProduct}=="ae6e", SYMLINK+="opentnc"
+```
 
 Reload udev and verify the device:
 
@@ -91,8 +96,10 @@ For the background daemon and the web dashboard, set the following in
 `.env` (one file for both; see `.env.sample` for every setting):
 
 ```dotenv
-TNCSTATION_PORT=/dev/kam-xl
-TNCSTATION_CALLSIGN=N0CALL                # your KAM-XL's MYCALL, SSID included
+TNCSTATION_TNC=kamxl                      # kamxl, opentnc, or kiss (Direwolf)
+TNCSTATION_MODE=terminal                  # optional: terminal or kiss
+TNCSTATION_PORT=/dev/kam-xl               # or /dev/opentnc, tcp://localhost:8001
+TNCSTATION_CALLSIGN=N0CALL                # your station callsign, SSID included
 TNCSTATION_HISTORY_DB=/var/lib/tncstation/reception.sqlite3   # optional: inbox + history
 TNCSTATION_AUTO_ACK=1                     # optional: auto-ack received messages
 TNCSTATION_APRS_PATH=WIDE1-1,WIDE2-1      # optional: digipeater path (DIRECT = none)
@@ -103,7 +110,7 @@ TNCSTATION_BEACON=1                       # optional: beacon automatically
 TNCSTATION_WATCHDOG_MINUTES=30            # optional: reception alert after N quiet min (0 = off)
 TNCSTATION_AUTO_RETRY=1                   # optional: resend unacknowledged messages
 TNCSTATION_REST_API_KEY=change-me         # web dashboard / API token
-TNCSTATION_VERBOSE=0                     # optional: 1 = detailed (DEBUG) logging, same as --verbose
+TNCSTATION_VERBOSE=0                      # optional: 1 = detailed (DEBUG) logging, same as --verbose
 TNCSTATION_NTFY_URL=https://ntfy.sh       # optional: phone notifications
 TNCSTATION_NTFY_TOPIC=your-topic
 ```
@@ -114,25 +121,11 @@ rather than silently guessing either.
 
 ## Status
 
-Actively developed and tested against real hardware (Kantronics
-KAM-XL, firmware 1.24160, over live 1200-baud packet). Not yet on
-PyPI.
-
-Implemented so far:
-
-- Serial connection management, command/response handling, automatic
-  `EH?` error detection and `ECHO ON` handling
-- Typed getters/setters for KAM-XL parameters (booleans, integers,
-  strings, multi-port and restricted-choice values)
-- AX.25 connected mode: `connect_station()` (direct and VIA
-  digipeat), `send_connected()`, `read_connected()`,
-  `disconnect_station()`
-- Passive monitoring: `listen()` for raw text, `monitor()` for
-  structured `Packet` objects, callback- or generator-style
-
-See [PROJECT.md](PROJECT.md) for the full design philosophy, roadmap,
-and what's coming next (async support, APRS/Winlink/BBS helpers, and
-more).
+Actively developed and in daily use on two stations: a KAM-XL in
+Terminal Mode and an OpenTNC in KISS mode, both on 1200-baud VHF APRS.
+Not yet on PyPI. See [Supported TNCs](#supported-tncs) for what's
+verified on each, and [PROJECT.md](PROJECT.md) for the design notes and
+roadmap.
 
 ## Upgrading from kamxl_winlink
 
@@ -169,33 +162,32 @@ The library is split into a generic driver layer (`tnc.py`'s
 mode, monitoring, Winlink) and one small subclass per TNC model. The
 daemon, REST API and web pages work with any of them.
 
-| Model | Module | Status |
+| TNC | Driver | Status |
 | --- | --- | --- |
-| Kantronics KAM-XL | `kamxl.KAMXL` | Verified over the air; everything works |
-| NA6D / AE6EO OpenTNC | `opentnc.OpenTNC` | Unverified -- receive, map, terminal, connected mode and Winlink built from TNC-2 convention; APRS transmit disabled until checked against real output |
+| Kantronics KAM-XL | `kamxl.KAMXL` | Verified over the air; everything works, including connected mode, PBBS and Winlink |
+| NA6D / AE6EO OpenTNC, KISS mode | `opentnc.OpenTNCKISS` | Verified over the air: monitoring, map, APRS messages both ways with ACKs, beacons |
+| NA6D / AE6EO OpenTNC, Terminal Mode | `opentnc.OpenTNC` | Settings and monitoring verified against the real unit and its firmware source; APRS transmit off (use KISS); connected mode untried; no PBBS (no mailbox) |
+| Direwolf, KISS over TCP | `kiss.GenericKISS` | Monitoring and APRS transmit (tested with an AIOC) |
 
-Pick one with `create_tnc()` in code, or `TNCSTATION_TNC` / `--tnc` for the
-daemon:
+Pick one with `TNCSTATION_TNC` and `TNCSTATION_MODE` in `.env`, or
+`create_tnc()` in code:
 
 ```python
 from tnc import create_tnc
 
-tnc = create_tnc("opentnc", "/dev/ttyACM0")
+tnc = create_tnc("opentnc", "/dev/opentnc")
 tnc.connect()
 print(tnc.get_typed("MYCALL"), tnc.get_fx25())
 for packet in tnc.monitor():
     print(packet.source, "->", packet.destination, ":", packet.payload)
 ```
 
-Any of them can also run in **KISS mode** (`TNCSTATION_MODE=kiss`),
-and Direwolf works as a TNC over KISS TCP (`TNCSTATION_TNC=kiss`,
-`TNCSTATION_PORT=tcp://localhost:8001`): monitoring and APRS with raw
-AX.25 frames, no display-format parsing. See [docs/kiss.md](docs/kiss.md).
-
-`from kamxl import KAMXL` and the `KAMError` exception family work
-exactly as before. See [docs/opentnc.md](docs/opentnc.md) for the
-OpenTNC: setup, what's verified, and how to capture real output with
-`opentnc_capture.py`.
+In **KISS mode** the TNC passes raw AX.25 frames, so monitoring and
+APRS don't depend on any display format -- but there's no web
+terminal, connected mode, PBBS or Winlink, and the web pages hide
+those. The pages also hide what a Terminal Mode TNC lacks (the
+OpenTNC's PBBS, for one). See [docs/kiss.md](docs/kiss.md), and
+[docs/opentnc.md](docs/opentnc.md) for OpenTNC setup and levels.
 
 ## Themes
 
@@ -213,89 +205,46 @@ tokens, one block per theme; page stylesheets only refer to tokens.
 
 ## Documentation
 
-- [docs/quickstart.md](docs/quickstart.md) -- connect, read/write
-  parameters, connected mode, monitoring
+- [docs/quickstart.md](docs/quickstart.md) -- the library: connect,
+  read/write parameters, connected mode, monitoring
 - [docs/api_reference.md](docs/api_reference.md) -- full method/class
   reference
-- [docs/troubleshooting.md](docs/troubleshooting.md) -- real hardware
-  quirks and how this library works around them
 - [docs/daemon.md](docs/daemon.md) -- the background daemon: protocol,
   methods, concurrency model
-- [docs/rest_api.md](docs/rest_api.md) -- the REST API: endpoints,
-  auth, live monitoring over Server-Sent Events, the dashboard it
-  serves at `GET /`, the self-contained web terminal at
-  `GET /terminal`, the read-only PBBS browser at `GET /pbbs`, the live
-  APRS station map at `GET /map`, the Winlink mail check/send pages at
-  `GET /winlink`, and the Winlink web-service API endpoints (account
-  lookup, gateway listings -- needs `$WINLINK_API_KEY`, see
-  [docs/daemon.md](docs/daemon.md#winlink-api-key))
+- [docs/rest_api.md](docs/rest_api.md) -- the REST API and every web
+  page: dashboard, map, packet log, telemetry, terminal, PBBS, Winlink
+- [docs/opentnc.md](docs/opentnc.md) -- the OpenTNC: setup, levels,
+  what's verified
+- [docs/kiss.md](docs/kiss.md) -- KISS mode and Direwolf
+- [docs/backup.md](docs/backup.md) -- nightly database backups to a
+  network share, and restoring
+- [docs/troubleshooting.md](docs/troubleshooting.md) -- real hardware
+  quirks and how this library works around them
 - [examples/](examples/) -- runnable scripts, including two that need
   no hardware at all
 
-## Persistent APRS Reception History
+## Reception history
 
-The daemon can optionally record received AX.25/APRS packets in a SQLite database. This provides reception statistics that survive daemon restarts and can be displayed in the web dashboard.
+Set `TNCSTATION_HISTORY_DB` in `.env` (make sure the daemon's user can
+write to that directory) and the daemon records every packet it hears
+in SQLite. That powers:
 
-Persistence is disabled by default. Enable it using the `--history-db` command-line option or the `TNCSTATION_HISTORY_DB` environment variable:
+- the APRS **message inbox** and saved sent messages
+- the **map** coming back after a restart, and station tracks over the
+  last 6 hours to 7 days
+- the **packet log** (`/log`): search by sender, digipeater, text and
+  period -- "when did I last hear K5XYZ, and through which digipeater?"
+- the **telemetry** page: digipeater and weather-station telemetry,
+  graphed with each station's own names, units and scaling
+- the dashboard's **Coverage** card: compare station setups ("mag-mount
+  in the garage" vs "J-pole") by how often you were digipeated or
+  reached APRS-IS, and which digipeaters heard you
+- the dashboard's reception charts (24 hours, 7 or 30 days)
 
-```bash
-export TNCSTATION_HISTORY_DB=/var/lib/tncstation/reception.sqlite3
-```
-
-For a systemd installation, create a service override:
-
-```bash
-sudo systemctl edit tncstation-daemon.service
-```
-
-Add:
-
-```ini
-[Service]
-Environment=TNCSTATION_HISTORY_DB=/var/lib/tncstation/reception.sqlite3
-```
-
-Ensure that the service account can write to the database directory. Apply the configuration with:
-
-```bash
-sudo systemctl daemon-reload
-sudo systemctl restart tncstation-daemon.service
-```
-
-The SQLite database uses write-ahead logging (WAL). Packet recording is handled by a background writer so database operations do not block the serial reception path.
-
-### Reception history API
-
-The authenticated REST API provides:
-
-```http
-GET /aprs/history
-GET /aprs/history?since=UNIX_TIMESTAMP
-```
-
-The optional `since` parameter is a Unix timestamp in seconds. The response includes the persistent packet total, hourly reception counts, and whether history recording is enabled.
-
-### Dashboard history charts
-
-The web dashboard provides three reception-history display periods:
-
-- **Last 24 hours:** Hourly reception counts, including the current partial hour.
-- **Last 7 days:** Daily reception counts.
-- **Last 30 days:** Daily reception counts.
-
-The 7-day and 30-day views aggregate hourly records into calendar days using the browser's local timezone. Day boundaries account for daylight-saving transitions, including 23-hour and 25-hour days.
-
-**Backups:** set `TNCSTATION_BACKUP_DIR` and the daemon backs the database up every night, for example to a network share, keeping the last week. See [docs/backup.md](docs/backup.md) for setting up an SMB/Windows share and for restoring.
-
-On the **map**, the Tracks picker shows where stations went over the last 6 hours to 7 days (from the history database), not just the live last hour.
-
-The **telemetry** page graphs what digipeaters and weather stations report in APRS telemetry -- battery voltage, temperatures, on/off bits -- named and scaled with each station's own PARM/UNIT/EQNS definitions.
-
-The **packet log** page (`/log`, "log" in every page's header) searches everything stored: by sender, digipeater, text and period -- e.g. "when did I last hear K5XYZ, and through which digipeater?" Packet contents are stored from the version that added map restore onward; older rows show who and when only.
-
-The history database also powers the dashboard's **Coverage** card: set your current station setup (e.g. "Mag-mount, garage" or "J-pole 16 ft") and it compares setups side by side -- how often your beacons and messages were digipeated or reached APRS-IS, which digipeaters heard you, and how many stations you heard. See [docs/rest_api.md](docs/rest_api.md#coverage-by-station-setup).
-
-Persistent reception history is separate from the live reception statistics. It also stores each packet's payload, so when the daemon restarts it replays the last hour into the APRS station map: stations, trails, weather and objects reappear immediately instead of the map starting empty. Without `TNCSTATION_HISTORY_DB` the map starts empty after a restart.
+Without it, everything still works live, but the map and inbox start
+empty after a restart. Set `TNCSTATION_BACKUP_DIR` too for a nightly
+backup ([docs/backup.md](docs/backup.md)). Details are in
+[docs/rest_api.md](docs/rest_api.md).
 
 ## Testing
 
@@ -305,7 +254,7 @@ python3 run_tests.py
 
 Runs the offline unit test suite (standard-library `unittest`, no
 third-party packages required) against a scripted fake serial
-connection -- no KAM-XL hardware needed. Files ending in `Test.py`
+connection -- no TNC hardware needed. Files ending in `Test.py`
 at the repo root (`listenTest.py`, `connectTest.py`, `chatTest.py`,
 etc.) are the live hardware test scripts actually used to validate
 this library against a real KAM-XL over the air.
@@ -319,7 +268,10 @@ by testing against a live KAM-XL over the air, not by reading the
 manual: a stale command prompt leaking into connect/disconnect
 banners, a VIA digipeat path getting truncated because a marker
 matched before the rest of the line arrived, and a race between an
-async link-failure notice and an unrelated command's response.
+async link-failure notice and an unrelated command's response. The
+OpenTNC driver went the same way: its monitor output looked nothing
+like the TNC-2 format it was expected to print, and the parser was
+rewritten from a real capture and the firmware's source.
 
 ## License
 
