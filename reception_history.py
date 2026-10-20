@@ -10,6 +10,47 @@ from packet import Packet
 from aprs import bulletin_kind, parse_aprs_message, unwrap_third_party
 
 
+# Copies of one message: same sender, addressee, message ID and text,
+# each heard within this many seconds of the previous copy. Senders
+# resend for minutes (tncstation: up to about 7), and some clients reuse
+# small message numbers over days, so "ok{1" tomorrow is a new message.
+MESSAGE_COPY_WINDOW = 3600.0
+
+
+def merge_message_copies(messages):
+    """
+    Merge repeated copies of the same received APRS message (newest
+    first in, newest first out). Each result is the first copy heard --
+    its id and received_at, so read state and new-message alerts don't
+    fire again for a resend -- plus ``copies`` (how many were heard) and
+    ``last_received_at``.
+    """
+    merged = []
+    latest = {}  # key -> merged entry, for copies still inside the window
+
+    for message in sorted(messages, key=lambda m: (m["received_at"], m["id"])):
+        key = (
+            message["source"],
+            message["addressee"],
+            message["message_id"],
+            message["message"],
+        )
+        entry = latest.get(key)
+
+        if entry is not None and \
+                message["received_at"] - entry["last_received_at"] <= MESSAGE_COPY_WINDOW:
+            entry["copies"] += 1
+            entry["last_received_at"] = message["received_at"]
+            continue
+
+        entry = dict(message, copies=1, last_received_at=message["received_at"])
+        latest[key] = entry
+        merged.append(entry)
+
+    merged.sort(key=lambda m: (m["received_at"], m["id"]), reverse=True)
+    return merged
+
+
 class ReceptionHistory:
     """Store received packet metadata across daemon restarts."""
 
@@ -931,6 +972,9 @@ class ReceptionHistory:
         if not 1 <= limit <= 500:
             raise ValueError("Limit must be between 1 and 500")
 
+        # Every copy heard is stored -- a sender's resends, or the same
+        # packet via two digipeaters -- and merged here, so one message
+        # is one entry. Read extra rows so merging still fills ``limit``.
         rows = self._connection.execute(
             """
             SELECT
@@ -947,10 +991,10 @@ class ReceptionHistory:
             ORDER BY received_at DESC, id DESC
             LIMIT ?
             """,
-            (addressee.strip().upper(), limit),
+            (addressee.strip().upper(), limit * self._COPY_READ_FACTOR),
         ).fetchall()
 
-        return [
+        messages = merge_message_copies([
             {
                 "id": row[0],
                 "received_at": row[1],
@@ -962,7 +1006,12 @@ class ReceptionHistory:
                 "port": row[7],
             }
             for row in rows
-        ]
+        ])
+
+        return messages[:limit]
+
+    # How many stored rows to read per message returned (see above).
+    _COPY_READ_FACTOR = 5
 
     def save_outbound(self, record: dict) -> None:
         """Insert or update one sent-message record."""
