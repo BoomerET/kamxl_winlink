@@ -122,6 +122,7 @@ class KAMDaemon:
         beacon: Optional[Dict[str, Any]] = None,
         beacon_interval_minutes: float = 30,
         watchdog_minutes: float = 30,
+        tnc_reset_minutes: float = 10,
         retry_count: int = 3,
         retry_interval_seconds: float = 60,
         history_retention_days: float = 0,
@@ -167,6 +168,15 @@ class KAMDaemon:
         if watchdog_minutes and watchdog_minutes < 5:
             raise ValueError("Watchdog threshold must be 0 or >= 5 minutes")
         self._watchdog_seconds = float(watchdog_minutes or 0) * 60
+
+        # Reset a TNC that can be rebooted from here (the OpenTNC, whose
+        # receiver can lock up) after this long with nothing heard; at
+        # most once per TNC_RESET_MIN_INTERVAL. 0 disables.
+        if tnc_reset_minutes and tnc_reset_minutes < 5:
+            raise ValueError("TNC reset threshold must be 0 or >= 5 minutes")
+        self._tnc_reset_seconds = float(tnc_reset_minutes or 0) * 60
+        self._tnc_resets = 0
+        self._last_tnc_reset_at: Optional[float] = None
 
         # Automatic resend of unacknowledged messages (off by default).
         if not 1 <= int(retry_count) <= 5:
@@ -526,6 +536,8 @@ class KAMDaemon:
                 "rate_5m": round(packets_last_5m / 5.0, 2),
                 "activity_history": activity_history,
                 "watchdog": self._watchdog_snapshot(),
+                "tnc_resets": self._tnc_resets,
+                "last_tnc_reset_at": self._last_tnc_reset_at,
             },
         }
 
@@ -584,9 +596,10 @@ class KAMDaemon:
                 "state": "only_own",
                 "message": (
                     f"Only your own stations heard for {minutes} min. "
-                    "The KAM-XL decodes fine, so the receiver is likely "
-                    "desensed by nearby noise (amplifier, power supply, "
-                    "computer) or the digipeater you rely on is down."
+                    f"The {getattr(self.kam, 'MODEL', 'TNC')} decodes them, "
+                    "so the receiver is likely desensed by nearby noise "
+                    "(amplifier, power supply, computer) or the digipeater "
+                    "you rely on is down."
                 ),
             }
 
@@ -594,9 +607,13 @@ class KAMDaemon:
             **result,
             "state": "silent",
             "message": (
-                f"Nothing heard on Port 2 for {minutes} min. Check the "
-                "radio: frequency (144.390), volume, squelch, the Port 2 "
-                "audio cable, and nearby noise sources."
+                f"Nothing heard for {minutes} min. Check the radio: "
+                "frequency (144.390), volume, squelch, the audio cable, "
+                "and nearby noise sources."
+                + (" An OpenTNC whose receiver locked up is reset "
+                   "automatically (TNCSTATION_TNC_RESET_MINUTES); if that's "
+                   "off, unplug and replug it."
+                   if getattr(self.kam, "RESET_SUPPORTED", False) else "")
             ),
         }
 
@@ -627,8 +644,61 @@ class KAMDaemon:
         while not self._watchdog_stop.wait(30.0):
             self._watchdog_tick()
 
+    # Never reset the TNC more often than this (seconds) -- on a channel
+    # that's really quiet, a reset every half hour costs a few seconds.
+    TNC_RESET_MIN_INTERVAL = 1800
+
+    def _tnc_reset_tick(self, now: Optional[float] = None) -> bool:
+        """
+        Reset the TNC (OpenTNC: a firmware RESTART) if nothing from other
+        stations has been heard for --tnc-reset-minutes. Returns True if
+        it reset. Holds the TNC lock throughout, so the monitor thread
+        and transmissions just wait.
+        """
+        if not self._tnc_reset_seconds:
+            return False
+        if not getattr(self.kam, "RESET_SUPPORTED", False):
+            return False
+        now = time.time() if now is None else now
+
+        with self._stats_lock:
+            last_other = self._last_other_packet_at
+        reference = max(
+            last_other if last_other is not None else self._started_at,
+            self._last_tnc_reset_at or 0,
+        )
+        if now - reference < self._tnc_reset_seconds:
+            return False
+        if self._last_tnc_reset_at is not None and \
+                now - self._last_tnc_reset_at < self.TNC_RESET_MIN_INTERVAL:
+            return False
+
+        minutes = int((now - (last_other or self._started_at)) // 60)
+        self._last_tnc_reset_at = now
+        with self._kam_lock:
+            try:
+                self.kam.reset_tnc()
+            except Exception:
+                logger.exception(
+                    "TNC reset failed; exiting so systemd can restart the daemon"
+                )
+                os._exit(1)
+        self._tnc_resets += 1
+        logger.warning(
+            "Nothing heard for %d min: reset the %s (reset #%d)",
+            minutes, self.kam.MODEL, self._tnc_resets,
+        )
+        self._push(
+            "watchdog", f"{self.kam.MODEL} reset",
+            f"Nothing heard for {minutes} min, so the {self.kam.MODEL} was "
+            "restarted (its receiver can lock up).",
+            tags=["arrows_counterclockwise"],
+        )
+        return True
+
     def _watchdog_tick(self) -> None:
         """One check: log on entering and on leaving an alert state."""
+        self._tnc_reset_tick()
         snapshot = self._watchdog_snapshot()
         alert = snapshot["state"] in ("only_own", "silent")
 
@@ -3390,6 +3460,18 @@ def main(argv: Optional[list] = None) -> None:
     )
 
     parser.add_argument(
+        "--tnc-reset-minutes",
+        type=float,
+        default=float(os.environ.get("TNCSTATION_TNC_RESET_MINUTES", "10")),
+        help=(
+            "OpenTNC: restart it (firmware RESTART) after this many "
+            "minutes with nothing heard -- its receiver can lock up. At "
+            "most every 30 min; 0 disables (default: "
+            "$TNCSTATION_TNC_RESET_MINUTES, or 10; minimum 5)"
+        ),
+    )
+
+    parser.add_argument(
         "--watchdog-minutes",
         type=float,
         default=float(os.environ.get("TNCSTATION_WATCHDOG_MINUTES", "30")),
@@ -3518,6 +3600,8 @@ def main(argv: Optional[list] = None) -> None:
             parser.error(f"Invalid beacon settings: {exc}")
     if args.watchdog_minutes and args.watchdog_minutes < 5:
         parser.error("--watchdog-minutes must be 0 (off) or at least 5")
+    if args.tnc_reset_minutes and args.tnc_reset_minutes < 5:
+        parser.error("--tnc-reset-minutes must be 0 (off) or at least 5")
     if not 1 <= args.retry_count <= 5:
         parser.error("--retry-count must be between 1 and 5")
     if args.retry_interval < 30:
@@ -3584,6 +3668,7 @@ def main(argv: Optional[list] = None) -> None:
         beacon=beacon_config,
         beacon_interval_minutes=args.beacon_interval,
         watchdog_minutes=args.watchdog_minutes,
+        tnc_reset_minutes=args.tnc_reset_minutes,
         retry_count=args.retry_count,
         retry_interval_seconds=args.retry_interval,
         history_retention_days=args.history_days,
