@@ -1,0 +1,21 @@
+# tncstation web server: dashboard, map and REST API (talks to the daemon).
+#
+# Installed by deploy/install.sh as /etc/systemd/system/tncstation-web.service,
+# with the user, folder and Python filled in. Settings come from .env in
+# WorkingDirectory (TNCSTATION_REST_API_KEY, TNCSTATION_REST_PORT, ...).
+
+[Unit]
+Description=tncstation web dashboard and REST API
+After=tncstation-daemon.service
+Wants=tncstation-daemon.service
+
+[Service]
+Type=simple
+User=@USER@
+WorkingDirectory=@DIR@
+ExecStart=@PYTHON@ @DIR@/tncstation_rest.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
