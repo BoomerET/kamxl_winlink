@@ -1306,6 +1306,8 @@
       statusDot.className = status.connected ? "live" : "down";
       statusDot.textContent = status.connected ? "connected" : "disconnected";
       statusDetail.textContent =
+        (status.tnc_model ? status.tnc_model +
+          (status.tnc_mode === "kiss" ? " (KISS)" : "") + " on " : "") +
         status.port + " -- " + status.monitor_subscribers +
         " monitor subscriber" + (status.monitor_subscribers === 1 ? "" : "s");
       var diag = status.diagnostics;
@@ -1316,11 +1318,14 @@
 
       if (diag) {
         renderActivityHistory(diag.activity_history);
-        var portCounts = Object.entries(diag.packets_by_port || {})
-          .map(function(entry) {
-            return "Port " + entry[0] + ": " + entry[1];
-          })
-          .join(" | ");
+        // Per-port counts only mean something on a two-port TNC.
+        var portCounts = status.radio_ports > 1
+          ? Object.entries(diag.packets_by_port || {})
+              .map(function(entry) {
+                return "Port " + entry[0] + ": " + entry[1];
+              })
+              .join(" | ")
+          : "";
 
         var lastHeard = diag.last_packet_at == null
           ? "Never"
@@ -1330,7 +1335,8 @@
           "Packets: " + diag.packets_received +
           " | 1m: " + Number(diag.rate_1m || 0).toFixed(1) + "/min" +
           " | 5m: " + Number(diag.rate_5m || 0).toFixed(1) + "/min" +
-          " | " + (portCounts || "No packets yet") +
+          (portCounts ? " | " + portCounts
+            : diag.packets_received ? "" : " | No packets yet") +
           " | Last heard: " + lastHeard +
           " | Uptime: " + formatUptime(diag.uptime_seconds);
       } else {

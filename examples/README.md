@@ -9,9 +9,9 @@ Told apart by filename prefix:
   before you have a KAM-XL wired up, or for CI.
 - **`hardware_*.py`** -- need a real Kantronics KAM-XL on a serial port.
   Edit the `PORT`/callsign constants at the top of each one before
-  running. These follow the same pattern as the `*Test.py` scripts at
-  the repo root, just trimmed down and commented for reading rather
-  than testing.
+  running. These follow the same pattern as the `*Test.py` scripts in
+  [tools/](../tools/), just trimmed down and commented for reading
+  rather than testing.
 - **`winlink_api_check.py`** -- a third category, fitting neither
   bucket above: no KAM-XL involved, but it does need real network
   access and a real Winlink API key (`$WINLINK_API_KEY` or a `.env`

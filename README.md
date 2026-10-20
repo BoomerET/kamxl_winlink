@@ -265,10 +265,11 @@ python3 run_tests.py
 
 Runs the offline unit test suite (standard-library `unittest`, no
 third-party packages required) against a scripted fake serial
-connection -- no TNC hardware needed. Files ending in `Test.py`
-at the repo root (`listenTest.py`, `connectTest.py`, `chatTest.py`,
-etc.) are the live hardware test scripts actually used to validate
-this library against a real KAM-XL over the air.
+connection -- no TNC hardware needed. The live hardware tests that
+validated the library against a real KAM-XL over the air, and the
+setup and recovery scripts, are in [tools/](tools/). GitHub also runs
+`flake8 --select=F .` (unused imports, undefined names) on every pull
+request.
 
 ## Design philosophy
 

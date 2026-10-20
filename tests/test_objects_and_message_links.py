@@ -4,7 +4,6 @@ import http.client
 import re
 import shutil
 import subprocess
-import time
 import unittest
 
 from aprs import parse_frequency_info, parse_object, parse_position

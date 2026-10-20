@@ -36,7 +36,7 @@ import socket
 import threading
 
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from typing import Any, Callable, Dict, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 from envfile import env_flag, load_dotenv as _load_dotenv
 from tncstation_web import load_page

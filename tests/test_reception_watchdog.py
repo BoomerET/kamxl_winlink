@@ -5,7 +5,6 @@ nothing, or only this station's own callsigns, for too long.
 
 import io
 import os
-import time
 import unittest
 from contextlib import redirect_stderr
 from unittest.mock import patch

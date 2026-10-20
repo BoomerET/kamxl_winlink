@@ -23,7 +23,7 @@ from aprs_tx import (
     execute_aprs_tx_transaction,
     validate_tocall,
 )
-from kiss import GenericKISS, KISSDeframer, decode_ax25
+from kiss import GenericKISS
 from test_aprs_serial import APRSTransactionFake
 from test_kiss import FakeKISSSerial, driver, frames_written
 from tnc import TNCError

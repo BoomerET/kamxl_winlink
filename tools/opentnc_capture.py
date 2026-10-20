@@ -4,9 +4,9 @@ Record what a real OpenTNC actually prints, so opentnc.py can be
 corrected from observed behavior rather than TNC-2 convention (see
 README, "Design philosophy").
 
-    python3 opentnc_capture.py /dev/ttyACM0
-    python3 opentnc_capture.py COM9 --listen 600
-    python3 opentnc_capture.py /dev/ttyACM0 --connect KD5EOC-10   # transmits
+    python3 tools/opentnc_capture.py /dev/ttyACM0
+    python3 tools/opentnc_capture.py COM9 --listen 600
+    python3 tools/opentnc_capture.py /dev/ttyACM0 --connect KD5EOC-10   # transmits
 
 Writes two files next to where it's run:
 

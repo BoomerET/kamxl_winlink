@@ -74,9 +74,6 @@ CRC-16 -- included for completeness and because it's useful on its own
 for round-trip testing, but Winlink always uses the "_b2" wrapped form.
 """
 
-from dataclasses import dataclass, field
-from typing import List
-
 
 class LZHUFError(Exception):
     """Base class for this module's errors."""

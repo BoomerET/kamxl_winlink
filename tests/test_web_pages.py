@@ -4,7 +4,6 @@ tncstation_web/<page>/{index.html,style.css,app.js} and are assembled into
 one self-contained response by load_page().
 """
 
-import os
 import re
 import shutil
 import subprocess

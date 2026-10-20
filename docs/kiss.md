@@ -59,7 +59,7 @@ The daemon sends `INTFACE KISS` and `RESET` at startup. `INTFACE` is
 saved in the KAM-XL, so at a clean shutdown the daemon sends the KISS
 exit, `INTFACE TERMINAL` and `RESET` to put it back. If the daemon is
 killed instead, the KAM-XL keeps booting into KISS: run
-`exitKissMode.py`, then `INTFACE TERMINAL` and `RESET` by hand.
+`tools/exitKissMode.py`, then `INTFACE TERMINAL` and `RESET` by hand.
 **APRS transmit is off for the KAM-XL in KISS** until its port mapping
 (KISS channel 0 = Port 1 HF, channel 1 = Port 2 VHF, from the manual)
 has been confirmed on the air -- a wrong guess would key the HF port.

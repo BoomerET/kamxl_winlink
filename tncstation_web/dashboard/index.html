@@ -61,7 +61,7 @@
 
       <label>
         <input id="aprsConfirmTransmit" type="checkbox" required>
-        Transmit now (VHF ready on Port 2, HF disconnected from Port 1)
+        <span>Transmit now (<span data-two-port-text="VHF ready on Port 2, HF disconnected from Port 1">radio ready on the APRS frequency</span>)</span>
       </label>
 
       <button class="action" id="aprsSendBtn" type="submit">
@@ -78,8 +78,8 @@
 
       <label class="autoAckToggle">
         <input id="aprsAutoAck" type="checkbox">
-        Automatically acknowledge messages to me
-        (transmits on VHF Port 2)
+        <span>Automatically acknowledge messages to me
+        (<span data-two-port-text="transmits on VHF Port 2">transmits</span>)</span>
       </label>
       <div class="sub" id="aprsAutoAckStatus"
            role="status" aria-live="polite">
@@ -88,8 +88,8 @@
 
       <label class="autoAckToggle">
         <input id="aprsAutoRetry" type="checkbox">
-        Automatically resend unacknowledged messages
-        (transmits on VHF Port 2)
+        <span>Automatically resend unacknowledged messages
+        (<span data-two-port-text="transmits on VHF Port 2">transmits</span>)</span>
       </label>
       <div class="sub" id="aprsAutoRetryStatus"
            role="status" aria-live="polite">
@@ -250,7 +250,7 @@
     <div class="sub" id="beaconPosition">Loading...</div>
     <label class="autoAckToggle">
       <input id="beaconToggle" type="checkbox">
-      Beacon my position automatically (transmits on VHF Port 2)
+      <span>Beacon my position automatically (<span data-two-port-text="transmits on VHF Port 2">transmits</span>)</span>
     </label>
     <div class="sub" id="beaconStatus" role="status" aria-live="polite"></div>
     <div class="sub" id="beaconHeardBack" role="status" aria-live="polite"></div>

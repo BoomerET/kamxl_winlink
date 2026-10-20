@@ -12,6 +12,10 @@
  *                              "terminal")
  *   <body data-page-feature>   on the page itself: a note at the top
  *                              explains why it won't work here
+ *   data-two-port-text="..."   replaces the element's text on a TNC with
+ *                              two radio ports (the KAM-XL's "VHF Port
+ *                              2" wording); the markup has the generic
+ *                              text for one-port TNCs
  *
  * Fails open: if the status can't be read, everything stays visible.
  */
@@ -28,6 +32,13 @@
   var statusUrl = "/status" + (token ? "?token=" + encodeURIComponent(token) : "");
 
   function apply(status) {
+    if (status && status.radio_ports > 1) {
+      var worded = document.querySelectorAll("[data-two-port-text]");
+      for (var j = 0; j < worded.length; j++) {
+        worded[j].textContent = worded[j].getAttribute("data-two-port-text");
+      }
+    }
+
     var features = status && status.features;
     if (!features) return;
 

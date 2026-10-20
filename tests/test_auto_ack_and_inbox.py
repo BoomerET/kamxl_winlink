@@ -9,7 +9,6 @@ import time
 import unittest
 from unittest.mock import patch
 
-from aprs_tx import APRSTransmitError
 from packet import Packet
 from reception_history import ReceptionHistory
 from test_aprs_serial import APRSTransactionFake

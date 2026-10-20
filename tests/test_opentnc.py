@@ -5,7 +5,7 @@ the KAM-XL tests use.
 
 The OpenTNC's output formats used here are TNC-2 convention, not yet
 captured from a real unit (see opentnc.py's module docstring). When
-opentnc_capture.py records the real thing, replace these fixtures with
+tools/opentnc_capture.py records the real thing, replace these fixtures with
 it, the way packet.py's HEADER_RE was corrected for the KAM-XL.
 """
 
