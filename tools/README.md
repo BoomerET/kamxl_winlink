@@ -21,7 +21,7 @@ open.
 | `whoami.py` | KAM-XL | Connects and prints MYCALL for both ports -- a quick "is it there?" |
 | `learnKam.py` | KAM-XL | Prints VERSION, MYCALL, HBAUD, MONITOR, PORT, then toggles MONITOR and restores it (a typed read/write check) |
 | `enterKissMode.py` | KAM-XL | Puts it in KISS mode for another KISS program (e.g. Pat). Saved in the KAM-XL -- see `exitKissMode.py` |
-| `exitKissMode.py` | KAM-XL | Sends the KISS exit (C0 FF C0) to get a KAM-XL out of KISS mode, e.g. after the daemon was killed while running it in KISS |
+| `exitKissMode.py` | KAM-XL, OpenTNC | Sends the KISS exit (C0 FF C0) to get a TNC out of KISS mode, e.g. after the daemon was killed while running it in KISS. On the OpenTNC the `cmd:` prompt is back right away |
 | `opentnc_capture.py` | OpenTNC | Records what an OpenTNC prints (HELP, DISPLAY, replies, monitored packets) to a transcript, read-only. `--listen 600` to also record ten minutes of traffic; `--connect CALL` records connect banners and **transmits** (asks first) |
 
 ## Live tests (KAM-XL, over the air)
