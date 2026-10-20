@@ -1535,10 +1535,10 @@
         Number(stats.unique_sources).toLocaleString();
 
       document.getElementById("rxRelayed").textContent =
-        Number(stats.used_digipeater_packets).toLocaleString();
+        Number(stats.digipeated_packets).toLocaleString();
 
       document.getElementById("rxDirect").textContent =
-        Number(stats.no_identified_digipeater_packets).toLocaleString();
+        Number(stats.direct_packets).toLocaleString();
 
       receptionSources = Array.isArray(stats.all_sources)
         ? stats.all_sources

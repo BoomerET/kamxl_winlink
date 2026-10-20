@@ -353,11 +353,11 @@
     </div>
     <div>
       <div class="receptionMetricValue" id="rxRelayed">-</div>
-      <div class="sub">With identified used digi</div>
+      <div class="sub">Via digipeater</div>
     </div>
     <div>
       <div class="receptionMetricValue" id="rxDirect">-</div>
-      <div class="sub">No identified used digi</div>
+      <div class="sub">Heard direct</div>
     </div>
   </div>
 
@@ -407,8 +407,8 @@
 
   <div class="sub" id="rxStatsStatus" role="status"></div>
   <div class="sub">
-    Digipeaters are identified from used (*) path entries.
-    A packet without an identified used digi is not necessarily a direct RF reception.
+    Heard direct: no digipeater had repeated the packet (no * in its
+    path). Top Digipeaters lists those that marked themselves by callsign.
   </div>
 </div>
 <script src="app.js"></script>
