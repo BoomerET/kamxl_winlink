@@ -182,7 +182,7 @@ To see whether dips line up with transmissions, put the two logs side
 by side -- both in clock time:
 
     journalctl -k -b | grep -i voltage          # undervoltage warnings
-    journalctl -u tncstation-daemon -b | grep ' TX '   # every beacon, message, ack
+    journalctl -u tncstation-daemon -b | grep -E ':[0-9]{2} TX '   # every beacon, message, ack
 
 If the supply is solid (`0x0` after boot) and the Pi still resets on
 transmit, it's RF getting in over the cables: clip-on ferrites (mix 31)

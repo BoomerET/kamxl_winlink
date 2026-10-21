@@ -63,8 +63,10 @@ per-request `path` on `aprs.send_message` overrides it.
 Every transmission is logged with a `TX` line -- `TX message 6DOH to
 N5BA via WIDE1-1,WIDE2-1`, `TX beacon via WIDE1-1,WIDE2-1 (automatic)`,
 `TX ack to W5ABC for message 42 via ...`, resends marked as such -- so
-`journalctl -u tncstation-daemon | grep ' TX '` lists everything the
-station sent.
+`journalctl -u tncstation-daemon | grep -E ':[0-9]{2} TX '` lists
+everything the station sent. (The time in front keeps out packets that
+merely contain "TX", such as a beacon from Richardson, TX, logged with
+`--verbose`.)
 
 The position beacon needs `--latitude` and `--longitude` (decimal
 degrees, west/south negative). `--beacon` starts it at boot; it can
