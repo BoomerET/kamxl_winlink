@@ -268,12 +268,12 @@ any other endpoint when authentication is enabled.
 with four cards linking out to the terminal, PBBS, map, and Winlink
 pages, plus a live summary of what's cheap to check automatically.
 
-- **KAM-XL Link**: `GET /status`'s `connected`/`port`/
+- **TNC Link & Stations**, the link part: `GET /status`'s `connected`/`port`/
   `monitor_subscribers`, refreshed every 15 seconds. `connected` here
   means the daemon's serial connection to the KAM-XL is open -- not
   "currently AX.25-connected to a station" (that's a separate,
   transient state this page doesn't track).
-- **APRS Stations**: `GET /stations`'s count and most-recently-heard
+- **TNC Link & Stations**, the Stations row: `GET /stations`'s count and most-recently-heard
   callsign, refreshed every 15 seconds -- same cheap, passive,
   already-in-memory read the map page itself uses (see
   [Stations / map](#stations--map)).

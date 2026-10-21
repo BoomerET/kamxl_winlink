@@ -1367,7 +1367,7 @@
       stationCount.textContent = stations.length;
 
       if (!stations.length) {
-        stationDetail.textContent = "None heard yet.";
+        stationDetail.textContent = "none heard yet.";
         return;
       }
 
@@ -1376,7 +1376,7 @@
       });
 
       stationDetail.textContent =
-        "Last heard: " + mostRecent.callsign + " (" +
+        "last heard " + mostRecent.callsign + " (" +
         relativeTime(mostRecent.last_heard) + ")";
     } catch (err) {
       stationDetail.textContent = err.message || String(err);
