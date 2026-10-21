@@ -548,8 +548,6 @@
   }
   .heardChip.igate { border-color: var(--t-border-info); color: var(--t-info-soft); }
   #beaconHeardBack.heard { color: var(--t-ok); }
-  #notifyCard { flex: 1 1 260px; }
-  #notifyStatus { line-height: 1.5; }
 
 
   /* Coverage card */
@@ -578,8 +576,18 @@
   .covList { margin: 0; padding: 0; list-style: none; }
   .covList li { white-space: nowrap; }
 
-  #backupCard { flex: 1 1 260px; }
-  #backupStatus { line-height: 1.5; }
+  /* Notifications & Backups: a heading line (label, button) over the
+     status, for each. */
+  #upkeepCard { flex: 1 1 280px; }
+  .upkeepRow {
+    display: grid; grid-template-columns: 1fr auto;
+    align-items: center; column-gap: 10px;
+  }
+  .upkeepRow + .upkeepRow { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--t-rule); }
+  .upkeepLabel { color: var(--t-ink-strong); font-size: 13px; }
+  .upkeepRow .sub { grid-column: 1 / -1; line-height: 1.5; }
+  .card .upkeepRow button.action { margin: 0; padding-top: 2px; padding-bottom: 2px; white-space: nowrap; }
+  .card .upkeepRow button.action[hidden] { display: none; }
   #backupStatus .dim { color: var(--t-dim); }
 
   /* Phones: full-width cards, tighter margins, and 16px form text so
