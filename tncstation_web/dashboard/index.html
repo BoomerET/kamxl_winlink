@@ -43,6 +43,17 @@
         on the map in the last hour &middot;
         <span id="stationDetail">Loading...</span></div>
     </div>
+    <div class="cardRow" id="beaconRow">
+      <span class="cardRowLabel">Position beacon</span>
+      <button class="action" id="beaconNowBtn" type="button">Beacon now</button>
+      <div class="sub" id="beaconPosition">Loading...</div>
+      <label class="autoAckToggle">
+        <input id="beaconToggle" type="checkbox">
+        <span>Beacon my position automatically (<span data-two-port-text="transmits on VHF Port 2">transmits</span>)</span>
+      </label>
+      <div class="sub" id="beaconStatus" role="status" aria-live="polite"></div>
+      <div class="sub" id="beaconHeardBack" role="status" aria-live="polite"></div>
+    </div>
   </div>
 
   <div class="card" id="aprsMessagingCard">
@@ -239,18 +250,23 @@
     <div id="bulletinList"></div>
   </div>
 
-  <div class="card" id="beaconCard">
-    <h2>Position Beacon</h2>
-    <div class="sub" id="beaconPosition">Loading...</div>
-    <label class="autoAckToggle">
-      <input id="beaconToggle" type="checkbox">
-      <span>Beacon my position automatically (<span data-two-port-text="transmits on VHF Port 2">transmits</span>)</span>
-    </label>
-    <div class="sub" id="beaconStatus" role="status" aria-live="polite"></div>
-    <div class="sub" id="beaconHeardBack" role="status" aria-live="polite"></div>
-    <button class="action" id="beaconNowBtn" type="button">Beacon now</button>
+  <div class="card" id="mailCard" data-hide-when-empty>
+    <h2>PBBS &amp; Winlink</h2>
+    <div class="cardRow" id="pbbsRow" data-feature="pbbs">
+      <span class="cardRowLabel">PBBS</span>
+      <span class="rowButtons">
+        <button class="action" id="pbbsCheckBtn" type="button">Check</button>
+        <a class="action" href="#" id="pbbsAction">Open &rarr;</a>
+      </span>
+      <div class="sub" id="pbbsSummary">Not checked this session.</div>
+      <div id="pbbsPreview"></div>
+    </div>
+    <div class="cardRow" id="winlinkRow" data-feature="winlink">
+      <span class="cardRowLabel">Winlink</span>
+      <a class="action" href="#" id="winlinkAction">Open &rarr;</a>
+      <div class="sub">Check or send mail on the Winlink page (needs your account password -- entered there only).</div>
+    </div>
   </div>
-
   <div class="card" id="coverageCard">
     <h2>Coverage</h2>
     <form id="setupForm" class="setupForm">
@@ -278,19 +294,6 @@
     <div id="coverageTable"></div>
   </div>
 
-  <div class="card" id="pbbsCard" data-feature="pbbs">
-    <h2>PBBS</h2>
-    <div class="sub" id="pbbsSummary">Not checked this session.</div>
-    <button class="action" id="pbbsCheckBtn" type="button">Check PBBS</button>
-    <a class="action" href="#" id="pbbsAction">Open PBBS &rarr;</a>
-    <div id="pbbsPreview"></div>
-  </div>
-
-  <div class="card" id="winlinkCard" data-feature="winlink">
-    <h2>Winlink</h2>
-    <div class="sub">Check or send mail from the Winlink page (needs your account password -- entered there only).</div>
-    <a class="action" href="#" id="winlinkAction">Open Winlink &rarr;</a>
-  </div>
 </div>
 <div class="card" id="activityCard">
   <h2>APRS Activity History — Last 60 Minutes</h2>

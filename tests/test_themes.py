@@ -342,8 +342,9 @@ class PageFeatureTests(unittest.TestCase):
                     self.assertIn(f'id="{feature}Link" data-feature="{feature}"',
                                   html, (page, feature))
         dashboard = tncstation_web.load_page("dashboard")
-        self.assertIn('id="pbbsCard" data-feature="pbbs"', dashboard)
-        self.assertIn('id="winlinkCard" data-feature="winlink"', dashboard)
+        self.assertIn('id="pbbsRow" data-feature="pbbs"', dashboard)
+        self.assertIn('id="winlinkRow" data-feature="winlink"', dashboard)
+        self.assertIn('id="mailCard" data-hide-when-empty', dashboard)
 
     def test_feature_pages_say_what_they_need(self):
         for page in ("pbbs", "winlink", "terminal"):

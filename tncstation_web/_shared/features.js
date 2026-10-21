@@ -10,6 +10,8 @@
  *   data-feature="pbbs"        on a link or card: hidden when the
  *                              station has no PBBS (likewise "winlink",
  *                              "terminal")
+ *   data-hide-when-empty       on a card whose rows carry data-feature:
+ *                              hidden too once every row is
  *   <body data-page-feature>   on the page itself: a note at the top
  *                              explains why it won't work here
  *   data-two-port-text="..."   replaces the element's text on a TNC with
@@ -47,6 +49,16 @@
       if (features[marked[i].getAttribute("data-feature")] === false) {
         marked[i].style.display = "none";
       }
+    }
+
+    var groups = document.querySelectorAll("[data-hide-when-empty]");
+    for (var g = 0; g < groups.length; g++) {
+      var rows = groups[g].querySelectorAll("[data-feature]");
+      var shown = 0;
+      for (var r = 0; r < rows.length; r++) {
+        if (rows[r].style.display !== "none") shown++;
+      }
+      if (rows.length && !shown) groups[g].style.display = "none";
     }
 
     var own = document.body.getAttribute("data-page-feature");
