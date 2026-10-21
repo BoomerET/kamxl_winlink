@@ -41,7 +41,7 @@ class LoadPageTests(unittest.TestCase):
 
     def test_backup_card_present(self):
         dashboard = tncstation_web.load_page("dashboard")
-        for marker in ('id="backupCard"', "refreshBackup", "/backup/now"):
+        for marker in ('id="upkeepCard"', 'id="backupStatus"', 'id="notifyTestBtn"', "refreshBackup", "/backup/now"):
             self.assertIn(marker, dashboard)
 
     def test_every_page_links_log_and_telemetry(self):

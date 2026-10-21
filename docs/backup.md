@@ -13,8 +13,9 @@ running (SQLite's online backup API), checked for integrity, gzipped,
 and written as `kamxl-history-YYYYMMDD-HHMMSS.sqlite3.gz`. It appears
 under that name only once it's complete.
 
-The dashboard's **Backups** card shows the last good backup, how many
-are kept, when the next one is due, and has a **Back up now** button.
+The **Backups** line on the dashboard's Notifications & Backups card
+shows the last good backup, how many are kept, when the next one is
+due, and has a **Back up now** button.
 If a backup fails you get a phone notification (`backup` event, on by
 default; if you set `TNCSTATION_NTFY_EVENTS` yourself, add `backup` to it),
 and another when backups work again. Failed backups are retried every

@@ -207,24 +207,18 @@
     <button class="action" id="svcUseBtn" type="button">Use</button>
   </div>
 
-  <div class="card" id="notifyCard">
-    <h2>Phone Notifications</h2>
-    <div class="sub" id="notifyStatus" role="status" aria-live="polite">
-      Checking...
+  <div class="card" id="upkeepCard">
+    <h2>Notifications &amp; Backups</h2>
+    <div class="upkeepRow">
+      <span class="upkeepLabel">Phone</span>
+      <button class="action" id="notifyTestBtn" type="button" hidden>Send test</button>
+      <div class="sub" id="notifyStatus" role="status" aria-live="polite">Checking...</div>
     </div>
-    <button class="action" id="notifyTestBtn" type="button" hidden>
-      Send test notification
-    </button>
-  </div>
-
-  <div class="card" id="backupCard">
-    <h2>Backups</h2>
-    <div class="sub" id="backupStatus" role="status" aria-live="polite">
-      Checking...
+    <div class="upkeepRow">
+      <span class="upkeepLabel">Backups</span>
+      <button class="action" id="backupNowBtn" type="button" hidden>Back up now</button>
+      <div class="sub" id="backupStatus" role="status" aria-live="polite">Checking...</div>
     </div>
-    <button class="action" id="backupNowBtn" type="button" hidden>
-      Back up now
-    </button>
   </div>
 
   <div class="card" id="bulletinCard">
