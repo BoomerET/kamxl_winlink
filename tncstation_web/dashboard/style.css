@@ -576,18 +576,22 @@
   .covList { margin: 0; padding: 0; list-style: none; }
   .covList li { white-space: nowrap; }
 
-  /* Notifications & Backups: a heading line (label, button) over the
-     status, for each. */
+  /* A section within a card: a heading line (label, button) over its
+     status. Notifications & Backups has one each; TNC Link & Stations
+     ends with the Stations one. */
   #upkeepCard { flex: 1 1 280px; }
-  .upkeepRow {
+  .cardRow {
     display: grid; grid-template-columns: 1fr auto;
     align-items: center; column-gap: 10px;
   }
-  .upkeepRow + .upkeepRow { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--t-rule); }
-  .upkeepLabel { color: var(--t-ink-strong); font-size: 13px; }
-  .upkeepRow .sub { grid-column: 1 / -1; line-height: 1.5; }
-  .card .upkeepRow button.action { margin: 0; padding-top: 2px; padding-bottom: 2px; white-space: nowrap; }
-  .card .upkeepRow button.action[hidden] { display: none; }
+  .cardRow + .cardRow, .sub + .cardRow {
+    margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--t-rule);
+  }
+  .cardRowLabel { color: var(--t-ink-strong); font-size: 13px; }
+  .cardRow .sub { grid-column: 1 / -1; line-height: 1.5; }
+  .cardRow .count { color: var(--t-ink-strong); }
+  .card .cardRow .action { margin: 0; padding-top: 2px; padding-bottom: 2px; white-space: nowrap; }
+  .card .cardRow button.action[hidden] { display: none; }
   #backupStatus .dim { color: var(--t-dim); }
 
   /* Phones: full-width cards, tighter margins, and 16px form text so

@@ -27,7 +27,7 @@
 </div>
 <div id="cards">
   <div class="card" id="statusCard">
-    <h2>TNC Link</h2>
+    <h2>TNC Link &amp; Stations</h2>
     <div class="big"><span id="statusDot" class="checking">checking...</span></div>
     <div class="sub" id="statusDetail"></div>
     <div class="sub" id="receptionHealth" role="status" aria-live="polite">
@@ -36,13 +36,13 @@
     <div class="sub" id="diagnosticsDetail">
       Waiting for APRS diagnostics...
     </div>
-  </div>
-
-  <div class="card" id="stationsCard">
-    <h2>APRS Stations</h2>
-    <div class="big" id="stationCount">-</div>
-    <div class="sub" id="stationDetail">Loading...</div>
-    <a class="action" href="#" id="mapAction">View map &rarr;</a>
+    <div class="cardRow" id="stationsRow">
+      <span class="cardRowLabel">Stations</span>
+      <a class="action" href="#" id="mapAction">View map &rarr;</a>
+      <div class="sub"><span id="stationCount" class="count">-</span>
+        on the map in the last hour &middot;
+        <span id="stationDetail">Loading...</span></div>
+    </div>
   </div>
 
   <div class="card" id="aprsMessagingCard">
@@ -209,13 +209,13 @@
 
   <div class="card" id="upkeepCard">
     <h2>Notifications &amp; Backups</h2>
-    <div class="upkeepRow">
-      <span class="upkeepLabel">Phone</span>
+    <div class="cardRow">
+      <span class="cardRowLabel">Phone</span>
       <button class="action" id="notifyTestBtn" type="button" hidden>Send test</button>
       <div class="sub" id="notifyStatus" role="status" aria-live="polite">Checking...</div>
     </div>
-    <div class="upkeepRow">
-      <span class="upkeepLabel">Backups</span>
+    <div class="cardRow">
+      <span class="cardRowLabel">Backups</span>
       <button class="action" id="backupNowBtn" type="button" hidden>Back up now</button>
       <div class="sub" id="backupStatus" role="status" aria-live="polite">Checking...</div>
     </div>
