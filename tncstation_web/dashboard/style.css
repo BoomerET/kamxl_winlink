@@ -580,16 +580,20 @@
      status. Notifications & Backups has one each; TNC Link & Stations
      ends with the Stations one. */
   #upkeepCard { flex: 1 1 280px; }
+  #mailCard { flex: 1 1 280px; }
   .cardRow {
     display: grid; grid-template-columns: 1fr auto;
     align-items: center; column-gap: 10px;
   }
-  .cardRow + .cardRow, .sub + .cardRow {
+  .cardRow ~ .cardRow, .sub + .cardRow {
     margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--t-rule);
   }
   .cardRowLabel { color: var(--t-ink-strong); font-size: 13px; }
   .cardRow .sub { grid-column: 1 / -1; line-height: 1.5; }
   .cardRow .count { color: var(--t-ink-strong); }
+  .cardRow > :nth-child(n+3) { grid-column: 1 / -1; }
+  .cardRow .autoAckToggle { margin-top: 6px; }
+  .rowButtons { display: flex; gap: 6px; }
   .card .cardRow .action { margin: 0; padding-top: 2px; padding-bottom: 2px; white-space: nowrap; }
   .card .cardRow button.action[hidden] { display: none; }
   #backupStatus .dim { color: var(--t-dim); }

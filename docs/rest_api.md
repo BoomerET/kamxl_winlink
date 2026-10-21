@@ -277,15 +277,15 @@ pages, plus a live summary of what's cheap to check automatically.
   callsign, refreshed every 15 seconds -- same cheap, passive,
   already-in-memory read the map page itself uses (see
   [Stations / map](#stations--map)).
-- **PBBS**: shows "Not checked this session" until you click
-  **Check PBBS**, which calls `GET /pbbs/messages` and shows a short
+- **PBBS & Winlink**, the PBBS row: shows "Not checked this session"
+  until you click **Check**, which calls `GET /pbbs/messages` and shows a short
   preview (number/from/subject, first 5) inline. Deliberately *not*
-  auto-fetched on page load -- unlike the two cards above, listing
+  auto-fetched on page load -- unlike the link and stations above, listing
   PBBS messages drives a real AX.25 connect/command/disconnect cycle
   against actual radio hardware, and doing that just because someone
   opened the dashboard would be surprising on-air activity and a slow
   page load.
-- **Winlink**: a static shortcut to the Winlink page only, no data
+- **PBBS & Winlink**, the Winlink row: a static shortcut to the Winlink page only, no data
   pulled automatically at all. Checking/sending mail needs your
   account password, which has no business being entered anywhere but
   that page's own form -- and per the Winlink Development Team's own
@@ -787,7 +787,7 @@ us), it's recorded: sent messages in `/aprs/outbox` gain
 `digipeated_by`/`digipeated_at` and `igated_by`/`igated_at` (saved
 with the message), and `/aprs/beacon` gains `heard_back`. The
 dashboard shows "via W5NGU-3" / "on APRS-IS" on sent messages and a
-"Heard back" line on the Position Beacon card.
+"Heard back" line in the dashboard's Position beacon row.
 
 `GET /notify` reports phone-notification settings and counters
 (`enabled`, `server`, `topic`, `events`, `auth` type, `sent`,
