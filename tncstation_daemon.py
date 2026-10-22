@@ -536,6 +536,10 @@ class KAMDaemon:
                 "rate_5m": round(packets_last_5m / 5.0, 2),
                 "activity_history": activity_history,
                 "watchdog": self._watchdog_snapshot(),
+                "tnc_reset_enabled": bool(
+                    self._tnc_reset_seconds
+                    and getattr(self.kam, "RESET_SUPPORTED", False)
+                ),
                 "tnc_resets": self._tnc_resets,
                 "last_tnc_reset_at": self._last_tnc_reset_at,
             },
@@ -3155,7 +3159,10 @@ class DaemonRequestHandler(socketserver.StreamRequestHandler):
         # short, unique-enough label to tell concurrent connections
         # apart in the log.
         self._client_id = f"conn-{threading.get_ident() % 10000}"
-        logger.info("%s: connected", self._client_id)
+        # DEBUG, like "-> ok" below: the dashboard polls every few
+        # seconds, and at INFO these lines pushed resets and watchdog
+        # warnings out of a small (Raspberry Pi) journal within hours.
+        logger.debug("%s: connected", self._client_id)
 
     def handle(self) -> None:
         daemon: KAMDaemon = self.server.daemon_instance  # type: ignore[attr-defined]
@@ -3193,7 +3200,7 @@ class DaemonRequestHandler(socketserver.StreamRequestHandler):
 
                 result = daemon.dispatch(method, params)
 
-                logger.info("%s: %s -> ok", self._client_id, method)
+                logger.debug("%s: %s -> ok", self._client_id, method)
 
                 self._send({
                     "id": request_id,
@@ -3235,7 +3242,7 @@ class DaemonRequestHandler(socketserver.StreamRequestHandler):
         if self._subscribed:
             daemon.remove_subscriber(self)
 
-        logger.info("%s: disconnected", self._client_id)
+        logger.debug("%s: disconnected", self._client_id)
 
         super().finish()
 

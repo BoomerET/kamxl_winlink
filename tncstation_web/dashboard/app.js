@@ -1238,6 +1238,17 @@
     return secs + "s";
   }
 
+  // Automatic TNC resets (OpenTNC receiver lockups) since the daemon
+  // started; shown only where the daemon can reset the TNC.
+  function tncResetsText(diag) {
+    var resets = Number(diag.tnc_resets || 0);
+    if (!diag.tnc_reset_enabled && !resets) return "";
+    return " | TNC resets: " + resets +
+      (diag.last_tnc_reset_at
+        ? " (latest " + relativeTime(diag.last_tnc_reset_at) + ")"
+        : "");
+  }
+
   function showReceptionAlert(wd) {
     var box = document.getElementById("receptionAlert");
     var alerting = wd && (wd.state === "only_own" || wd.state === "silent");
@@ -1338,7 +1349,8 @@
           (portCounts ? " | " + portCounts
             : diag.packets_received ? "" : " | No packets yet") +
           " | Last heard: " + lastHeard +
-          " | Uptime: " + formatUptime(diag.uptime_seconds);
+          " | Uptime: " + formatUptime(diag.uptime_seconds) +
+          tncResetsText(diag);
       } else {
         diagnosticsDetail.textContent = "Diagnostics unavailable";
         renderActivityHistory(null);

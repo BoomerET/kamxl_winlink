@@ -99,6 +99,15 @@ class DaemonResetTests(unittest.TestCase):
             self.heard(d, time.time() - 3600)
             self.assertFalse(d._tnc_reset_tick())
             d.kam.reset_tnc.assert_not_called()
+            diag = d.dispatch("status", {})["diagnostics"]
+            self.assertFalse(diag["tnc_reset_enabled"])
+
+    def test_status_says_resets_are_on(self):
+        # The dashboard shows "TNC resets: N" only when this is set.
+        diag = self.daemon().dispatch("status", {})["diagnostics"]
+        self.assertTrue(diag["tnc_reset_enabled"])
+        self.assertEqual(diag["tnc_resets"], 0)
+        self.assertIsNone(diag["last_tnc_reset_at"])
 
     def test_minimum(self):
         with self.assertRaises(ValueError):
