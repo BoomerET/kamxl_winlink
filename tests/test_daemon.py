@@ -34,9 +34,20 @@ class _Client:
     """
 
     def __init__(self, socket_path, timeout=2):
-        self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        self.sock.settimeout(timeout)
-        self.sock.connect(socket_path)
+        # The socket file appears at bind(), a moment before the daemon
+        # listen()s; connecting in between is refused, so retry briefly.
+        deadline = time.monotonic() + timeout
+        while True:
+            self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            self.sock.settimeout(timeout)
+            try:
+                self.sock.connect(socket_path)
+                break
+            except (ConnectionRefusedError, FileNotFoundError):
+                self.sock.close()
+                if time.monotonic() >= deadline:
+                    raise
+                time.sleep(0.01)
         self.rfile = self.sock.makefile("r")
         self._next_id = 0
 
