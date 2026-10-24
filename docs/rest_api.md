@@ -331,12 +331,12 @@ curl -X POST -H "Authorization: Bearer $TOKEN" http://kam-host:8080/pbbs/message
 ```
 
 `result` is `{"number": 6, "found": true, "deleted": true, "reply":
-"..."}`. `deleted` comes from the listings -- the message was listed
-before and isn't after -- not from parsing the PBBS's reply to `K`,
-which hasn't been captured from a real KAM-XL yet; `reply` is that
-reply's text (logged by the daemon too), shown on the page when the
-PBBS refuses. `found: false` means there's no such message, and `K` is
-not sent.
+"..."}`. `deleted` means the message was listed before and isn't
+after, and either the PBBS confirmed it (a real KAM-XL answers `K` with
+the message's header line, then `MESSAGE DELETED`) or the later listing
+still parsed. `reply` is the PBBS's answer to `K` (logged by the daemon
+too), shown on the page when the PBBS refuses. `found: false` means
+there's no such message, and `K` is not sent.
 
 **Verified against real hardware**, for both an empty mailbox and a
 populated one. Each endpoint accepts an optional `read_timeout` query

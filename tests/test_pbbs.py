@@ -280,10 +280,10 @@ PROMPT = "ENTER COMMAND: B,J,K,L,R,S, or Help >"
 
 class KAMXLPbbsKillTests(unittest.TestCase):
     """
-    kill_pbbs_message(): L, K <n>, L in one session. The PBBS's reply to
-    K isn't known from the real unit yet, so the fixture replies here are
-    guesses -- which is the point: the result must come from the
-    listings, whatever K says.
+    kill_pbbs_message(): L, K <n>, L in one session. Only
+    test_real_hardware_last_message's reply to K is real; the other K
+    replies are guesses, so those tests rely on the listings, whatever
+    K says.
     """
 
     def _kam(self, *replies):
@@ -328,6 +328,30 @@ class KAMXLPbbsKillTests(unittest.TestCase):
         )
 
         self.assertTrue(kam.kill_pbbs_message(4, mypbbs="N5BA-1")["deleted"])
+
+    def test_real_hardware_last_message(self):
+        # The reply to K is verbatim from Dave's KAM-XL (2026-10-24,
+        # daemon log), deleting the only message: CR-only line ends,
+        # echo first. The L reply after it is an assumption -- echo and
+        # prompt, no "THERE ARE NO MESSAGES" (seen only in the sign-on
+        # banner) -- and the first version of this method, which
+        # needed that text, reported this real delete as a failure.
+        kam, _ = self._kam(
+            "MSG# ST SIZE TO      FROM   DATE                SUBJECT\r\n"
+            "1    PN 120  N5BA    N5BA   10/24/2026 16:04:49 Testing PBBS on Kam-XL\r\n"
+            + PROMPT,
+            "K 1\rMSG#1 10/24/2026 16:04:49 FROM N5BA TO N5BA\r"
+            "MESSAGE DELETED\rENTER COMMAND:  B,J,K,L,R,S, or Help >\r",
+            "L\r" + PROMPT + "\r",
+        )
+
+        result = kam.kill_pbbs_message(1, mypbbs="N5BA-1")
+
+        self.assertTrue(result["deleted"])
+        self.assertEqual(
+            result["reply"],
+            "MSG#1 10/24/2026 16:04:49 FROM N5BA TO N5BA\nMESSAGE DELETED",
+        )
 
     def test_refused_keeps_the_pbbs_reply(self):
         kam, _ = self._kam(
