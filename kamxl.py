@@ -240,15 +240,19 @@ class KAMXL(TerminalTNC):
         """
         Connect to the KAM-XL's own PBBS and delete one message ("K <n>").
 
-        The PBBS's reply to K isn't known from the real unit yet (the
-        manual has been wrong about this PBBS's wording before), so it
-        isn't parsed. Instead the mailbox is listed ("L") before and
-        after, in the same session: the message counts as deleted only if
-        it was listed before and isn't after. Returns {"number", "found",
-        "deleted", "reply"}, where ``reply`` is the PBBS's own answer to
-        K, prompt stripped -- shown to the operator when ``deleted`` is
-        False (not allowed, ...). ``found`` False means no such message;
-        K isn't sent then.
+        The mailbox is listed ("L") before and after, in the same
+        session. The message counts as deleted if it was listed before
+        and isn't after -- and the PBBS either confirmed it (the real
+        unit answers K with the message's header line, then "MESSAGE
+        DELETED") or the later listing still parsed. The confirmation
+        matters for the last message: the real "THERE ARE NO MESSAGES"
+        has only been seen in the sign-on banner, so an empty L reply
+        alone can't be told from one that didn't parse.
+
+        Returns {"number", "found", "deleted", "reply"}, where ``reply``
+        is the PBBS's own answer to K, echo and prompt stripped -- shown
+        to the operator when ``deleted`` is False (not allowed, ...).
+        ``found`` False means no such message; K isn't sent then.
         """
         if mypbbs is None:
             mypbbs = self.get("MYPBBS")
@@ -276,12 +280,17 @@ class KAMXL(TerminalTNC):
         logger.debug("pbbs list after kill raw: %r", after)
 
         remaining = _listed_numbers(after)
-        # An empty parse is only trusted when the PBBS says so; a
-        # listing that didn't parse must not look like a deletion.
-        listed_ok = bool(remaining) or "NO MESSAGES" in after.upper()
+        # An empty parse is only trusted when the PBBS confirms the
+        # delete or says the mailbox is empty; a listing that didn't
+        # parse must not look like a deletion.
+        confirmed = "MESSAGE DELETED" in reply.upper()
+        listed_ok = bool(remaining) or confirmed or "NO MESSAGES" in after.upper()
+        echo = f"K {number}"
         reply_lines = [
             line.strip() for line in reply.splitlines()
-            if line.strip() and "ENTER COMMAND" not in line.upper()
+            if line.strip()
+            and line.strip().upper() != echo
+            and "ENTER COMMAND" not in line.upper()
         ]
 
         return {
