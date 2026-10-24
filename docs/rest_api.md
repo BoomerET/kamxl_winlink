@@ -101,6 +101,7 @@ call actually does.
 | GET | `/` | | Serves the dashboard page, see [Dashboard](#dashboard) |
 | GET | `/pbbs/messages` | | List PBBS messages, see [PBBS](#pbbs) |
 | GET | `/pbbs/messages/<N>` | | Read PBBS message `N`; `result` is `null` if not found |
+| POST | `/pbbs/messages/<N>/delete` | | Delete PBBS message `N`, see [PBBS](#pbbs) |
 | GET | `/pbbs` | | Serves the PBBS web page |
 | GET | `/stations` | | List known stations, see [Stations / map](#stations--map) |
 | GET | `/stations/<CALLSIGN>` | | One station; `result` is `null` if never heard |
@@ -298,11 +299,12 @@ query-string auth pattern as every other page here.
 
 ## PBBS
 
-`GET /pbbs` serves a second self-contained page: a **read-only**
-browser for the KAM-XL's own built-in firmware PBBS (mailbox). Not a
-BBS this project implements -- the firmware handles message storage,
-forwarding, and SYSOP access; this is just a list-and-read view over
-it. Linked from the web terminal's header, and back again.
+`GET /pbbs` serves a second self-contained page: a browser for the
+KAM-XL's own built-in firmware PBBS (mailbox) -- list, read, and
+delete (a **delete** button on an open message, after a confirmation).
+Not a BBS this project implements -- the firmware handles message
+storage, forwarding, and SYSOP access; this is just a view over it.
+Linked from the web terminal's header, and back again.
 
 Behind it, `GET /pbbs/messages` and `GET /pbbs/messages/<N>` each
 drive a full AX.25 connect/command/disconnect cycle against the
@@ -320,6 +322,21 @@ curl -H "Authorization: Bearer $TOKEN" http://kam-host:8080/pbbs/messages/6
 404) if `N` doesn't resolve to a message -- distinguishing "asked for
 something that doesn't exist" from "the endpoint itself doesn't
 exist."
+
+`POST /pbbs/messages/<N>/delete` sends the PBBS's own `K <N>` (Kill),
+with an `L` listing before and after in the same session:
+
+```
+curl -X POST -H "Authorization: Bearer $TOKEN" http://kam-host:8080/pbbs/messages/6/delete
+```
+
+`result` is `{"number": 6, "found": true, "deleted": true, "reply":
+"..."}`. `deleted` comes from the listings -- the message was listed
+before and isn't after -- not from parsing the PBBS's reply to `K`,
+which hasn't been captured from a real KAM-XL yet; `reply` is that
+reply's text (logged by the daemon too), shown on the page when the
+PBBS refuses. `found: false` means there's no such message, and `K` is
+not sent.
 
 **Verified against real hardware**, for both an empty mailbox and a
 populated one. Each endpoint accepts an optional `read_timeout` query

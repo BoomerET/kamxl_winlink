@@ -22,7 +22,7 @@ import os  # noqa: F401
 import serial  # noqa: F401
 import time  # noqa: F401
 
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set
 
 # Re-exported for code that imported these from kamxl before the split.
 from packet import HEADER_RE, Packet, PacketParser  # noqa: F401
@@ -229,6 +229,72 @@ class KAMXL(TerminalTNC):
         logger.debug("pbbs read raw: %r", text)
 
         return parse_message(text)
+
+    def kill_pbbs_message(
+        self,
+        number: int,
+        mypbbs: Optional[str] = None,
+        connect_timeout: float = 15,
+        read_timeout: float = 10
+    ) -> Dict[str, Any]:
+        """
+        Connect to the KAM-XL's own PBBS and delete one message ("K <n>").
+
+        The PBBS's reply to K isn't known from the real unit yet (the
+        manual has been wrong about this PBBS's wording before), so it
+        isn't parsed. Instead the mailbox is listed ("L") before and
+        after, in the same session: the message counts as deleted only if
+        it was listed before and isn't after. Returns {"number", "found",
+        "deleted", "reply"}, where ``reply`` is the PBBS's own answer to
+        K, prompt stripped -- shown to the operator when ``deleted`` is
+        False (not allowed, ...). ``found`` False means no such message;
+        K isn't sent then.
+        """
+        if mypbbs is None:
+            mypbbs = self.get("MYPBBS")
+
+        self.connect_station(mypbbs, timeout=connect_timeout)
+
+        try:
+            self.send_connected("L")
+            before = self._collect_pbbs_response(read_timeout)
+            found = number in _listed_numbers(before)
+            reply = after = ""
+            if found:
+                self.send_connected(f"K {number}")
+                reply = self._collect_pbbs_response(read_timeout)
+                self.send_connected("L")
+                after = self._collect_pbbs_response(read_timeout)
+        finally:
+            self.disconnect_station()
+
+        logger.debug("pbbs list before kill raw: %r", before)
+        if not found:
+            return {"number": number, "found": False, "deleted": False, "reply": ""}
+
+        logger.info("pbbs kill %d raw: %r", number, reply)
+        logger.debug("pbbs list after kill raw: %r", after)
+
+        remaining = _listed_numbers(after)
+        # An empty parse is only trusted when the PBBS says so; a
+        # listing that didn't parse must not look like a deletion.
+        listed_ok = bool(remaining) or "NO MESSAGES" in after.upper()
+        reply_lines = [
+            line.strip() for line in reply.splitlines()
+            if line.strip() and "ENTER COMMAND" not in line.upper()
+        ]
+
+        return {
+            "number": number,
+            "found": True,
+            "deleted": listed_ok and number not in remaining,
+            "reply": "\n".join(reply_lines),
+        }
+
+
+def _listed_numbers(text: str) -> Set[int]:
+    """Message numbers in a PBBS "L" listing."""
+    return {message.number for message in parse_message_list(text)}
 
 
 # ---------------------------------------------------------------------------

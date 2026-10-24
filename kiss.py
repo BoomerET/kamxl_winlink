@@ -672,7 +672,7 @@ class KISSTNC(TerminalTNC):
         "set_choice", "get_multiport", "connect_station", "send_connected",
         "send_connected_bytes", "read_connected", "read_connected_bytes",
         "disconnect_station", "enter_command_mode", "list_pbbs_messages",
-        "read_pbbs_message", "check_winlink_mail", "send_winlink_message",
+        "read_pbbs_message", "kill_pbbs_message", "check_winlink_mail", "send_winlink_message",
         "listen",
     ):
         locals()[_name] = _terminal_only(_name)

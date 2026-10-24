@@ -23,8 +23,8 @@
     return div.innerHTML;
   }
 
-  async function apiGet(path) {
-    var res = await fetch(authedUrl(path));
+  async function apiGet(path, options) {
+    var res = await fetch(authedUrl(path), options);
     var payload = await res.json();
 
     if (!payload.ok) {
@@ -41,18 +41,20 @@
       '<div class="err">' + escapeHtml(err.message || String(err)) + "</div>";
   }
 
-  async function showList() {
+  // ``flash``: a line shown above the list, e.g. after a delete.
+  async function showList(flash) {
     content.innerHTML = '<div class="notice">Loading messages...</div>';
+    var top = flash ? '<div class="notice">' + escapeHtml(flash) + "</div>" : "";
 
     try {
       var messages = await apiGet("/pbbs/messages");
 
       if (!messages.length) {
-        content.innerHTML = '<div class="notice">No messages.</div>';
+        content.innerHTML = top + '<div class="notice">No messages.</div>';
         return;
       }
 
-      var html = "<table><thead><tr>" +
+      var html = top + "<table><thead><tr>" +
         "<th>#</th><th>Type</th><th>Size</th><th>To</th>" +
         "<th>From</th><th>Date</th><th>Subject</th>" +
         "</tr></thead><tbody>";
@@ -103,8 +105,14 @@
 
         content.innerHTML =
           '<a href="#" id="backLink">&larr; back to list</a>' +
+          '<button type="button" id="deleteButton">delete</button>' +
+          '<div id="deleteStatus"></div>' +
           '<div id="detail"><div class="hdr">' + escapeHtml(hdr) + "</div>" +
           escapeHtml(message.body) + "</div>";
+
+        document.getElementById("deleteButton").addEventListener(
+          "click", function () { deleteMessage(message.number); }
+        );
       }
 
       document.getElementById("backLink").addEventListener(
@@ -113,6 +121,41 @@
     } catch (err) {
       renderError(err);
     }
+  }
+
+  async function deleteMessage(number) {
+    if (!confirm("Delete PBBS message " + number + "? This can't be undone.")) {
+      return;
+    }
+
+    var button = document.getElementById("deleteButton");
+    var status = document.getElementById("deleteStatus");
+    button.disabled = true;
+    status.className = "notice";
+    status.textContent = "Deleting message " + number + "...";
+
+    try {
+      var result = await apiGet(
+        "/pbbs/messages/" + encodeURIComponent(number) + "/delete",
+        { method: "POST" }
+      );
+
+      if (result.deleted) {
+        showList("Message " + number + " deleted.");
+        return;
+      }
+
+      // The PBBS's own words say why (not allowed, ...).
+      status.className = "err";
+      status.textContent = !result.found
+        ? "Message " + number + " is no longer in the mailbox."
+        : "The PBBS didn't delete message " + number +
+          (result.reply ? ": " + result.reply : ".");
+    } catch (err) {
+      status.className = "err";
+      status.textContent = err.message || String(err);
+    }
+    button.disabled = false;
   }
 
   if (!token) {

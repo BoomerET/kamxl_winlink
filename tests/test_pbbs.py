@@ -268,6 +268,110 @@ class KAMXLPbbsIntegrationTests(unittest.TestCase):
         self.assertIn(("disconnect_station",), calls)
 
 
+# After "K 6": the manual's list with message 6 gone.
+LIST_AFTER_KILL_TEXT = (
+    "MSG# ST SIZE TO      FROM   DATE                SUBJECT\r\n"
+    "4    B  26   HELP    WB5BBW 10/19/01 09:34:05    Xerox 820\r\n"
+    "ENTER COMMAND: B,J,K,L,R,S, or Help >"
+)
+
+PROMPT = "ENTER COMMAND: B,J,K,L,R,S, or Help >"
+
+
+class KAMXLPbbsKillTests(unittest.TestCase):
+    """
+    kill_pbbs_message(): L, K <n>, L in one session. The PBBS's reply to
+    K isn't known from the real unit yet, so the fixture replies here are
+    guesses -- which is the point: the result must come from the
+    listings, whatever K says.
+    """
+
+    def _kam(self, *replies):
+        kam = make_kam(CannedSerial([]))
+        calls = []
+        queue = list(replies)
+
+        kam.get = lambda command: "N5BA-1"
+        kam.connect_station = lambda callsign, **kwargs: calls.append(
+            ("connect_station", callsign)
+        )
+        kam.send_connected = lambda text, **kwargs: calls.append(
+            ("send_connected", text)
+        )
+        kam.read_connected = lambda **kwargs: queue.pop(0) if queue else ""
+        kam.disconnect_station = lambda **kwargs: calls.append(
+            ("disconnect_station",)
+        )
+        return kam, calls
+
+    def sent(self, calls):
+        return [call[1] for call in calls if call[0] == "send_connected"]
+
+    def test_deleted_when_gone_from_the_listing(self):
+        kam, calls = self._kam(
+            LIST_TEXT, "MESSAGE 6 KILLED\r\n" + PROMPT, LIST_AFTER_KILL_TEXT,
+        )
+
+        result = kam.kill_pbbs_message(6, mypbbs="N5BA-1")
+
+        self.assertEqual(self.sent(calls), ["L", "K 6", "L"])
+        self.assertEqual(calls[-1], ("disconnect_station",))
+        self.assertEqual(result, {
+            "number": 6, "found": True, "deleted": True,
+            "reply": "MESSAGE 6 KILLED",
+        })
+
+    def test_last_message_deleted(self):
+        kam, _ = self._kam(
+            LIST_AFTER_KILL_TEXT, PROMPT,
+            "THERE ARE NO MESSAGES\r\n" + PROMPT,
+        )
+
+        self.assertTrue(kam.kill_pbbs_message(4, mypbbs="N5BA-1")["deleted"])
+
+    def test_refused_keeps_the_pbbs_reply(self):
+        kam, _ = self._kam(
+            LIST_TEXT, "NOT YOUR MESSAGE\r\n" + PROMPT, LIST_TEXT,
+        )
+
+        result = kam.kill_pbbs_message(6, mypbbs="N5BA-1")
+
+        self.assertTrue(result["found"])
+        self.assertFalse(result["deleted"])
+        self.assertEqual(result["reply"], "NOT YOUR MESSAGE")
+
+    def test_unknown_number_sends_no_kill(self):
+        kam, calls = self._kam(LIST_TEXT)
+
+        result = kam.kill_pbbs_message(99, mypbbs="N5BA-1")
+
+        self.assertEqual(self.sent(calls), ["L"])
+        self.assertEqual(calls[-1], ("disconnect_station",))
+        self.assertEqual(
+            result, {"number": 99, "found": False, "deleted": False, "reply": ""}
+        )
+
+    def test_unparsed_listing_is_not_a_deletion(self):
+        # A later listing that doesn't parse (format surprise) must not
+        # read as "message gone".
+        kam, _ = self._kam(LIST_TEXT, PROMPT, "SOMETHING UNEXPECTED\r\n" + PROMPT)
+
+        self.assertFalse(kam.kill_pbbs_message(6, mypbbs="N5BA-1")["deleted"])
+
+    def test_disconnect_always_runs(self):
+        kam, calls = self._kam(LIST_TEXT)
+
+        def failing_read(**kwargs):
+            raise KAMTimeoutError("boom")
+
+        kam.read_connected = failing_read
+
+        with self.assertRaises(KAMTimeoutError):
+            kam.kill_pbbs_message(6, mypbbs="N5BA-1")
+
+        self.assertIn(("disconnect_station",), calls)
+
+
 class CollectPbbsResponseTests(unittest.TestCase):
     """
     Regression tests for the real truncation bug Dave hit on real

@@ -120,6 +120,7 @@ truncated.
 | --- | --- |
 | `list_pbbs_messages(mypbbs=None, connect_timeout=15, read_timeout=10)` | Connect to the PBBS and list its messages. `mypbbs` defaults to the KAM-XL's current `MYPBBS` setting. Returns a list of `PBBSMessageSummary`. |
 | `read_pbbs_message(number, mypbbs=None, connect_timeout=15, read_timeout=10)` | Connect to the PBBS and read one message. Returns a `PBBSMessage`, or `None` if the response didn't look like a message (e.g. the number doesn't exist). |
+| `kill_pbbs_message(number, mypbbs=None, connect_timeout=15, read_timeout=10)` | Connect to the PBBS and delete one message (`K <n>`), listing before and after. Returns `{"number", "found", "deleted", "reply"}`: `deleted` is True only if the message was listed before and isn't after; `reply` is the PBBS's answer to `K`. |
 
 ### Winlink (Milestone 8)
 

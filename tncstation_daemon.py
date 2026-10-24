@@ -391,6 +391,7 @@ class KAMDaemon:
             "disconnect_station": self._m_disconnect_station,
             "pbbs.list_messages": self._m_pbbs_list_messages,
             "pbbs.read_message": self._m_pbbs_read_message,
+            "pbbs.kill_message": self._m_pbbs_kill_message,
             "winlink.check_mail": self._m_winlink_check_mail,
             "winlink.send_message": self._m_winlink_send_message,
             "winlink.account_exists": self._m_winlink_account_exists,
@@ -901,6 +902,22 @@ class KAMDaemon:
             self._aprs_link_may_be_active = False
 
         return dataclasses.asdict(message) if message is not None else None
+
+    def _m_pbbs_kill_message(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        with self._kam_lock:
+            self._aprs_session_uncertain = True
+            self._invalidate_aprs_safety("PBBS operation attempted")
+            self._mark_link_may_be_active()
+            result = self.kam.kill_pbbs_message(
+                int(params["number"]),
+                mypbbs=params.get("mypbbs"),
+                connect_timeout=params.get("connect_timeout", 15),
+                read_timeout=params.get("read_timeout", 10),
+            )
+            # The operation connects and disconnects on its own.
+            self._aprs_link_may_be_active = False
+
+        return result
 
     def _m_winlink_check_mail(
         self, params: Dict[str, Any]

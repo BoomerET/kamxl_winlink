@@ -281,7 +281,8 @@ class DriverTests(unittest.TestCase):
         for call in (lambda: tnc.send_command("MYCALL"), lambda: tnc.get("MYCALL"),
                      lambda: tnc.connect_station("KD5EOC-10"),
                      lambda: tnc.check_winlink_mail("KD5EOC-10", "pw"),
-                     lambda: tnc.list_pbbs_messages(), lambda: tnc.exit_kiss_mode()):
+                     lambda: tnc.list_pbbs_messages(), lambda: tnc.kill_pbbs_message(1),
+                     lambda: tnc.exit_kiss_mode()):
             with self.assertRaises(TNCError) as ctx:
                 call()
             self.assertIn("KISS", str(ctx.exception))
