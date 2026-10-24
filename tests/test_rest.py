@@ -1658,6 +1658,35 @@ class PBBSEndpointTests(RestTestCase):
         self.assertEqual(status, 200)
         self.assertIsNone(payload["result"])
 
+    def test_kill_message(self):
+        daemon, port = self.start_stack(ScriptedSerial({}))
+        killed = []
+
+        def kill(number, **kwargs):
+            killed.append(number)
+            return {"number": number, "found": True, "deleted": True, "reply": ""}
+
+        daemon.kam.kill_pbbs_message = kill
+
+        status, payload = self.request(port, "POST", "/pbbs/messages/6/delete")
+
+        self.assertEqual(status, 200)
+        self.assertEqual(killed, [6])
+        self.assertTrue(payload["result"]["deleted"])
+
+    def test_kill_message_needs_post(self):
+        _, port = self.start_stack(ScriptedSerial({}))
+
+        status, _ = self.request(port, "GET", "/pbbs/messages/6/delete")
+
+        self.assertEqual(status, 405)
+
+    def test_pbbs_page_has_delete(self):
+        html = tncstation_rest.PBBS_HTML
+        self.assertIn("deleteButton", html)
+        self.assertIn("/delete", html)
+        self.assertIn("confirm(", html)
+
     def test_pbbs_page_served(self):
         daemon, port = self.start_stack(ScriptedSerial({}))
 

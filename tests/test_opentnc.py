@@ -198,6 +198,9 @@ class OpenTNCCommandTests(unittest.TestCase):
         with self.assertRaises(KAMError):
             tnc.read_pbbs_message(1)
 
+        with self.assertRaises(KAMError):
+            tnc.kill_pbbs_message(1)
+
 
 # ---------------------------------------------------------------------------
 # Replaying the real unit (tests/opentnc_capture_20261019.txt)

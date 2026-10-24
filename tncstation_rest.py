@@ -86,8 +86,8 @@ DASHBOARD_HTML = load_page("dashboard")
 TERMINAL_HTML = load_page("terminal")
 
 # Milestone 6: a second self-contained page, served at GET /pbbs, for
-# the KAM-XL's built-in firmware PBBS (mailbox) -- read-only per
-# Dave's chosen scope: list messages, click one to read it. Kept as
+# the KAM-XL's built-in firmware PBBS (mailbox): list messages, click
+# one to read it, delete it (first read-only, by Dave's choice). Kept as
 # its own page rather than folded into the terminal/monitor page --
 # unlike those two (both live, continuously-updating views that
 # naturally share screen space), this is list/detail navigation, a
@@ -360,6 +360,7 @@ ROUTES: Tuple[Tuple[str, "re.Pattern", str], ...] = (
     ("GET", re.compile(r"^/pbbs$"), "_h_pbbs_page"),
     ("GET", re.compile(r"^/pbbs/messages$"), "_h_pbbs_list_messages"),
     ("GET", re.compile(r"^/pbbs/messages/(?P<number>\d+)$"), "_h_pbbs_read_message"),
+    ("POST", re.compile(r"^/pbbs/messages/(?P<number>\d+)/delete$"), "_h_pbbs_kill_message"),
     ("GET", re.compile(r"^/map$"), "_h_map_page"),
     ("GET", re.compile(r"^/stations$"), "_h_stations_list"),
     ("GET", re.compile(r"^/stations/history$"), "_h_stations_history"),
@@ -778,9 +779,10 @@ class RESTRequestHandler(BaseHTTPRequestHandler):
 
     # -- PBBS (milestone 6) ---------------------------------------------
     #
-    # Read-only wrapper around the KAM-XL's own firmware PBBS. Each
-    # call drives a full connect/command/disconnect cycle on the
-    # daemon side (see KAMXL.list_pbbs_messages()/read_pbbs_message()),
+    # Thin wrapper around the KAM-XL's own firmware PBBS. Each call
+    # drives a full connect/command/disconnect cycle on the daemon side
+    # (see KAMXL.list_pbbs_messages()/read_pbbs_message()/
+    # kill_pbbs_message()),
     # so the socket timeout budget has to cover connect_timeout +
     # read_timeout + disconnect_station()'s own worst case (up to
     # ~35s between its command_mode_timeout and timeout defaults),
@@ -820,6 +822,21 @@ class RESTRequestHandler(BaseHTTPRequestHandler):
             connect_timeout=connect_timeout,
             read_timeout=read_timeout,
             _socket_timeout=connect_timeout + read_timeout + 40,
+        )
+
+    def _h_pbbs_kill_message(self, params: Dict[str, str], query: Dict[str, Any]) -> None:
+        mypbbs = query.get("mypbbs", [None])[0]
+        connect_timeout = float(query.get("connect_timeout", ["15"])[0])
+        read_timeout = float(query.get("read_timeout", ["10"])[0])
+
+        # Three PBBS commands (L, K, L), each up to read_timeout.
+        self._relay(
+            "pbbs.kill_message",
+            number=int(params["number"]),
+            mypbbs=mypbbs,
+            connect_timeout=connect_timeout,
+            read_timeout=read_timeout,
+            _socket_timeout=connect_timeout + 3 * read_timeout + 40,
         )
 
     # -- Stations / map (milestone 7) ------------------------------------

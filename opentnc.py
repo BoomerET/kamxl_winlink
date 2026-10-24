@@ -534,6 +534,9 @@ class OpenTNC(TerminalTNC):
     def read_pbbs_message(self, *args: Any, **kwargs: Any) -> Any:
         raise TNCError("The OpenTNC has no built-in PBBS")
 
+    def kill_pbbs_message(self, *args: Any, **kwargs: Any) -> Any:
+        raise TNCError("The OpenTNC has no built-in PBBS")
+
 
 # ---------------------------------------------------------------------------
 # KISS mode
