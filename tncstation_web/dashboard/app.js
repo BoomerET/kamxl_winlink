@@ -110,7 +110,6 @@
   var convStatus = document.getElementById("convStatus");
   var convUnreadBadge = document.getElementById("convUnreadBadge");
   var convAlertsBtn = document.getElementById("convAlertsBtn");
-  var baseTitle = document.title;
 
   var convState = {
     selected: null,
@@ -338,7 +337,10 @@
     var totalUnread = threads.reduce(function (n, t) { return n + t.unread; }, 0);
     convUnreadBadge.hidden = totalUnread === 0;
     convUnreadBadge.textContent = totalUnread + " new";
-    document.title = totalUnread ? "(" + totalUnread + ") " + baseTitle : baseTitle;
+    // Only the "(N) " prefix is ours: the rest of the title can change
+    // after load (features.js adds the station's TNC).
+    var title = document.title.replace(/^\(\d+\) /, "");
+    document.title = totalUnread ? "(" + totalUnread + ") " + title : title;
 
     convList.replaceChildren();
     if (!threads.length) {

@@ -403,6 +403,16 @@ setTimeout(() => console.log(doc.title), 50);
     def test_unchanged_without_a_tnc(self):
         self.assertEqual(self.title({}), "tncstation dashboard")
 
+    def test_dashboard_unread_count_keeps_the_tnc(self):
+        # The dashboard's "(N) " unread prefix used to restore a title
+        # saved at load, wiping out the TNC features.js adds afterwards
+        # (seen live: every page but the dashboard showed it). It must
+        # rebuild from the current title instead.
+        js = (tncstation_web.PAGES_DIR / "dashboard" / "app.js").read_text(
+            encoding="utf-8")
+        self.assertNotIn("baseTitle", js)
+        self.assertIn('document.title.replace(/^\\(\\d+\\) /, "")', js)
+
 
 if __name__ == "__main__":
     unittest.main()
