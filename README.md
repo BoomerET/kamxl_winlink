@@ -53,7 +53,7 @@ python3 -m venv .venv
 sudo usermod -aG dialout $USER     # serial port access; log out and back in
 ```
 
-Requires Python 3.9+ (tested on 3.9, 3.13 -- e.g. a Raspberry Pi -- and
+Requires Python 3.10+ (tested on 3.10, 3.13 -- e.g. a Raspberry Pi -- and
 3.14). The only dependency, [pyserial](https://pypi.org/project/pyserial/),
 comes with it.
 
