@@ -352,5 +352,57 @@ class PageFeatureTests(unittest.TestCase):
                           tncstation_web.load_page(page))
 
 
+class TabTitleTests(unittest.TestCase):
+    """features.js adds the station's TNC to the tab title."""
+
+    # Just enough of a browser for features.js: a title, an empty page,
+    # and a fetch() that answers /status with the given result.
+    HARNESS = """
+const fs = require("fs");
+const [, , script, statusJson] = process.argv;
+const doc = {
+  title: "tncstation dashboard", readyState: "complete",
+  querySelectorAll: () => [], querySelector: () => null,
+  body: { getAttribute: () => null },
+};
+const g = globalThis;
+g.document = doc;
+g.location = { search: "" };
+g.fetch = () => Promise.resolve({
+  json: () => Promise.resolve({ ok: true, result: JSON.parse(statusJson) }),
+});
+eval(fs.readFileSync(script, "utf8"));
+setTimeout(() => console.log(doc.title), 50);
+"""
+
+    def title(self, status):
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("node not available")
+        with tempfile.TemporaryDirectory() as tmp:
+            harness = Path(tmp) / "harness.js"
+            harness.write_text(self.HARNESS, encoding="utf-8")
+            result = subprocess.run(
+                [node, str(harness), str(SHARED / "features.js"), json.dumps(status)],
+                capture_output=True, text=True, encoding="utf-8", timeout=30,
+            )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        return result.stdout.strip()
+
+    def test_label_is_added(self):
+        self.assertEqual(
+            self.title({"tnc_model": "KISS TNC", "tnc_label": "Direwolf"}),
+            "tncstation dashboard · Direwolf",
+        )
+
+    def test_model_without_a_label(self):
+        # A daemon from before tnc_label.
+        self.assertEqual(self.title({"tnc_model": "OpenTNC"}),
+                         "tncstation dashboard · OpenTNC")
+
+    def test_unchanged_without_a_tnc(self):
+        self.assertEqual(self.title({}), "tncstation dashboard")
+
+
 if __name__ == "__main__":
     unittest.main()

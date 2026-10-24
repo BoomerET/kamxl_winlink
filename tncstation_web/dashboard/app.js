@@ -1317,7 +1317,7 @@
       statusDot.className = status.connected ? "live" : "down";
       statusDot.textContent = status.connected ? "connected" : "disconnected";
       statusDetail.textContent =
-        (status.tnc_model ? status.tnc_model +
+        (status.tnc_model ? (status.tnc_label || status.tnc_model) +
           (status.tnc_mode === "kiss" ? " (KISS)" : "") + " on " : "") +
         status.port + " -- " + status.monitor_subscribers +
         " monitor subscriber" + (status.monitor_subscribers === 1 ? "" : "s");

@@ -19,6 +19,9 @@
  *                              2" wording); the markup has the generic
  *                              text for one-port TNCs
  *
+ * It also adds the TNC to the tab title ("tncstation dashboard ·
+ * OpenTNC"), so tabs from different stations can be told apart.
+ *
  * Fails open: if the status can't be read, everything stays visible.
  */
 (function () {
@@ -34,6 +37,9 @@
   var statusUrl = "/status" + (token ? "?token=" + encodeURIComponent(token) : "");
 
   function apply(status) {
+    var tnc = status && (status.tnc_label || status.tnc_model);
+    if (tnc) document.title = document.title + " \u00b7 " + tnc;
+
     if (status && status.radio_ports > 1) {
       var worded = document.querySelectorAll("[data-two-port-text]");
       for (var j = 0; j < worded.length; j++) {

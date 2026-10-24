@@ -128,10 +128,17 @@ class KAMDaemon:
         history_retention_days: float = 0,
         notifier: Optional[Any] = None,
         backup: Optional[Any] = None,
+        tnc_label: Optional[str] = None,
     ) -> None:
         from aprs_tx import validate_aprs_path
 
         self.kam = kam
+
+        # What the web pages call this station's TNC (tab titles): the
+        # operator's name for it (TNCSTATION_TNC_LABEL, e.g. "Direwolf",
+        # which the generic KISS driver can't tell apart), else the
+        # driver's model.
+        self.tnc_label = (tnc_label or "").strip() or getattr(kam, "MODEL", "KAM-XL")
 
         # Digipeater path for everything we transmit on APRS (messages,
         # resends, ACKs, beacons). "" = direct. The command line
@@ -519,6 +526,7 @@ class KAMDaemon:
             "connected": connected,
             "port": self.kam.port,
             "tnc_model": getattr(self.kam, "MODEL", "KAM-XL"),
+            "tnc_label": self.tnc_label,
             "tnc_mode": getattr(self.kam, "MODE", "terminal"),
             "aprs_tocall": self.aprs_tocall,
             "aprs_tx_supported": getattr(self.kam, "APRS_TX_SUPPORTED", True),
@@ -3305,6 +3313,14 @@ def main(argv: Optional[list] = None) -> None:
         ),
     )
     parser.add_argument(
+        "--tnc-label",
+        default=os.environ.get("TNCSTATION_TNC_LABEL") or None,
+        help=(
+            "Name for this station's TNC in the web pages' tab titles, e.g. "
+            "Direwolf (default: $TNCSTATION_TNC_LABEL, or the TNC model)"
+        ),
+    )
+    parser.add_argument(
         "--tnc-mode",
         default=os.environ.get("TNCSTATION_MODE") or "",
         help=(
@@ -3698,6 +3714,7 @@ def main(argv: Optional[list] = None) -> None:
         history_retention_days=args.history_days,
         notifier=notifier,
         backup=backup,
+        tnc_label=args.tnc_label,
     )
 
     if backup is not None:
