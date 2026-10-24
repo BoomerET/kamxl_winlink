@@ -1077,6 +1077,22 @@ class PingStatusTests(DaemonTestCase):
         self.assertEqual(response["result"]["port"], "COM_FAKE")
         self.assertEqual(response["result"]["monitor_subscribers"], 0)
 
+    def test_tnc_label_defaults_to_the_model(self):
+        daemon = KAMDaemon(make_kam(ScriptedSerial({})), "/tmp/label-test.sock")
+        self.addCleanup(daemon.shutdown)
+        status = daemon.dispatch("status", {})
+        self.assertEqual(status["tnc_label"], "KAM-XL")
+        self.assertEqual(status["tnc_model"], "KAM-XL")
+
+    def test_tnc_label_setting(self):
+        # TNCSTATION_TNC_LABEL: e.g. Direwolf behind the generic KISS driver.
+        daemon = KAMDaemon(make_kam(ScriptedSerial({})), "/tmp/label-test.sock",
+                           tnc_label="  Direwolf ")
+        self.addCleanup(daemon.shutdown)
+        status = daemon.dispatch("status", {})
+        self.assertEqual(status["tnc_label"], "Direwolf")
+        self.assertEqual(status["tnc_model"], "KAM-XL")
+
     def test_packet_diagnostics(self):
         daemon, socket_path = self.start_daemon(ScriptedSerial({}))
         client = self.connect(socket_path)

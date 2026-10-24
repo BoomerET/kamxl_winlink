@@ -47,10 +47,14 @@ still uses MYCALL.
 
     TNCSTATION_TNC=kiss
     TNCSTATION_PORT=tcp://localhost:8001
+    TNCSTATION_TNC_LABEL=Direwolf
 
 `kiss` means "already speaking KISS": nothing is sent to enter or
 leave it. It also fits a hardware TNC you've put in KISS yourself
-(`TNCSTATION_PORT=/dev/ttyUSB0`).
+(`TNCSTATION_PORT=/dev/ttyUSB0`). The `kiss` driver can't tell what's
+at the other end, so the web pages call it "KISS TNC" unless
+`TNCSTATION_TNC_LABEL` names it; the name goes in each browser tab's
+title ("tncstation dashboard · Direwolf").
 
 **KAM-XL (unverified):**
 
